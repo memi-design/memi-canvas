@@ -51,6 +51,7 @@ function actions(
   selectedNodeIds: readonly string[],
   getPastePoint: () => { readonly x: number; readonly y: number } | null =
     () => null,
+  commitIntentReceipt?: (label: string, receipt: any, options?: any) => void,
 ) {
   const appendTrace = vi.fn();
   const commitScene = vi.fn();
@@ -60,6 +61,7 @@ function actions(
     value: createWorkbenchDocumentActions({
       appendTrace,
       commitScene,
+      ...(commitIntentReceipt === undefined ? {} : { commitIntentReceipt }),
       documentId: "document",
       getPastePoint,
       nodes,
@@ -77,6 +79,33 @@ afterEach(() => {
 });
 
 describe("workbench hierarchy actions", () => {
+  it("emits a compact V3 group receipt with parent-relative child transforms", () => {
+    const a = rectangle("a", null, 100, 80);
+    const b = rectangle("b", null, 160, 120);
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions(
+      [a, b],
+      [a.id, b.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.groupSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Group 2 layers",
+      expect.objectContaining({
+        kind: "group",
+        children: expect.arrayContaining([
+          expect.objectContaining({ id: "a", position: { x: 0, y: 0 } }),
+          expect.objectContaining({ id: "b", position: { x: 60, y: 40 } }),
+        ]),
+      }),
+      expect.objectContaining({ targetIds: expect.arrayContaining(["a", "b"]) }),
+    );
+  });
+
   it("creates a selected editable Image node at the canvas cursor", () => {
     const anchor = rectangle("anchor", null, 40, 60);
     const bytes = Uint8Array.from(

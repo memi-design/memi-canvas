@@ -38,6 +38,8 @@ import {
   duplicateWorkbenchSubtrees,
 } from "./workbench-document-actions.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
+import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
+import type { WorkbenchSemanticCommitOptions } from "./workbench-document-actions.js";
 
 interface PointerActionContext {
   readonly alignmentGuides: AlignmentGuides;
@@ -47,6 +49,12 @@ interface PointerActionContext {
     FrameStateScheduler<CanvasCamera> | null
   >;
   readonly commitPreview: WorkbenchHistoryActions["commitPreview"];
+  /** V3 production sink. Pointer gestures provide only their affected nodes. */
+  readonly commitIntentReceipt?: (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    options?: WorkbenchSemanticCommitOptions,
+  ) => void;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   readonly createRootNode: WorkbenchHistoryActions["createRootNode"];
   readonly gesture: MutableRefObject<PointerGesture | null>;
@@ -258,6 +266,29 @@ function createdNodeGeometry(
 export function createWorkbenchPointerActions(
   context: PointerActionContext,
 ): WorkbenchPointerActions {
+  const commit = (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    before: readonly WorkbenchNode[],
+    targetIds: readonly string[],
+  ) => {
+    if (context.commitIntentReceipt !== undefined) {
+      context.commitIntentReceipt(label, receipt, { targetIds });
+      context.setPreviewNodes(null);
+      return;
+    }
+    context.commitPreview(label, before, targetIds);
+  };
+  const create = (label: string, node: WorkbenchNode) => {
+    if (context.commitIntentReceipt !== undefined) {
+      context.commitIntentReceipt(label, { kind: "create", nodes: [node] }, {
+        selectedIds: [node.id], targetIds: [node.id],
+      });
+      context.setPreviewNodes(null);
+      return;
+    }
+    context.createRootNode(label, node);
+  };
   const startMove: WorkbenchPointerActions["startMove"] = (
     node,
     event,
@@ -648,7 +679,7 @@ export function createWorkbenchPointerActions(
               true,
             );
         context.suppressCanvasClick.current = true;
-        context.createRootNode(`Create ${node.name}`, node);
+        create(`Create ${node.name}`, node);
         context.appendTrace(`Created ${node.name}`, node.id);
         context.setTool("select");
         return;
@@ -659,12 +690,19 @@ export function createWorkbenchPointerActions(
           active.type === "move" && active.duplicated
             ? `Duplicate and move ${active.nodeName}`
             : `${active.type === "move" ? "Move" : "Resize"} ${active.nodeName}`;
-        context.commitPreview(
+        const targetIds = active.type === "move"
+          ? active.nodeIds
+          : [active.nodeId];
+        const affected = context.nodes.filter((node) => targetIds.includes(node.id));
+        commit(
           label,
+          active.type === "resize"
+            ? { kind: "resize", nodes: affected }
+            : active.duplicated
+              ? { kind: "paste", nodes: affected }
+              : { kind: "move", nodes: affected },
           active.initialNodes,
-          active.type === "move"
-            ? active.nodeIds
-            : [active.nodeId],
+          targetIds,
         );
         context.appendTrace(
           active.type === "move" && active.duplicated
@@ -706,7 +744,7 @@ export function createWorkbenchPointerActions(
       undefined,
       true,
     );
-    context.createRootNode(`Create ${node.name}`, node);
+    create(`Create ${node.name}`, node);
     context.setTool("select");
   };
 
@@ -806,21 +844,29 @@ export function createWorkbenchPointerActions(
         movableRoots.length === 1
           ? `Nudge ${movableRoots[0]?.name ?? "selection"}`
           : `Nudge ${movableRoots.length} layers`;
+      const nextNodes = context.nodes.map((node) =>
+        movableSet.has(node.id) && !node.locked
+          ? {
+              ...node,
+              position: {
+                x: node.position.x + offset.x,
+                y: node.position.y + offset.y,
+              },
+            }
+          : node,
+      );
+      if (context.commitIntentReceipt !== undefined) {
+        context.commitIntentReceipt(label, {
+          kind: "move",
+          nodes: nextNodes.filter((node) => movableSet.has(node.id)),
+        }, { targetIds: movableIds });
+      } else {
       context.commitScene(
         label,
-        context.nodes.map((node) =>
-          movableSet.has(node.id) && !node.locked
-            ? {
-                ...node,
-                position: {
-                  x: node.position.x + offset.x,
-                  y: node.position.y + offset.y,
-                },
-              }
-            : node,
-        ),
+        nextNodes,
         { targetIds: movableIds },
       );
+      }
     };
 
   void context.alignmentGuides;
