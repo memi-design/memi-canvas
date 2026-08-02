@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { canonicalJson } from "@memi/canonical-json";
+
 import {
   ContentHashSchema,
   IsoTimestampSchema,
@@ -261,6 +263,49 @@ export const CanvasActionTypeV3Schema = z.enum([
 ]);
 export type CanvasActionTypeV3 = z.infer<typeof CanvasActionTypeV3Schema>;
 
+function exactInverseAction(
+  action: CanvasActionV3,
+): CanvasActionV3 {
+  if (action.type === "atomic.batch") {
+    return CanvasActionV3Schema.parse({
+      type: "atomic.batch",
+      payload: {
+        actions: [...action.payload.actions].reverse().map(exactInverseAction),
+      },
+    });
+  }
+  if (action.type === "node.create") {
+    return CanvasActionV3Schema.parse({
+      type: "node.delete",
+      payload: {
+        nodeId: action.payload.node.id,
+        prior: action.payload,
+      },
+    });
+  }
+  if (action.type === "node.delete") {
+    return CanvasActionV3Schema.parse({
+      type: "node.create",
+      payload: action.payload.prior,
+    });
+  }
+  return CanvasSingleActionV3Schema.parse({
+    ...action,
+    payload: {
+      ...action.payload,
+      prior: action.payload.next,
+      next: action.payload.prior,
+    },
+  });
+}
+
+function hasExactInverseAction(
+  action: CanvasActionV3,
+  inverseAction: CanvasActionV3,
+): boolean {
+  return canonicalJson(exactInverseAction(action)) === canonicalJson(inverseAction);
+}
+
 export const CanvasOperationV3Schema = z
   .strictObject({
     schemaVersion: z.literal(3),
@@ -288,6 +333,13 @@ export const CanvasOperationV3Schema = z
         code: "custom",
         path: ["type"],
         message: "Operation type must match its forward action type.",
+      });
+    }
+    if (!hasExactInverseAction(operation.action, operation.inverseAction)) {
+      context.addIssue({
+        code: "custom",
+        path: ["inverseAction"],
+        message: "Operation inverse action must exactly reverse the forward action.",
       });
     }
     if (!hasUniqueValues(operation.targetIds)) {
