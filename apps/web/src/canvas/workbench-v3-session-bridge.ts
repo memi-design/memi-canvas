@@ -5,7 +5,7 @@ import type { CanvasWorkbenchV3Session } from "./CanvasWorkbench.types.js";
 import type { CanonicalWorkbenchAuthorityV3 } from "./canonical-workbench-authority-v3.js";
 import {
   createV3WorkbenchHistoryActions,
-} from "./workbench-history-actions.js";
+} from "./workbench-v3-history-actions.js";
 import {
   canonicalWorkbenchNodeIdV3,
   compileWorkbenchIntentReceiptV3,

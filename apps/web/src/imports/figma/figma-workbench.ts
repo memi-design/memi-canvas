@@ -1,4 +1,11 @@
 import type {
+  CanvasDocumentV3,
+  ProjectId,
+} from "@memi/protocol";
+import {
+  createLocalDesignCanvasDocumentV3,
+} from "../../projects/local-design-canvas-v3.js";
+import type {
   CanvasWorkbenchProject,
   DocumentNode,
   Point,
@@ -123,7 +130,9 @@ function workbenchNodes(
       ...(node.provenance === undefined
         ? {}
         : { provenance: structuredClone(node.provenance) }),
-      frameContent: `Figma ${node.kind} · ${result.provenance.fileKey}`,
+      ...(workbenchKind(node) === "Text"
+        ? {}
+        : { frameContent: `Figma ${node.kind} · ${result.provenance.fileKey}` }),
     };
   });
 }
@@ -164,4 +173,21 @@ export function createFigmaCanvasProject(
             },
           ],
   });
+}
+
+/**
+ * Figma is imported as an initial CanvasDocumentV3 snapshot. Once opened, all
+ * user mutations are appended to the V3 operation journal; the compatibility
+ * workbench projection is never written through the legacy scene autosave.
+ */
+export function createFigmaCanvasDocumentV3(
+  result: FigmaImportResult,
+  projectId: string,
+  runtimeProjectId: ProjectId,
+): CanvasDocumentV3 {
+  return createLocalDesignCanvasDocumentV3(
+    createFigmaCanvasProject(result, projectId),
+    runtimeProjectId,
+    "design",
+  );
 }

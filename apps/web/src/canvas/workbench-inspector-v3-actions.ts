@@ -147,7 +147,12 @@ export function createWorkbenchInspectorV3Actions(
         input.setPreview(input.projectNodes.map((node) =>
           targets.has(node.id) ? mutation.update(node) : node
         ));
-        void Promise.resolve(pending).finally(() => input.setPreview(null));
+        // The V3 bridge owns reporting the original persistence failure. `finally`
+        // mirrors that rejection onto a new promise, so consume only that derived
+        // promise after cleanup to avoid an unhandled-rejection event in the UI.
+        void Promise.resolve(pending)
+          .finally(() => input.setPreview(null))
+          .catch(() => undefined);
       } else {
         input.setPreview(null);
       }

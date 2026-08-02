@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { createWorkspaceSessionDraft } from "@memi/protocol";
+import { createWorkspaceSessionDraft, type CanvasPageId } from "@memi/protocol";
 
 import {
   createAgentPatch,
@@ -87,6 +87,28 @@ export function useCanvasWorkbenchSessionState(
     v3Controller.getSnapshot,
     v3Controller.getSnapshot,
   );
+  const [requestedPageId, setRequestedPageId] =
+    useState<CanvasPageId | null>(null);
+  const currentDocument =
+    v3Snapshot.status === "ready"
+      ? v3Snapshot.authority.getSnapshot().document
+      : v3Session.document;
+  const activePageId: CanvasPageId =
+    requestedPageId !== null &&
+    currentDocument.pagesById[requestedPageId] !== undefined
+      ? requestedPageId
+      : v3Snapshot.status === "ready" &&
+          v3Snapshot.workspace.activePageId !== null &&
+          v3Snapshot.workspace.activePageId !== undefined &&
+          currentDocument.pagesById[v3Snapshot.workspace.activePageId] !==
+            undefined
+      ? v3Snapshot.workspace.activePageId as CanvasPageId
+      : v3Session.activePageId;
+  const selectActivePage = (pageId: string) => {
+    if (currentDocument.pagesById[pageId] !== undefined) {
+      setRequestedPageId(pageId as CanvasPageId);
+    }
+  };
   const disposeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (disposeTimer.current !== null) {
@@ -101,7 +123,7 @@ export function useCanvasWorkbenchSessionState(
     };
   }, [v3Controller]);
   const rendererSnapshot = v3Snapshot.status === "ready"
-    ? v3Controller.getRendererSnapshot(v3Session.activePageId)
+    ? v3Controller.getRendererSnapshot(activePageId)
     : { canRedo: false, canUndo: false, nodes: [], revision: v3Session.document.revision, selection: createSelectionState([]) };
   const historyAvailability = {
     canRedo: rendererSnapshot.canRedo,
@@ -245,6 +267,16 @@ export function useCanvasWorkbenchSessionState(
   const viewportElement = useRef<HTMLDivElement | null>(null);
   const spacePressed = useRef(false);
   const suppressCanvasClick = useRef(false);
+  // LocalDesignConsumer intentionally supplies a lightweight persistence writer
+  // from its render path. Persisting because that callback identity changes
+  // would feed a workspace update straight back into the parent render tree.
+  // Keep the current callback available without making it a document/session
+  // change dependency.
+  const workspaceSessionChangeRef = useRef(onWorkspaceSessionChange);
+
+  useEffect(() => {
+    workspaceSessionChangeRef.current = onWorkspaceSessionChange;
+  }, [onWorkspaceSessionChange]);
 
   useEffect(
     () => () => {
@@ -343,7 +375,8 @@ export function useCanvasWorkbenchSessionState(
   }, []);
 
   useEffect(() => {
-    if (onWorkspaceSessionChange === undefined) {
+    const notifyWorkspaceSessionChange = workspaceSessionChangeRef.current;
+    if (notifyWorkspaceSessionChange === undefined) {
       return;
     }
     const restoredActivity =
@@ -371,7 +404,8 @@ export function useCanvasWorkbenchSessionState(
       activeReview?.status === "conflict"
         ? [activeReview.patch.id]
         : (restoredActivity?.conflictedOverlayIds ?? []);
-    onWorkspaceSessionChange({
+    notifyWorkspaceSessionChange({
+      activePageId,
       activity: {
         activeRunId,
         activeReviewId,
@@ -393,6 +427,10 @@ export function useCanvasWorkbenchSessionState(
       },
       camera,
       documentRevision: scene.revision,
+      history:
+        canonicalAuthority?.getHistoryState() ??
+        initialWorkspaceSession?.history ??
+        { undo: [], redo: [] },
       panels: {
         layersWidth:
           initialWorkspaceSession?.panels.layersWidth ?? 240,
@@ -408,9 +446,9 @@ export function useCanvasWorkbenchSessionState(
     });
   }, [
     agentPatchReview,
+    activePageId,
     camera,
     initialWorkspaceSession,
-    onWorkspaceSessionChange,
     runtimeSnapshot,
     scene.revision,
     selection,
@@ -484,6 +522,7 @@ export function useCanvasWorkbenchSessionState(
 
   return {
     agentPatchReview,
+    activePageId,
     alignmentGuides,
     camera,
     cameraScheduler,
@@ -512,6 +551,7 @@ export function useCanvasWorkbenchSessionState(
     scene,
     selection,
     selectionMarquee,
+    selectActivePage,
     selectedNodeIds,
     setAgentPatchReview,
     setAlignmentGuides,

@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { SwiftUIXCUITestEvidence } from "@memi/capture-execution";
+import type { SwiftUIXCUITestEvidence } from "@memi/capture-execution/core";
 
 import { isContained } from "./native-capture-process.js";
 

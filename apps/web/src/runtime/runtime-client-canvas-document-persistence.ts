@@ -3,6 +3,7 @@ import type {
   CanvasDocumentIdentityV3,
   CanvasDocumentJournalV3,
   CanvasDocumentSnapshotV3,
+  CanvasDocumentV3,
   CanvasDocumentV3PersistencePort,
 } from "@memi/protocol";
 import {
@@ -11,7 +12,10 @@ import {
   CanvasDocumentJournalV3Schema,
   CanvasDocumentSnapshotV3Schema,
 } from "@memi/protocol";
-import { applyCanvasOperationV3 } from "@memi/canvas-document";
+import {
+  applyCanvasOperationV3,
+  CanvasDocumentV3PersistenceAdapter,
+} from "@memi/canvas-document";
 
 import type { RuntimeClientV1 } from "./runtime-client.js";
 
@@ -40,6 +44,13 @@ export function createRuntimeClientCanvasDocumentPersistence(
     },
   };
   return Object.freeze(port);
+}
+
+export async function initializeCanvasDocumentV3Persistence(
+  document: CanvasDocumentV3,
+  persistence: CanvasDocumentV3PersistencePort,
+): Promise<void> {
+  await CanvasDocumentV3PersistenceAdapter.open(document, persistence);
 }
 
 function journalKey(identity: CanvasDocumentIdentityV3): string {

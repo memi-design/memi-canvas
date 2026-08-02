@@ -51,10 +51,8 @@ describe("CanvasWorkbench professional interaction contract", () => {
   });
 
   it("supports additive selection, toggle selection, and clearing on empty canvas", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture)}
       />,
@@ -105,9 +103,6 @@ describe("CanvasWorkbench professional interaction contract", () => {
     fireEvent.click(viewport());
     await waitFor(() => {
       expect(viewport().getAttribute("data-selection-count")).toBe("0");
-    });
-    expect(onSceneChange.mock.calls.at(-1)?.[0]).toMatchObject({
-      selectedNodeId: null,
     });
     expect(
       screen.getByRole("heading", { level: 2, name: "No selection" }),

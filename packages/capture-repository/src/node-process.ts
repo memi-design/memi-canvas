@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { realpath } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 import {
   RepositoryBoundaryError,
@@ -14,9 +14,34 @@ import type {
 } from "./types.js";
 
 const MAX_PROCESS_OUTPUT_BYTES = 32 * 1024 * 1024;
-const TRUSTED_GIT =
-  "/Applications/Xcode.app/Contents/Developer/usr/bin/git";
+const APPLE_SYSTEM_GIT_ENTRYPOINTS = [
+  "/Library/Developer/CommandLineTools/usr/bin/git",
+  "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+] as const;
+const APPLE_SYSTEM_GIT_CANONICAL_PATHS = new Set([
+  "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+  "/Library/Developer/CommandLineTools/usr/bin/git",
+]);
+const VERSIONED_XCODE_GIT =
+  /^\/Applications\/Xcode_[0-9]+(?:\.[0-9]+)*(?:_[A-Za-z0-9.-]+)?\.app\/Contents\/Developer\/usr\/bin\/git$/;
+const APPLE_SYSTEM_GIT_CORE_PATHS = new Set([
+  "/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core",
+  "/Library/Developer/CommandLineTools/usr/libexec/git-core",
+]);
+const VERSIONED_XCODE_GIT_CORE =
+  /^\/Applications\/Xcode_[0-9]+(?:\.[0-9]+)*(?:_[A-Za-z0-9.-]+)?\.app\/Contents\/Developer\/usr\/libexec\/git-core$/;
 const TRUSTED_SANDBOX = "/usr/bin/sandbox-exec";
+/**
+ * The dynamic loader and Apple trust databases are immutable system inputs for
+ * a direct Apple Git process. Keep this list deliberately small: repository
+ * files are granted separately per request, and no user home or broad /Library
+ * path is readable inside the sandbox.
+ */
+const IMMUTABLE_APPLE_SYSTEM_READ_PATHS = [
+  "/System/Library",
+  "/usr/lib",
+  "/private/var/db",
+] as const;
 
 function samePolicy(request: RepositoryGitRequest): boolean {
   return (
@@ -58,19 +83,100 @@ function escapeSandboxLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
-function sandboxProfile(managedRoot: string): string {
+export function createRepositoryGitSandboxProfile({
+  authority,
+  managedRoot,
+  sourceRoot,
+}: {
+  readonly authority: AppleSystemGitAuthority;
+  readonly managedRoot: string;
+  readonly sourceRoot: string;
+}): string {
   const root = escapeSandboxLiteral(managedRoot);
+  const source = escapeSandboxLiteral(sourceRoot);
   return [
     "(version 1)",
     "(deny default)",
-    "(allow file-read*)",
+    `(allow file-read* (subpath "${source}"))`,
+    `(allow file-read* (subpath "${root}"))`,
+    `(allow file-read* (literal "${authority.executable}"))`,
+    `(allow file-read* (subpath "${authority.gitCorePath}"))`,
+    ...IMMUTABLE_APPLE_SYSTEM_READ_PATHS.map(
+      (path) => `(allow file-read* (subpath "${path}"))`,
+    ),
+    // sandbox-exec requires the filesystem root itself during process startup;
+    // this grants no descendant host paths.
+    '(allow file-read* (literal "/"))',
+    '(allow file-read* (literal "/dev/null"))',
     `(allow file-write* (subpath "${root}") (literal "/dev/null"))`,
     "(allow mach-lookup)",
     "(allow process-fork)",
-    `(allow process-exec (literal "${TRUSTED_GIT}")`,
-    '  (subpath "/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core"))',
+    `(allow process-exec (literal "${authority.executable}"))`,
+    `(allow process-exec (subpath "${authority.gitCorePath}"))`,
     "(allow sysctl-read)",
   ].join("\n");
+}
+
+type Realpath = (path: string) => Promise<string>;
+
+export interface AppleSystemGitAuthority {
+  readonly executable: string;
+  readonly gitCorePath: string;
+}
+
+function isApprovedAppleSystemGit(path: string): boolean {
+  return (
+    APPLE_SYSTEM_GIT_CANONICAL_PATHS.has(path) ||
+    VERSIONED_XCODE_GIT.test(path)
+  );
+}
+
+function isApprovedAppleSystemGitCore(path: string): boolean {
+  return (
+    APPLE_SYSTEM_GIT_CORE_PATHS.has(path) ||
+    VERSIONED_XCODE_GIT_CORE.test(path)
+  );
+}
+
+/**
+ * Resolves only the fixed direct Git binaries shipped by Apple's Command Line
+ * Tools or Xcode. The xcode-select shim and shell PATH are never consulted.
+ */
+export async function resolveTrustedAppleGit(
+  resolvePath: Realpath = realpath,
+): Promise<string> {
+  for (const entrypoint of APPLE_SYSTEM_GIT_ENTRYPOINTS) {
+    try {
+      const canonicalPath = await resolvePath(entrypoint);
+      if (isApprovedAppleSystemGit(canonicalPath)) {
+        return canonicalPath;
+      }
+    } catch {
+      // An absent Xcode installation may still have the Command Line Tools.
+    }
+  }
+  throw new RepositoryBoundaryError(
+    "git-failed",
+    "No approved Apple system Git executable is available.",
+  );
+}
+
+export async function resolveTrustedAppleGitAuthority({
+  resolve = realpath,
+}: {
+  readonly resolve?: Realpath;
+} = {}): Promise<AppleSystemGitAuthority> {
+  const executable = await resolveTrustedAppleGit(resolve);
+  const gitCorePath = await resolve(
+    join(dirname(dirname(executable)), "libexec", "git-core"),
+  );
+  if (!isApprovedAppleSystemGitCore(gitCorePath)) {
+    throw new RepositoryBoundaryError(
+      "git-failed",
+      "The direct Apple system Git executable resolved an unapproved git-core directory.",
+    );
+  }
+  return { executable, gitCorePath };
 }
 
 function killGroup(pid: number, signal: NodeJS.Signals): void {
@@ -88,7 +194,9 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
 export class NodeRepositoryProcess implements RepositoryProcessPort {
   constructor(private readonly managedRoot: string) {}
 
-  private async validate(request: RepositoryGitRequest): Promise<string> {
+  private async validate(
+    request: RepositoryGitRequest,
+  ): Promise<AppleSystemGitAuthority> {
     if (
       process.platform !== "darwin" ||
       request.executable !== "git" ||
@@ -101,13 +209,7 @@ export class NodeRepositoryProcess implements RepositoryProcessPort {
         "Git request violated the repository process policy.",
       );
     }
-    const trustedGit = await realpath(TRUSTED_GIT);
-    if (trustedGit !== TRUSTED_GIT) {
-      throw new RepositoryBoundaryError(
-        "git-failed",
-        "The trusted system Git executable did not resolve exactly.",
-      );
-    }
+    const trustedGit = await resolveTrustedAppleGitAuthority();
     if (
       request.access === "source-read-only" &&
       isReadOnlyGit(request.args)
@@ -121,16 +223,29 @@ export class NodeRepositoryProcess implements RepositoryProcessPort {
   }
 
   async runGit(request: RepositoryGitRequest): Promise<RepositoryGitResult> {
-    const trustedGit = await this.validate(request);
+    const authority = await this.validate(request);
     throwIfAborted(request.signal);
     const canonicalManagedRoot = await realpath(this.managedRoot);
+    let canonicalSourceRoot: string;
+    try {
+      canonicalSourceRoot = await realpath(request.cwd);
+    } catch {
+      throw new RepositoryBoundaryError(
+        "git-failed",
+        "Git request working directory could not be resolved.",
+      );
+    }
     return new Promise((resolvePromise, reject) => {
       const child = spawn(
         TRUSTED_SANDBOX,
         [
           "-p",
-          sandboxProfile(canonicalManagedRoot),
-          trustedGit,
+          createRepositoryGitSandboxProfile({
+            authority,
+            managedRoot: canonicalManagedRoot,
+            sourceRoot: canonicalSourceRoot,
+          }),
+          authority.executable,
           ...request.args,
         ],
         {

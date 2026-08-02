@@ -289,6 +289,9 @@ export class V3WorkbenchSessionController {
         document: resolved.document,
         persistence: this.#input.persistence,
         selection: resolved.selection,
+        ...(resolved.workspace.history === undefined
+          ? {}
+          : { history: resolved.workspace.history }),
         ...(this.#input.persistencePolicy === undefined
           ? {}
           : { persistencePolicy: this.#input.persistencePolicy }),
@@ -345,6 +348,7 @@ export class V3WorkbenchSessionController {
       this.#workspace,
       authoritySnapshot.document,
       authoritySnapshot.selection,
+      authority.getHistoryState(),
     );
     return freezeSnapshot({
       authority,

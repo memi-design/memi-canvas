@@ -27,6 +27,13 @@ describe("Memi Canvas macOS shell boundary", () => {
           }),
         ],
       },
+      bundle: {
+        externalBin: ["binaries/memi-canvas-runtime"],
+        resources: {
+          "binaries/memi-canvas-bun": "runtime/memi-canvas-bun",
+          "binaries/memi-canvas-runtime": "runtime/memi-canvas-runtime",
+        },
+      },
     });
   });
 

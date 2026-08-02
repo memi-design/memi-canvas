@@ -20,6 +20,7 @@ const MAX_RUNTIME_RPC_BYTES: usize = 262_144;
 const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
 const RUNTIME_SOCKET_NAME: &str = "runtime/runtime-v1.sock";
 const PLAN_INTEGRITY_FILE: &str = "runtime/plan-integrity-v1.key";
+const PACKAGED_RUNTIME_EXECUTABLE: &str = "memi-canvas-runtime";
 const RUNTIME_RPC_METHODS: &[&str] = &[
     "imports.plan",
     "imports.list",
@@ -431,6 +432,29 @@ fn canonical_runtime_file(path: PathBuf, label: &str) -> Result<PathBuf, String>
 /// bridge direct and explicit lets the debug macOS app exercise the truthful
 /// Expo import flow without a hidden rebuild or a second copy of Bun. A
 /// distributable runtime remains a separate release gate.
+fn packaged_runtime_sidecar_path(application_executable: &Path) -> Option<PathBuf> {
+    let macos_directory = application_executable.parent()?;
+    let contents_directory = macos_directory.parent()?;
+    (macos_directory.file_name()? == "MacOS" && contents_directory.file_name()? == "Contents")
+        .then(|| macos_directory.join(PACKAGED_RUNTIME_EXECUTABLE))
+}
+
+fn packaged_runtime_command() -> Result<Option<Command>, String> {
+    let application_executable = std::env::current_exe()
+        .map_err(|_| "Memi Canvas executable location is unavailable".to_owned())?;
+    let Some(candidate) = packaged_runtime_sidecar_path(&application_executable) else {
+        return Ok(None);
+    };
+    let runtime = canonical_runtime_file(candidate, "Packaged Memi runtime sidecar")?;
+    let mut command = Command::new(runtime);
+    command.current_dir(
+        application_executable
+            .parent()
+            .ok_or_else(|| "Memi Canvas executable directory is unavailable".to_owned())?,
+    );
+    Ok(Some(command))
+}
+
 fn local_development_runtime_command() -> Result<Command, String> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -448,6 +472,21 @@ fn local_development_runtime_command() -> Result<Command, String> {
     let mut command = Command::new(bun);
     command.arg(entry).current_dir(project_root);
     Ok(command)
+}
+
+fn runtime_command() -> Result<Command, String> {
+    packaged_runtime_command()?.map_or_else(local_development_runtime_command, Ok)
+}
+
+fn runtime_health_envelope() -> Value {
+    json!({
+        "schemaVersion": 1,
+        "requestId": "prq_00000000000000000000000000",
+        "correlationId": "cor_00000000000000000000000000",
+        "sentAt": "2026-08-02T00:00:00.000Z",
+        "method": "imports.list",
+        "payload": {},
+    })
 }
 
 pub(crate) fn start_runtime_bridge(
@@ -475,7 +514,7 @@ pub(crate) fn start_runtime_bridge(
     }
     let token = random_runtime_token()?;
     let plan_key = plan_integrity_key(app_data)?;
-    let mut sidecar = local_development_runtime_command()?
+    let mut sidecar = runtime_command()?
         .env("MEMI_RUNTIME_TOKEN", &token)
         .env("MEMI_RUNTIME_SOCKET", &socket_path)
         .env("MEMI_RUNTIME_APP_DATA", app_data)
@@ -493,6 +532,17 @@ pub(crate) fn start_runtime_bridge(
     let lifecycle = Arc::new(RuntimeLifecycle::new(child, socket_path.clone()));
     for _ in 0..3_000 {
         if runtime_socket_is_ready(&socket_path) {
+            if let Err(error) = exchange_runtime_rpc_with_lifecycle(
+                &socket_path,
+                &token,
+                runtime_health_envelope(),
+                &lifecycle,
+            ) {
+                lifecycle.shutdown();
+                return Err(format!(
+                    "Packaged runtime sidecar health check failed: {error}"
+                ));
+            }
             return Ok(RuntimeBridgeState {
                 token,
                 socket_path,
@@ -805,8 +855,9 @@ mod tests {
     use super::{
         artifact_http_response, artifact_path_for_id, constant_time_bearer_matches,
         exchange_runtime_rpc_with_lifecycle, import_log_path_for_job, is_secret_key,
-        managed_worktree_root, plan_integrity_key, runtime_socket_is_ready,
-        validate_runtime_envelope, RuntimeLifecycle,
+        managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
+        runtime_health_envelope, runtime_socket_is_ready, validate_runtime_envelope,
+        RuntimeLifecycle,
     };
     use serde_json::json;
     use std::{
@@ -947,6 +998,35 @@ mod tests {
         assert!(runtime_socket_is_ready(&path));
         drop(listener);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn packaged_runtime_sidecar_is_a_sibling_of_the_bundled_app_executable() {
+        assert_eq!(
+            packaged_runtime_sidecar_path(Path::new(
+                "/Applications/Memi Canvas.app/Contents/MacOS/memi-canvas-macos",
+            )),
+            Some(
+                Path::new("/Applications/Memi Canvas.app/Contents/MacOS/memi-canvas-runtime",)
+                    .to_path_buf()
+            ),
+        );
+        assert_eq!(
+            packaged_runtime_sidecar_path(Path::new("/workspace/target/debug/memi-canvas-macos",)),
+            None,
+        );
+    }
+
+    #[test]
+    fn runtime_health_check_is_an_authenticated_read_only_import_request() {
+        assert_eq!(
+            validate_runtime_envelope(&runtime_health_envelope()),
+            Ok(super::RuntimeEnvelopeBinding {
+                request_id: "prq_00000000000000000000000000".to_owned(),
+                correlation_id: "cor_00000000000000000000000000".to_owned(),
+                method: "imports.list".to_owned(),
+            }),
+        );
     }
 
     #[test]

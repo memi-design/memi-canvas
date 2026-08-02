@@ -41,7 +41,7 @@ import {
   FigmaImportDialog,
 } from "./imports/figma/FigmaImportDialog.js";
 import {
-  createFigmaCanvasProject,
+  createFigmaCanvasDocumentV3,
 } from "./imports/figma/figma-workbench.js";
 import { GlobalSettingsPanel } from "./settings/GlobalSettingsPanel.js";
 import {
@@ -53,11 +53,7 @@ import {
   type GlobalAgentSettingsStorage,
 } from "./settings/global-settings.js";
 import type { CanvasRuntimePortV1 } from "./canvas/canvas-runtime-port.js";
-import {
-  createCanvasAutosave,
-  type CanvasStorage,
-} from "./canvas/persistence.js";
-import { createSceneState } from "./canvas/model.js";
+import type { CanvasStorage } from "./canvas/persistence.js";
 import {
   RepositoryImportDialog,
 } from "./imports/repository/RepositoryImportDialog.js";
@@ -84,6 +80,11 @@ import type {
 import {
   persistCommittedImportCanvasDocumentV3,
 } from "./imports/repository/committed-import-v3-hydration.js";
+import {
+  createEphemeralCanvasDocumentPersistence,
+  createRuntimeClientCanvasDocumentPersistence,
+  initializeCanvasDocumentV3Persistence,
+} from "./runtime/runtime-client-canvas-document-persistence.js";
 import {
   acceptsImportJobSnapshot,
   selectLatestImportJob,
@@ -286,6 +287,9 @@ export function MemiApp({
   const [boundary] = useState(() =>
     persistenceBoundary(storage, truthfulImportResetReady));
   const [libraryStartup] = useState(() => initialLibrary(boundary));
+  const [figmaImportPersistence] = useState(() =>
+    createEphemeralCanvasDocumentPersistence(),
+  );
   const [figmaImportOpen, setFigmaImportOpen] = useState(false);
   const [repositoryImportOpen, setRepositoryImportOpen] = useState(false);
   const [repositoryImportJob, setRepositoryImportJob] =
@@ -489,17 +493,15 @@ export function MemiApp({
           agentSettings,
           activeProject.source.kind === "repository"
             ? activeProject.source.harnessId
-            : undefined,
+          : undefined,
         )}
+        {...(runtimeClient === undefined
+          ? { canvasDocumentPersistence: figmaImportPersistence }
+          : {})}
         onExit={closeProject}
         project={activeProject}
-        {...(runtimeClient === undefined
-          ? {}
-          : {
-              runtimeClient,
-              runtimeProjectId:
-                runtimeProjectIdForLocalProject(activeProject.id),
-            })}
+        runtimeProjectId={runtimeProjectIdForLocalProject(activeProject.id)}
+        {...(runtimeClient === undefined ? {} : { runtimeClient })}
         {...(runtimePort === undefined ? {} : { runtimePort })}
         {...(reconstructionArtifactLoader === undefined
           ? {}
@@ -640,17 +642,19 @@ export function MemiApp({
       {figmaImportOpen && homeStorage !== undefined ? (
         <FigmaImportDialog
           onClose={() => setFigmaImportOpen(false)}
-          onImport={(result) => {
+          onImport={async (result) => {
             const projectId = idFactory();
-            const project = createFigmaCanvasProject(result, projectId);
-            const saved = createCanvasAutosave(homeStorage).save(
-              project,
-              createSceneState(project),
-              project.trace,
+            const document = createFigmaCanvasDocumentV3(
+              result,
+              projectId,
+              runtimeProjectIdForLocalProject(projectId),
             );
-            if (!saved) {
-              return;
-            }
+            await initializeCanvasDocumentV3Persistence(
+              document,
+              runtimeClient === undefined
+                ? figmaImportPersistence
+                : createRuntimeClientCanvasDocumentPersistence(runtimeClient),
+            );
             dispatch(
               projectLibraryActions.createProject({
                 id: projectId,

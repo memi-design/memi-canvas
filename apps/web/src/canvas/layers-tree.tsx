@@ -9,6 +9,27 @@ import { EditorIcon, type EditorIconName } from "./icons.js";
 import { descendantNodeIds } from "./layer-hierarchy.js";
 import type { WorkbenchNode } from "./model.js";
 
+const expansionSeparator = "\u0001";
+
+/**
+ * Adds selection-required tree branches without scheduling an update when they
+ * are already expanded. Tree indexes are deliberately reconstructed from
+ * imported documents, so their object identity is not a state-update signal.
+ */
+export function mergeExpansionIds(
+  current: ReadonlySet<string>,
+  required: readonly string[],
+): ReadonlySet<string> {
+  let next: Set<string> | undefined;
+  for (const id of required) {
+    if (!current.has(id)) {
+      next ??= new Set(current);
+      next.add(id);
+    }
+  }
+  return next ?? current;
+}
+
 export function Layers({
   nodes,
   selectedNodeId,
@@ -243,18 +264,20 @@ export function Layers({
   const [focusedItemId, setFocusedItemId] = useState(
     selectedNodeId ?? "product-flows",
   );
+  const requiredExpansionSignature = [...requiredExpansionIds()]
+    .sort()
+    .join(expansionSeparator);
 
   useEffect(() => {
     setExpanded((current) => {
-      return new Set([...current, ...requiredExpansionIds()]);
+      return mergeExpansionIds(
+        current,
+        requiredExpansionSignature.length === 0
+          ? []
+          : requiredExpansionSignature.split(expansionSeparator),
+      );
     });
-  }, [
-    selectedIsDesign,
-    selectedImportedRootId,
-    selectedNode?.id,
-    selectedSource?.sourceAnchor,
-    treeIndex,
-  ]);
+  }, [requiredExpansionSignature]);
 
   useEffect(() => {
     if (selectedNodeId !== null) {

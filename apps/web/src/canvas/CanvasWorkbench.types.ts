@@ -6,7 +6,6 @@ import type {
 import type {
   CanvasWorkbenchProject,
   Point,
-  SceneState,
   WorkbenchNode,
 } from "./model.js";
 import type {
@@ -14,7 +13,6 @@ import type {
   PromptMode,
   ReasoningEffort,
 } from "./harness-config.js";
-import type { CanvasAutosave } from "./persistence.js";
 import type { AgentPatch } from "./agent-patch.js";
 import type { CanvasRuntimePortV1 } from "./canvas-runtime-port.js";
 import type { SelectionContextCapsuleV1 } from "./selection-context-capsule.js";
@@ -53,6 +51,7 @@ export interface CanvasAgentDefaults {
 }
 
 export interface CanvasWorkspaceSessionState {
+  readonly activePageId: NonNullable<WorkspaceSessionDraftV1["activePageId"]>;
   readonly activity: Readonly<
     Omit<
       WorkspaceSessionDraftV1["activity"],
@@ -63,6 +62,7 @@ export interface CanvasWorkspaceSessionState {
   };
   readonly camera: CanvasCamera;
   readonly documentRevision: number;
+  readonly history?: NonNullable<WorkspaceSessionDraftV1["history"]>;
   readonly panels: Readonly<WorkspaceSessionDraftV1["panels"]>;
   readonly selection: SelectionState;
   readonly viewportSize: {
@@ -100,13 +100,11 @@ export interface CanvasWorkbenchProps {
   readonly onOpenSourceInCursor?: (sourcePath: string) => void;
   readonly onNavigatorModeChange?: (mode: NavigatorMode) => void;
   readonly onExit?: () => void;
-  readonly onSceneChange?: (scene: SceneState) => void;
   readonly onSendAgentContext?: (context: AgentSelectionContext) => void;
   readonly onWorkspaceSessionChange?: (
     state: CanvasWorkspaceSessionState,
   ) => void;
   readonly pageNavigation?: CanvasPageNavigation;
-  readonly persistence?: CanvasAutosave;
   readonly workspaceWarning?: string;
 }
 

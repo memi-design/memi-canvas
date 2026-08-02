@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { CaptureExecutionError } from "@memi/capture-execution";
+import { CaptureExecutionError } from "@memi/capture-execution/core";
 
 const MAXIMUM_PBX_PROJECT_BYTES = 64 * 1_024 * 1_024;
 const PROVENANCE_RELATIVE_PATH = join(

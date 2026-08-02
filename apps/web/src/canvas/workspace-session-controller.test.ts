@@ -131,6 +131,7 @@ describe("workspace session controller", () => {
       projectId: document.projectId,
       documentId: document.id,
       documentRevision: 1,
+      activePageId: document.pageIds[0],
       selection: {
         selectedIds: [nodeId],
         anchorId: nodeId,

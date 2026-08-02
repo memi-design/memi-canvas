@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
@@ -146,10 +146,8 @@ describe("evidence-backed editable screen rendering", () => {
   });
 
   it("groups, context-selects, and transforms editable layers without changing evidence", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={project}
         v3Session={createCanvasWorkbenchV3TestSession(project)}
       />,

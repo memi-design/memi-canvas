@@ -4,6 +4,10 @@ import type {
   CanvasOperationV3,
 } from "@memi/protocol";
 import {
+  WorkspaceHistoryStateSchemaV1,
+  type WorkspaceHistoryStateV1,
+} from "@memi/protocol";
+import {
   hashCanvasDocumentV3,
   invertCanvasOperationV3,
   migrateCanvasDocumentV2ToV3,
@@ -48,6 +52,7 @@ export interface OpenCanonicalWorkbenchAuthorityV3 {
   readonly persistence: CanvasDocumentV3PersistencePort;
   readonly persistencePolicy?: CanvasDocumentV3PersistencePolicy;
   readonly selection: SelectionState;
+  readonly history?: WorkspaceHistoryStateV1;
 }
 
 type WorkbenchListener = () => void;
@@ -74,6 +79,112 @@ interface UndoEntry {
 interface RedoEntry {
   readonly original: UndoEntry;
   readonly undoOperation: CanvasOperationV3;
+}
+
+export type CanonicalWorkbenchHistoryStateV3 = WorkspaceHistoryStateV1;
+
+function workspaceSelection(selection: SelectionState) {
+  return {
+    anchorId: selection.anchorId,
+    editingNodeId: selection.editingId,
+    focusedNodeId: selection.focusedId,
+    selectedIds: [...selection.selectedIds],
+  };
+}
+
+function restoredHistory(
+  operations: readonly CanvasOperationV3[],
+  selection: SelectionState,
+  persisted?: WorkspaceHistoryStateV1,
+): { readonly redo: readonly RedoEntry[]; readonly undo: readonly UndoEntry[] } {
+  const undo: UndoEntry[] = [];
+  const redo: RedoEntry[] = [];
+  const immutable = immutableSelection(selection);
+  for (const operation of operations) {
+    if (operation.undoOf === null) {
+      undo.push({
+        operation,
+        selectionAfter: immutable,
+        selectionBefore: immutable,
+      });
+      redo.length = 0;
+      continue;
+    }
+    const undoEntry = undo.at(-1);
+    if (undoEntry?.operation.id === operation.undoOf) {
+      undo.pop();
+      redo.push({ original: undoEntry, undoOperation: operation });
+      continue;
+    }
+    const redoEntry = redo.at(-1);
+    if (redoEntry?.undoOperation.id === operation.undoOf) {
+      redo.pop();
+      undo.push({
+        operation,
+        selectionAfter: redoEntry.original.selectionAfter,
+        selectionBefore: redoEntry.original.selectionBefore,
+      });
+    }
+  }
+  if (
+    persisted !== undefined &&
+    persisted.undo.length === undo.length &&
+    persisted.redo.length === redo.length &&
+    persisted.undo.every((entry, index) => entry.operationId === undo[index]?.operation.id) &&
+    persisted.redo.every(
+      (entry, index) =>
+        entry.operationId === redo[index]?.original.operation.id &&
+        entry.undoOperationId === redo[index]?.undoOperation.id,
+    )
+  ) {
+    for (const [index, entry] of persisted.undo.entries()) {
+      const operation = undo[index];
+      if (operation !== undefined) {
+        undo[index] = {
+          operation: operation.operation,
+          selectionAfter: immutableSelection({
+            anchorId: entry.selectionAfter.anchorId,
+            editingId: entry.selectionAfter.editingNodeId,
+            focusedId: entry.selectionAfter.focusedNodeId,
+            selectedIds: entry.selectionAfter.selectedIds,
+          }),
+          selectionBefore: immutableSelection({
+            anchorId: entry.selectionBefore.anchorId,
+            editingId: entry.selectionBefore.editingNodeId,
+            focusedId: entry.selectionBefore.focusedNodeId,
+            selectedIds: entry.selectionBefore.selectedIds,
+          }),
+        };
+      }
+    }
+    for (const [index, entry] of persisted.redo.entries()) {
+      const operation = redo[index];
+      if (operation !== undefined) {
+        redo[index] = {
+          original: {
+            operation: operation.original.operation,
+            selectionAfter: immutableSelection({
+              anchorId: entry.selectionAfter.anchorId,
+              editingId: entry.selectionAfter.editingNodeId,
+              focusedId: entry.selectionAfter.focusedNodeId,
+              selectedIds: entry.selectionAfter.selectedIds,
+            }),
+            selectionBefore: immutableSelection({
+              anchorId: entry.selectionBefore.anchorId,
+              editingId: entry.selectionBefore.editingNodeId,
+              focusedId: entry.selectionBefore.focusedNodeId,
+              selectedIds: entry.selectionBefore.selectedIds,
+            }),
+          },
+          undoOperation: operation.undoOperation,
+        };
+      }
+    }
+  }
+  return Object.freeze({
+    redo: Object.freeze([...redo]),
+    undo: Object.freeze([...undo]),
+  });
 }
 
 function immutableSelection(selection: SelectionState): SelectionState {
@@ -167,12 +278,20 @@ export class CanonicalWorkbenchAuthorityV3 {
   private constructor(
     journal: CanonicalCanvasJournalV3,
     selection: SelectionState,
+    persistedHistory?: WorkspaceHistoryStateV1,
   ) {
     this.#journal = journal;
     this.#selection = pruneSelection(
       selection,
       journal.getSnapshot().document,
     );
+    const restored = restoredHistory(
+      journal.getOperationLog(),
+      this.#selection,
+      persistedHistory,
+    );
+    this.#undo.push(...restored.undo);
+    this.#redo.push(...restored.redo);
     this.#journal.subscribe(() => {
       const journalSnapshot = this.#journal.getSnapshot();
       const postCommitSelection = journalSnapshot.document.operationCursor === null
@@ -208,7 +327,11 @@ export class CanonicalWorkbenchAuthorityV3 {
       input.persistence,
       input.persistencePolicy,
     );
-    return new CanonicalWorkbenchAuthorityV3(journal, input.selection);
+    return new CanonicalWorkbenchAuthorityV3(
+      journal,
+      input.selection,
+      input.history,
+    );
   }
 
   getSnapshot = (): CanonicalWorkbenchSnapshotV3 => {
@@ -230,6 +353,25 @@ export class CanonicalWorkbenchAuthorityV3 {
       this.#listeners.delete(listener);
     };
   };
+
+  getHistoryState = (): CanonicalWorkbenchHistoryStateV3 =>
+    WorkspaceHistoryStateSchemaV1.parse({
+      redo: this.#redo.map(({ original, undoOperation }) =>
+        ({
+          operationId: original.operation.id,
+          selectionAfter: workspaceSelection(original.selectionAfter),
+          selectionBefore: workspaceSelection(original.selectionBefore),
+          undoOperationId: undoOperation.id,
+        }),
+      ),
+      undo: this.#undo.map((entry) =>
+        ({
+          operationId: entry.operation.id,
+          selectionAfter: workspaceSelection(entry.selectionAfter),
+          selectionBefore: workspaceSelection(entry.selectionBefore),
+        }),
+      ),
+    });
 
   async commit(
     intent: CanonicalCanvasCommitIntentV3,
@@ -357,8 +499,13 @@ export class CanonicalWorkbenchAuthorityV3 {
     this.#notify();
   }
 
-  checkpoint(persistedAt: string): Promise<void> {
-    return this.#journal.checkpoint(persistedAt);
+  async checkpoint(persistedAt: string): Promise<void> {
+    await this.#journal.checkpoint(persistedAt);
+    // A checkpoint materializes the baseline and truncates the persisted tail.
+    // Keep current- and restart-history semantics aligned.
+    this.#undo.length = 0;
+    this.#redo.length = 0;
+    this.#notify();
   }
 
   #notify(): void {

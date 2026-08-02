@@ -2,7 +2,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 
-import { ContentAddressedArtifactStore } from "@memi/capture-execution";
+import { ContentAddressedArtifactStore } from "@memi/capture-execution/core";
 import {
   CaptureScenarioIdSchema,
   ImportJobIdSchema,

@@ -9,7 +9,7 @@ import "./figma-import-dialog.css";
 
 export interface FigmaImportDialogProps {
   readonly onClose: () => void;
-  readonly onImport: (result: FigmaImportResult) => void;
+  readonly onImport: (result: FigmaImportResult) => Promise<void> | void;
 }
 
 type ImportMode = "json" | "url";
@@ -66,12 +66,12 @@ export function FigmaImportDialog({
     }
   }
 
-  function importJson() {
+  async function importJson() {
     try {
       const result = normalizeFigmaJsonExport(json, {
         fileKey: localFileKey(json),
       });
-      onImport(result);
+      await onImport(result);
     } catch (error) {
       setMessage({
         kind: "error",

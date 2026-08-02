@@ -13,6 +13,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const RUNTIME_ENTRY = resolve("apps/macos/runtime-sidecar/src/main.ts");
+const PACKAGED_RUNTIME_EXECUTABLE = process.env.MEMI_RUNTIME_EXECUTABLE;
 const BUN_EXECUTABLE = process.env.MEMI_RUNTIME_BUN ?? join(
   homedir(),
   ".bun",
@@ -58,8 +59,12 @@ async function stop(child: ReturnType<typeof spawn>): Promise<void> {
   }
 }
 
-await access(BUN_EXECUTABLE);
-await access(RUNTIME_ENTRY);
+if (PACKAGED_RUNTIME_EXECUTABLE === undefined) {
+  await access(BUN_EXECUTABLE);
+  await access(RUNTIME_ENTRY);
+} else {
+  await access(PACKAGED_RUNTIME_EXECUTABLE);
+}
 const temporaryAppData = await mkdtemp(
   // Darwin limits Unix-domain socket paths to 104 bytes. Keep the smoke
   // fixture deliberately short so it exercises the packaged binary rather
@@ -78,7 +83,10 @@ await writeFile(
   { mode: 0o600 },
 );
 
-const child = spawn(BUN_EXECUTABLE, [RUNTIME_ENTRY], {
+const child = spawn(
+  PACKAGED_RUNTIME_EXECUTABLE ?? BUN_EXECUTABLE,
+  PACKAGED_RUNTIME_EXECUTABLE === undefined ? [RUNTIME_ENTRY] : [],
+  {
   env: {
     ...process.env,
     MEMI_RUNTIME_APP_DATA: appData,
@@ -88,7 +96,8 @@ const child = spawn(BUN_EXECUTABLE, [RUNTIME_ENTRY], {
     MEMI_RUNTIME_TOKEN: randomBytes(32).toString("hex"),
   },
   stdio: ["ignore", "ignore", "pipe"],
-});
+  },
+);
 const stderr: Buffer[] = [];
 child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
 
@@ -97,8 +106,8 @@ try {
   process.stdout.write(
     `${JSON.stringify({
       appData,
-      bunExecutable: BUN_EXECUTABLE,
-      runtimeEntry: RUNTIME_ENTRY,
+      runtimeExecutable: PACKAGED_RUNTIME_EXECUTABLE ?? BUN_EXECUTABLE,
+      runtimeEntry: PACKAGED_RUNTIME_EXECUTABLE === undefined ? RUNTIME_ENTRY : null,
       socketReady: true,
     })}\n`,
   );

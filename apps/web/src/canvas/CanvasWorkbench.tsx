@@ -4,7 +4,7 @@ import { createEditorCommands } from "./commands.js";
 import { canvasGridMetrics, canvasPointFromViewport, pointFromEvent } from "./canvas-camera.js";
 import { resolveComponentInstance, type WorkbenchNode } from "./model.js";
 import { Inspector } from "./parts.js";
-import { canvasSourceFingerprint } from "./persistence.js";
+import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
 import { canReadCanvasSystemClipboard, hasCanvasSessionClipboard, isCanvasNodeDeletable } from "./canvas-clipboard.js";
 import { projectVisibleItems } from "./canvas-performance.js";
 import { useWorkbenchV3SessionBridge } from "./workbench-v3-session-bridge.js";
@@ -19,14 +19,13 @@ import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-acti
 import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
 import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
-import { canonicalizeReconstructionReviewsV3 } from "./reconstruction-review-v3.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
+import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
 import "./interactions.css";
 export type { AgentSelectionContext, CanvasAgentDefaults, CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
-// Atomic Design: organism — the complete canvas workbench collaboration surface.
 function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   const {
     agentDefaults,
@@ -46,6 +45,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   } = props;
   const {
     agentPatchReview,
+    activePageId,
     alignmentGuides,
     camera,
     cameraScheduler,
@@ -73,6 +73,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     scene,
     selection,
     selectionMarquee,
+    selectActivePage,
     selectedNodeIds,
     setAgentPatchReview,
     setAlignmentGuides,
@@ -108,10 +109,21 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   if (v3Session === undefined) {
     return <div role="alert">Canvas V3 session is unavailable.</div>;
   }
+  const pageContext = canvasPageContextV3({
+    activePageId,
+    legacyDocumentId: project.document.id,
+    navigation: pageNavigation,
+    onSelectPage: selectActivePage,
+    reviews: reconstructionReviews,
+    session: v3Session,
+    ...(canonicalAuthority === null
+      ? {}
+      : { authoritativeDocument: canonicalAuthority.getSnapshot().document }),
+  });
   const { commitIntentReceipt, history: v3History, redoScene: redoV3, undoScene: undoV3 } =
     useWorkbenchV3SessionBridge({
       authority: canonicalAuthority,
-      session: v3Session,
+      session: pageContext.session,
       onFailure: (message) => setTrace((current) => [
         ...current,
         { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
@@ -119,12 +131,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     });
   const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;
-  const canonicalReconstructionReviews = canonicalizeReconstructionReviewsV3({
-    document: v3Session.document,
-    legacyDocumentId: project.document.id,
-    pageId: v3Session.activePageId,
-    reviews: reconstructionReviews,
-  });
   const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
     scene.nodes.filter(({ id }) => id === nodeId),
   );
@@ -137,9 +143,9 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     workspaceFiles,
   } = useReconstructionReviewWorkspace({
     nodes: scene.nodes,
-    pageNavigation,
+    pageNavigation: pageContext.navigation,
     project,
-    reviews: canonicalReconstructionReviews,
+    reviews: pageContext.reviews,
     selectedNodeId,
     selectedNodeIds,
   });
@@ -170,14 +176,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   const selectedHarness =
     project.harness.options.find((option) => option.id === harnessId) ??
     project.harness.options[0];
-  const publishLegacySelectionProjection = () => {
-    props.onSceneChange?.({
-      ...scene,
-      selectedNodeId:
-        canonicalAuthority?.getSnapshot().selection.anchorId ?? null,
-    });
-  };
-
   const {
     appendTrace,
     commitPreview,
@@ -196,11 +194,9 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     selectNode: (nodeId: string, additive: boolean) => {
       suppressCanvasClick.current = false;
       v3History?.selectNode(nodeId, additive);
-      publishLegacySelectionProjection();
     },
     selectNodeIds: (ids: readonly string[]) => {
       v3History?.selectNodeIds(ids);
-      publishLegacySelectionProjection();
     },
     undoScene: undoV3,
   };
@@ -370,7 +366,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       const node = scene.nodes.find((candidate) => candidate.id === id);
       return node !== undefined && isCanvasNodeDeletable(node);
     });
-
   const activeNodeIds =
     gesture.current?.type === "move"
       ? gesture.current.nodeIds
@@ -411,7 +406,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     "--canvas-grid-minor-x": `${grid.minorX}px`,
     "--canvas-grid-minor-y": `${grid.minorY}px`,
   } as CSSProperties;
-
   const commands = createEditorCommands(
     {
       onCopySelection: copySelection,
@@ -473,7 +467,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     setSelectionMarquee,
     spacePressed,
   });
-
   const contextNode =
     contextMenu === null
       ? undefined
@@ -789,8 +782,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     />
   );
 }
-// Keyed template boundary: changing documents or imported source remounts the
-// editing session so one document can never autosave another document's scene.
+// Keyed boundary prevents one document from persisting another's editing session.
 export function CanvasWorkbench(props: CanvasWorkbenchProps) {
   if (props.v3Session === undefined) return <div role="alert">Canvas V3 session is unavailable.</div>;
   const authorityProject = props.authorityProject ?? props.project;

@@ -18,7 +18,7 @@ import {
 import type {
   NativeCommandPort,
   ProcessRecipe,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 
 export const MEMI_CAPTURE_SIMULATOR_NAME =
   "Memi Canvas Capture iPhone";

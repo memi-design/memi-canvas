@@ -73,6 +73,10 @@ export class CanonicalCanvasJournalV3 {
 
   getSnapshot = (): CanonicalCanvasJournalSnapshotV3 => this.#snapshot;
 
+  /** Immutable post-checkpoint semantic tail, for restart-safe UI history. */
+  getOperationLog = (): readonly CanvasOperationV3[] =>
+    this.#adapter.operations;
+
   subscribe = (listener: JournalListener): (() => void) => {
     this.#listeners.add(listener);
     return () => {

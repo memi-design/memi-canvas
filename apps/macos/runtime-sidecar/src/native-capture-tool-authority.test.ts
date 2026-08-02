@@ -75,6 +75,9 @@ async function authorityFixture() {
     join(appDataRoot, "artifacts"),
   );
   const spawn = spawnFixture();
+  const testBrowserLauncher = {
+    launch: vi.fn(async () => ({}) as never),
+  };
   const createPorts = () =>
     createNativeCapturePorts({
       appDataRoot,
@@ -87,6 +90,7 @@ async function authorityFixture() {
         setTimer: () => 1,
         clearTimer: vi.fn(),
       },
+      testBrowserLauncher,
     });
   return {
     appDataRoot,

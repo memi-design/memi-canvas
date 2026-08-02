@@ -711,6 +711,34 @@ test("creates and groups shapes without any product fixture", async ({
     "2.5%",
   );
 
+  await rectangle.click({ button: "right" });
+  const copyMenu = page.getByRole("menu", { name: "Canvas selection actions" });
+  await copyMenu.getByRole("menuitem", { name: /^Copy/u }).click();
+  await rectangle.click({ button: "right" });
+  const pasteMenu = page.getByRole("menu", { name: "Canvas selection actions" });
+  await pasteMenu.getByRole("menuitem", { name: /^Paste/u }).click();
+  const pastedRectangle = page.getByRole("button", {
+    name: "Rectangle 1 copy on canvas",
+  });
+  await expect(pastedRectangle).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(pastedRectangle).toHaveCount(0);
+  await page.getByRole("button", { name: "Redo" }).click();
+  await expect(pastedRectangle).toBeVisible();
+  await pastedRectangle.click();
+  await page.getByRole("button", { name: "Delete selection" }).click();
+  await expect(pastedRectangle).toHaveCount(0);
+
+  // The command route must share the same session-first V3 paste action as
+  // the context menu; Helium may deny custom system clipboard reads.
+  await rectangle.click();
+  await page.keyboard.press("Meta+c");
+  await page.keyboard.press("Meta+v");
+  await expect(pastedRectangle).toBeVisible();
+  await pastedRectangle.click();
+  await page.getByRole("button", { name: "Delete selection" }).click();
+  await expect(pastedRectangle).toHaveCount(0);
+
   await rectangle.click();
   await ellipse.click({ modifiers: ["Shift"] });
   await expect(canvas).toHaveAttribute("data-selection-count", "2");
@@ -724,9 +752,8 @@ test("creates and groups shapes without any product fixture", async ({
     .click();
   await expect(group).toHaveCount(0);
   await page.keyboard.press("Alt+Meta+k");
-  await expect(
-    page.getByRole("button", { name: "Component 1 on canvas" }),
-  ).toBeVisible();
+  const component = page.getByRole("button", { name: "Component 1 on canvas" });
+  await expect(component).toBeVisible();
 
   const cameraBefore = await canvas.getAttribute("data-camera-y");
   await canvas.hover({ position: { x: 720, y: 500 } });

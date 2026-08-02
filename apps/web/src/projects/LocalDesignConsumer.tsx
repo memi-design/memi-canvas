@@ -31,7 +31,10 @@ import {
   createEphemeralCanvasDocumentPersistence,
   createRuntimeClientCanvasDocumentPersistence,
 } from "../runtime/runtime-client-canvas-document-persistence.js";
-import type { WorkspaceSessionDraftV1 } from "@memi/protocol";
+import type {
+  CanvasDocumentV3PersistencePort,
+  WorkspaceSessionDraftV1,
+} from "@memi/protocol";
 import { openLocalPreviewInHelium } from "../platform/helium.js";
 import type { ProjectRecord } from "./project-library.js";
 import {
@@ -185,6 +188,7 @@ const readNoSession =
 // Atomic Design: page — one independently durable local design file.
 export function LocalDesignConsumer({
   agentDefaults,
+  canvasDocumentPersistence,
   onExit,
   project,
   runtimeClient,
@@ -194,6 +198,7 @@ export function LocalDesignConsumer({
   storage,
 }: {
   readonly agentDefaults?: CanvasAgentDefaults;
+  readonly canvasDocumentPersistence?: CanvasDocumentV3PersistencePort;
   readonly onExit: () => void;
   readonly project: ProjectRecord;
   readonly runtimeClient?: Pick<RuntimeClientV1, "sessions" | "canvasDocuments">;
@@ -277,11 +282,12 @@ export function LocalDesignConsumer({
       document,
       persistence:
         runtimeClient === undefined
-          ? ephemeralPersistence
+          ? (canvasDocumentPersistence ?? ephemeralPersistence)
           : createRuntimeClientCanvasDocumentPersistence(runtimeClient),
     });
   }, [
     canvasProject,
+    canvasDocumentPersistence,
     ephemeralPersistence,
     project.source.kind,
     runtimeClient,

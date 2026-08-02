@@ -28,7 +28,6 @@ export interface WorkbenchSemanticCommitOptions {
   readonly selectedIds?: readonly string[];
   readonly targetIds?: readonly string[];
 }
-
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
@@ -368,8 +367,15 @@ export function createWorkbenchDocumentActions(
       commitPaste(eventPayload);
       return;
     }
+    // A Memi copy owns a validated in-session payload. Commit it immediately:
+    // native custom-MIME reads are permission-gated and must never turn an
+    // ordinary copy/paste action into an asynchronous no-op.
+    const sessionPayload = readCanvasSessionClipboard();
+    if (sessionPayload !== null) {
+      commitPaste(sessionPayload);
+      return;
+    }
     if (!canReadCanvasSystemClipboard()) {
-      commitPaste();
       return;
     }
     void readCanvasImageFromSystem().then((systemImage) => {

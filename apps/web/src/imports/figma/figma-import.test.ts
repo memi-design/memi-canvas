@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
+import { ProjectIdSchema } from "@memi/protocol";
 
 import {
   FIGMA_IMPORT_MAX_BYTES,
@@ -6,7 +10,16 @@ import {
   parseFigmaFileUrl,
   prepareFigmaUrlImport,
 } from "./figma-import.js";
-import { createFigmaCanvasProject } from "./figma-workbench.js";
+import {
+  createFigmaCanvasDocumentV3,
+  createFigmaCanvasProject,
+} from "./figma-workbench.js";
+import { projectCanvasDocumentV3ToWorkbench } from "../../canvas/canvas-v3-workbench-projection.js";
+
+const shippedMemiAppSource = readFileSync(
+  resolve(process.cwd(), "apps/web/src/MemiApp.tsx"),
+  "utf8",
+);
 
 const figmaExport = {
   name: "Checkout system",
@@ -204,6 +217,29 @@ describe("offline Figma JSON normalization", () => {
     });
   });
 
+  it("seeds the same Figma structure into a V3 project identity", () => {
+    const result = normalizeFigmaJsonExport(JSON.stringify(figmaExport), {
+      fileKey: "local-checkout",
+      importedAt: "2026-07-29T03:00:00.000Z",
+    });
+    const document = createFigmaCanvasDocumentV3(
+      result,
+      "checkout-import",
+      ProjectIdSchema.parse("prj_01J00000000000000000000000"),
+    );
+
+    expect(document).toMatchObject({
+      schemaVersion: 3,
+      projectId: "prj_01J00000000000000000000000",
+    });
+    expect(Object.keys(document.nodesById)).toHaveLength(4);
+    expect(document.operationCursor).toBeNull();
+    expect(document.stateHash).toMatch(/^sha256:/u);
+    expect(
+      projectCanvasDocumentV3ToWorkbench(document, document.pageIds[0]!),
+    ).toHaveLength(4);
+  });
+
   it("rejects oversized, deeply nested, malformed, duplicate, and dangling exports", () => {
     expect(() =>
       normalizeFigmaJsonExport("x".repeat(FIGMA_IMPORT_MAX_BYTES + 1), {
@@ -256,5 +292,16 @@ describe("offline Figma JSON normalization", () => {
         fileKey: "malformed",
       }),
     ).toThrow(/document/i);
+  });
+});
+
+describe("Figma production authority boundary", () => {
+  it("does not reintroduce the legacy scene/autosave path for Figma imports", () => {
+    expect(shippedMemiAppSource).toContain("createFigmaCanvasDocumentV3");
+    expect(shippedMemiAppSource).toContain(
+      "initializeCanvasDocumentV3Persistence",
+    );
+    expect(shippedMemiAppSource).not.toContain("createSceneState");
+    expect(shippedMemiAppSource).not.toContain("createCanvasAutosave");
   });
 });

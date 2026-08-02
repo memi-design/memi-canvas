@@ -60,4 +60,25 @@ describe("workbench inspector V3 actions", () => {
     expect(commitIntentReceipt.mock.calls[0]).toHaveLength(3);
     expect(JSON.stringify(commitIntentReceipt.mock.calls[0])).not.toContain('"scene"');
   });
+
+  it("clears the preview without leaking a derived rejection when persistence fails", async () => {
+    const persistenceFailure = new Error("disk full");
+    const commitIntentReceipt = vi.fn(() => Promise.reject(persistenceFailure));
+    const setPreview = vi.fn();
+    const actions = createWorkbenchInspectorV3Actions({
+      commitIntentReceipt,
+      projectNodes: [first],
+      setPreview,
+    });
+
+    actions.commit({
+      label: "Change fill",
+      targetIds: [first.id],
+      update: (node) => ({ ...node, fill: "#123456" }),
+    });
+
+    await vi.waitFor(() => {
+      expect(setPreview).toHaveBeenLastCalledWith(null);
+    });
+  });
 });

@@ -20,9 +20,9 @@ import { createLegacyWorkbenchProjection } from "./legacy-workbench-projection.j
 import { createSelectionState, type WorkbenchNode } from "./model.js";
 import { createAuthoringSelectionTransaction } from "./authoring-selection.js";
 import {
-  createV3WorkbenchHistoryActions,
   createWorkbenchHistoryActions,
 } from "./workbench-history-actions.js";
+import { createV3WorkbenchHistoryActions } from "./workbench-v3-history-actions.js";
 
 function rectangle(id: string, x: number, y: number): WorkbenchNode {
   return {

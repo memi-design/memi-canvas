@@ -17,6 +17,7 @@ import { whiteboardDocumentKey } from "./whiteboard/whiteboard-persistence.js";
 import {
   createProjectLibraryPersistence,
   createProjectLibraryState,
+  runtimeProjectIdForLocalProject,
 } from "./projects/project-library.js";
 import { TRUTHFUL_IMPORT_RESET_KEY } from "./projects/project-purge.js";
 import type { RuntimeClientV1 } from "./runtime/runtime-client.js";
@@ -24,6 +25,7 @@ import { createEphemeralCanvasDocumentPersistence } from "./runtime/runtime-clie
 
 function memoryRuntimeClient() {
   const persistence = createEphemeralCanvasDocumentPersistence();
+  let initializedIdentity: Parameters<typeof persistence.initialize>[0]["identity"] | undefined;
   const canvasDocuments = {
     async append(input: Parameters<typeof persistence.append>[0] extends never
       ? never
@@ -36,6 +38,7 @@ function memoryRuntimeClient() {
     },
     async initialize(input: { snapshot: Parameters<typeof persistence.initialize>[0] }) {
       await persistence.initialize(input.snapshot);
+      initializedIdentity = input.snapshot.identity;
       return { journal: await persistence.load(input.snapshot.identity) };
     },
     async load(input: { identity: Parameters<typeof persistence.load>[0] }) {
@@ -53,7 +56,14 @@ function memoryRuntimeClient() {
   return {
     canvasDocuments,
     sessions,
-  } as unknown as Pick<RuntimeClientV1, "canvasDocuments" | "sessions">;
+    initializedCanvasDocumentIdentity: () => initializedIdentity,
+    loadCanvasDocument: persistence.load,
+  } as unknown as Pick<RuntimeClientV1, "canvasDocuments" | "sessions"> & {
+    readonly initializedCanvasDocumentIdentity: () =>
+      | Parameters<typeof persistence.initialize>[0]["identity"]
+      | undefined;
+    readonly loadCanvasDocument: typeof persistence.load;
+  };
 }
 
 function memoryStorage() {
@@ -574,12 +584,14 @@ describe("Memi application journey", () => {
     );
   });
 
-  it("imports a bounded local Figma export into an editable durable canvas", async () => {
+  it("imports a bounded local Figma export through the V3 journal without a legacy scene autosave", async () => {
     const storage = memoryStorage();
+    const runtimeClient = memoryRuntimeClient();
     render(
       <MemiApp
         idFactory={() => "figma-checkout"}
         now={() => "2026-07-28T22:04:00.000Z"}
+        runtimeClient={runtimeClient}
         storage={storage}
       />,
     );
@@ -598,13 +610,60 @@ describe("Memi application journey", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Checkout system" }),
     ).toBeTruthy();
-    expect(screen.getByText(/changes are temporary/u)).toBeTruthy();
     expect(storage.values.has("memi.project-library.v1")).toBe(true);
     expect(
       [...storage.values.keys()].some((key) =>
         key.startsWith("memi.canvas.autosave.v1:"),
       ),
-    ).toBe(true);
+    ).toBe(false);
+    const projectId = runtimeProjectIdForLocalProject("figma-checkout");
+    const identity = runtimeClient.initializedCanvasDocumentIdentity();
+    expect(identity?.projectId).toBe(projectId);
+    const journal = identity === undefined
+      ? null
+      : await runtimeClient.loadCanvasDocument(identity);
+    expect(
+      journal?.snapshot.document.projectId,
+    ).toBe(projectId);
+  });
+
+  it("reopens a local Figma import from the same V3 journal when no native runtime is available", async () => {
+    const storage = memoryStorage();
+    render(
+      <MemiApp
+        idFactory={() => "figma-ephemeral"}
+        now={() => "2026-07-28T22:04:00.000Z"}
+        storage={storage}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Import from Figma" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Local JSON export" }));
+    fireEvent.change(screen.getByLabelText("Figma JSON export"), {
+      target: { value: figmaExport },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Import local Figma JSON" }),
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "Checkout system" });
+    fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open Checkout system/u }),
+    );
+
+    await waitFor(() => {
+      const layersHeader = screen.getByText("Layers").parentElement;
+      expect(layersHeader?.textContent).toBe("Layers2");
+      expect(
+        screen.getByRole("treeitem", { name: "Route inventory" }),
+      ).toBeTruthy();
+    });
+    expect(
+      [...storage.values.keys()].some((key) =>
+        key.startsWith("memi.canvas.autosave.v1:"),
+      ),
+    ).toBe(false);
   });
 
   it("streams an importing project before opening its editable runtime reconstruction", async () => {
@@ -933,15 +992,10 @@ describe("Memi application journey", () => {
     expect(screen.getByText("Syncing")).toBeTruthy();
     await waitFor(() => {
       expect(
-        screen.queryByRole("heading", { name: "Northstar" }) ??
-          screen.queryByRole("alert"),
+        screen.getByRole("heading", { name: "Northstar" }),
       ).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
     });
-    expect(screen.queryByRole("alert")).toBeNull();
-
-    expect(
-      await screen.findByRole("heading", { name: "Northstar" }),
-    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Home on canvas" }),
     ).toBeTruthy();

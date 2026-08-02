@@ -20,7 +20,7 @@ import {
   type ProcessExecutionPolicy,
   type ProcessRecipe,
   sandboxProcessRecipe,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 
 import type { SimulatorSelection } from "./native-capture-evidence.js";
 import {

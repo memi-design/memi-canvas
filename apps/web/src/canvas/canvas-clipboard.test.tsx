@@ -772,7 +772,7 @@ describe("CanvasWorkbench clipboard integration", () => {
 
     expect(pasteEvent.defaultPrevented).toBe(true);
     expect(
-      await screen.findByRole("button", { name: "Campaign card on canvas" }),
+      await screen.findByRole("button", { name: "Campaign card copy on canvas" }),
     ).toBeTruthy();
   });
 
@@ -794,7 +794,7 @@ describe("CanvasWorkbench clipboard integration", () => {
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
 
     expect(
-      await screen.findByRole("button", { name: "Campaign card on canvas" }),
+      await screen.findByRole("button", { name: "Campaign card copy on canvas" }),
     ).toBeTruthy();
     await waitFor(async () => {
       const journal = await destination.v3Session.persistence.load({
@@ -825,20 +825,20 @@ describe("CanvasWorkbench clipboard integration", () => {
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-      ).toHaveLength(2);
+        screen.getByRole("button", { name: "Campaign card copy on canvas" }),
+      ).toBeTruthy();
     });
     fireEvent.keyDown(document, { key: "x", ctrlKey: true });
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-      ).toHaveLength(1);
+        screen.queryByRole("button", { name: "Campaign card copy on canvas" }),
+      ).toBeNull();
     });
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-      ).toHaveLength(2);
+        screen.getByRole("button", { name: "Campaign card copy copy on canvas" }),
+      ).toBeTruthy();
     });
   });
 

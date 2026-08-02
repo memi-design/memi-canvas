@@ -13,7 +13,7 @@ import type {
   CanvasWorkbenchProject,
   WorkbenchNode,
 } from "./model.js";
-import { Layers } from "./parts.js";
+import { Layers, mergeExpansionIds } from "./layers-tree.js";
 
 const source = {
   coverageCellId: "games:mobile",
@@ -176,6 +176,18 @@ const project: CanvasWorkbenchProject = {
 };
 
 describe("screenshot-backed imported screen layers", () => {
+  it("keeps the existing expansion state reference when selection requirements are already open", () => {
+    const expanded = new Set(["product-flows", "feature-tabs", "route-games"]);
+
+    expect(
+      mergeExpansionIds(expanded, [
+        "product-flows",
+        "feature-tabs",
+        "route-games",
+      ]),
+    ).toBe(expanded);
+  });
+
   it("groups an editable provenance-linked reconstruction and detached evidence under its imported route", () => {
     render(
       <Layers

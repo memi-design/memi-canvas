@@ -31,6 +31,7 @@ import {
   type NativeDependencyPreparationPlan,
   type NativeCommandPort,
   type NativeCommandResult,
+  type BrowserLauncher,
   type PortLease,
   type ProcessExecutionPolicy,
   type ProcessRecipe,
@@ -39,7 +40,7 @@ import {
   type SwiftUIXCUITestEvidence,
   type SwiftUIXCUITestInput,
   type SwiftUIXCUITestPort,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 import type {
   ApprovedBuildRecipe,
   CaptureApplicationUnit,
@@ -176,6 +177,8 @@ export interface NativeCapturePortsOptions {
   readonly terminationGraceMs?: number;
   readonly dependencies?: Partial<NativeCaptureDependencies>;
   readonly executableSearchPath?: string;
+  /** Test-only browser injection; production always resolves the Helium launcher. */
+  readonly testBrowserLauncher?: BrowserLauncher;
 }
 
 export interface NativeCaptureAdapterExecutionContext {
@@ -632,6 +635,12 @@ async function ensureManagedSimulatorDeviceSetPath(input: {
 export async function createNativeCapturePorts(
   options: NativeCapturePortsOptions,
 ): Promise<NativeCapturePorts> {
+  if (
+    options.testBrowserLauncher !== undefined &&
+    process.env.NODE_ENV !== "test"
+  ) {
+    throw new Error("A test browser launcher is unavailable in production.");
+  }
   const appDataRoot = await canonicalDirectory(
     options.appDataRoot,
     "Memi app data",
@@ -1354,6 +1363,9 @@ export async function createNativeCapturePorts(
       artifactStore: options.artifactStore,
       processStarter,
       portLease,
+      ...(options.testBrowserLauncher === undefined
+        ? {}
+        : { browserLauncher: options.testBrowserLauncher }),
     });
   };
   const nativeDependencyPreparationFor:

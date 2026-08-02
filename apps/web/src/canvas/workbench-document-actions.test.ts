@@ -3,9 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearCanvasSessionClipboard,
   copyCanvasSelection,
-  createCanvasClipboardPayload,
-  MEMI_CANVAS_CLIPBOARD_MIME,
-  serializeCanvasClipboardFallback,
 } from "./canvas-clipboard.js";
 import type { WorkbenchNode } from "./model.js";
 import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
@@ -261,33 +258,18 @@ describe("workbench hierarchy actions", () => {
     });
   });
 
-  it("prefers a current system clipboard payload over an older session payload", async () => {
+  it("commits the in-session payload synchronously before a delayed system read", () => {
     const sessionNode = rectangle("session", null, 0, 0);
-    const systemNode = rectangle("system", null, 80, 40);
-    const systemPayload = createCanvasClipboardPayload({
-      documentId: "system-document",
-      nodes: [systemNode],
-      selectedIds: [systemNode.id],
-    });
     copyCanvasSelection({
       documentId: "session-document",
       nodes: [sessionNode],
       selectedIds: [sessionNode.id],
     });
-    expect(systemPayload).not.toBeNull();
     vi.stubGlobal("navigator", {
       clipboard: {
         async read() {
-          return [
-            {
-              getType: async () =>
-                new Blob(
-                  [serializeCanvasClipboardFallback(systemPayload!)],
-                  { type: MEMI_CANVAS_CLIPBOARD_MIME },
-                ),
-              types: [MEMI_CANVAS_CLIPBOARD_MIME],
-            },
-          ];
+          await new Promise<void>(() => undefined);
+          return [];
         },
         async write() {
           return undefined;
@@ -298,11 +280,42 @@ describe("workbench hierarchy actions", () => {
 
     value.pasteSelection();
 
-    await vi.waitFor(() => {
-      expect(commitScene).toHaveBeenCalledTimes(1);
-    });
+    expect(commitScene).toHaveBeenCalledTimes(1);
     const pasted = commitScene.mock.calls[0]?.[1] as readonly WorkbenchNode[];
-    expect(pasted.map(({ id }) => id)).toEqual(["system-copy-1"]);
+    expect(pasted.map(({ id }) => id)).toEqual(["session-copy-1"]);
+  });
+
+  it("emits exactly one V3 paste receipt from the session fallback", () => {
+    const source = rectangle("Rectangle 1", null, 0, 0);
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions(
+      [source],
+      [source.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.copySelection();
+    value.pasteSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledTimes(1);
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste Rectangle 1 copy",
+      {
+        kind: "paste",
+        nodes: [
+          expect.objectContaining({
+            id: "Rectangle 1-copy-1",
+            name: "Rectangle 1 copy",
+          }),
+        ],
+      },
+      expect.objectContaining({
+        selectedIds: ["Rectangle 1-copy-1"],
+        targetIds: ["Rectangle 1-copy-1"],
+      }),
+    );
   });
 
   it("groups only siblings at their first stacking position and preserves world geometry", () => {

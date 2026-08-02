@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm run test:bun && npm run test:coverage && npm run build",
     "smoke:runtime-sidecar": "vite-node scripts/smoke-runtime-sidecar.ts",
-    "verify:macos": "npm --workspace @memi/macos run tauri -- build --debug --bundles app && npm run smoke:runtime-sidecar && vite-node scripts/smoke-macos-app.ts",
+    "verify:macos": "npm --workspace @memi/macos run tauri -- build --debug --bundles app && vite-node scripts/smoke-macos-app.ts",
     "verify:full": "npm run verify && npm run test:e2e && npm run verify:macos"
   },
   "engines": {

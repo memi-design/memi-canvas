@@ -66,10 +66,8 @@ describe("professional shape tools", () => {
   ] as const)(
     "creates a visible %s with the %s keyboard tool and a click default",
     async (kind, key, shiftKey) => {
-      const onSceneChange = vi.fn();
       render(
         <CanvasWorkbench
-          onSceneChange={onSceneChange}
           project={canvasWorkbenchFixture}
           v3Session={v3Session()}
         />,
@@ -92,10 +90,8 @@ describe("professional shape tools", () => {
   );
 
   it("places click-created shapes in canvas coordinates relative to editor chrome and the active grid", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={v3Session()}
       />,
@@ -144,10 +140,8 @@ describe("professional shape tools", () => {
   });
 
   it("drag-creates a shape from the pointer origin with snapped geometry", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={v3Session()}
       />,
@@ -194,10 +188,8 @@ describe("professional shape tools", () => {
   });
 
   it("preserves a right-to-left arrow's authored endpoints", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={v3Session()}
       />,
@@ -233,10 +225,8 @@ describe("professional shape tools", () => {
   });
 
   it("records pen motion as an authored freehand path", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={v3Session()}
       />,
@@ -278,10 +268,8 @@ describe("professional shape tools", () => {
   });
 
   it("cancels a drag-created shape without committing history", async () => {
-    const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
         v3Session={v3Session()}
       />,
@@ -307,10 +295,8 @@ describe("professional shape tools", () => {
       screen.queryByRole("button", { name: "Rectangle 1 on canvas" }),
     ).toBeNull();
     expect(
-      onSceneChange.mock.calls.some(
-        ([scene]) => scene.past.at(-1)?.label === "Create Rectangle 1",
-      ),
-    ).toBe(false);
+      screen.getByRole("button", { name: "Undo" }).getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("renders ellipse fill and line/arrow strokes as editable content properties", async () => {
@@ -355,10 +341,8 @@ describe("professional shape tools", () => {
   ] as const)(
     "creates a persistent %s node through the canonical professional tool",
     async (toolName, nodeKind, key, shiftKey) => {
-      const onSceneChange = vi.fn();
       render(
         <CanvasWorkbench
-          onSceneChange={onSceneChange}
           project={canvasWorkbenchFixture}
           v3Session={v3Session()}
         />,

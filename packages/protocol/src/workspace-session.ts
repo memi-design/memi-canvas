@@ -114,6 +114,29 @@ export const WorkspaceActivitySchemaV1 = z
     }
   });
 
+const WorkspaceHistoryEntrySchemaV1 = z.strictObject({
+  operationId: identifier,
+  selectionBefore: WorkspaceSelectionSchemaV1,
+  selectionAfter: WorkspaceSelectionSchemaV1,
+});
+
+const WorkspaceRedoHistoryEntrySchemaV1 = WorkspaceHistoryEntrySchemaV1.extend({
+  undoOperationId: identifier,
+});
+
+/**
+ * Selection witnesses for the post-checkpoint V3 operation tail. They never
+ * contain node arrays or gestures; ids must match the durable journal before
+ * an authority is allowed to hydrate them on restart.
+ */
+export const WorkspaceHistoryStateSchemaV1 = z.strictObject({
+  undo: z.array(WorkspaceHistoryEntrySchemaV1).max(250),
+  redo: z.array(WorkspaceRedoHistoryEntrySchemaV1).max(250),
+});
+export type WorkspaceHistoryStateV1 = z.infer<
+  typeof WorkspaceHistoryStateSchemaV1
+>;
+
 const WorkspaceSessionCoreSchemaV1 = z
   .strictObject({
     schemaVersion: z.literal(1),
@@ -122,6 +145,13 @@ const WorkspaceSessionCoreSchemaV1 = z
     documentId: identifier,
     documentRevision: z.number().int().nonnegative(),
     sourceRevision,
+    /**
+     * Optional for V1 compatibility. New sessions persist their current V3
+     * page, while legacy records deterministically fall back to the first
+     * surviving document page on restore.
+     */
+    activePageId: identifier.nullable().optional(),
+    history: WorkspaceHistoryStateSchemaV1.optional(),
     selection: WorkspaceSelectionSchemaV1,
     camera: WorkspaceCameraSchemaV1,
     panels: WorkspacePanelsSchemaV1,
@@ -236,6 +266,8 @@ export function createWorkspaceSessionDraft(input: {
       documentId: input.documentId,
       documentRevision: input.documentRevision,
       sourceRevision: input.sourceRevision,
+      activePageId: null,
+      history: { undo: [], redo: [] },
       selection: {
         selectedIds: [],
         anchorId: null,
