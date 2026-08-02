@@ -4,6 +4,13 @@ import { access, lstat, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import {
+  findPackagedRuntimeSidecar,
+  formatDirectChildDiagnostic,
+  macOsProcessListArguments,
+  type ProcessRow,
+} from "./smoke-macos-app-process.js";
+
 const APP_PATH = resolve(
   "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
 );
@@ -44,12 +51,6 @@ let matches = windows.filter { window in
 print(matches.count)
 `;
 
-interface ProcessRow {
-  readonly pid: number;
-  readonly parentPid: number;
-  readonly command: string;
-}
-
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
@@ -82,7 +83,7 @@ async function commandOutput(
 }
 
 async function processRows(): Promise<readonly ProcessRow[]> {
-  const stdout = await commandOutput("/bin/ps", ["-axo", "pid=,ppid=,command="]);
+  const stdout = await commandOutput("/bin/ps", macOsProcessListArguments());
   return stdout
     .split("\n")
     .map((line) => {
@@ -96,17 +97,6 @@ async function processRows(): Promise<readonly ProcessRow[]> {
           };
     })
     .filter((row): row is ProcessRow => row !== null);
-}
-
-function isPackagedRuntimeCommand(command: string): boolean {
-  // The signed launcher immediately execs the Bun copy shipped inside the app.
-  // Only the exact in-bundle Bun + in-bundle entry counts as process evidence;
-  // a wrapper, checkout source command, or user's global Bun never satisfies it.
-  const packagedBunCommand = `${RUNTIME_BUN_PATH} ${RUNTIME_ENTRY_PATH}`;
-  return (
-    command === packagedBunCommand ||
-    command.startsWith(`${packagedBunCommand} `)
-  );
 }
 
 async function waitForWindow(): Promise<number> {
@@ -125,10 +115,11 @@ async function waitForPackagedRuntimeSidecar(
   appProcessId: number,
 ): Promise<ProcessRow> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const sidecar = (await processRows()).find(
-      (row) =>
-        row.parentPid === appProcessId &&
-        isPackagedRuntimeCommand(row.command),
+    const sidecar = findPackagedRuntimeSidecar(
+      await processRows(),
+      appProcessId,
+      RUNTIME_BUN_PATH,
+      RUNTIME_ENTRY_PATH,
     );
     if (sidecar !== undefined) return sidecar;
     await sleep(250);
@@ -264,10 +255,18 @@ try {
   );
 } catch (error) {
   const diagnostic = Buffer.concat(stderr).toString("utf8").trim();
+  const childDiagnostic =
+    app.pid === undefined
+      ? "appPid=unavailable"
+      : formatDirectChildDiagnostic(await processRows().catch(() => []), app.pid);
+  const socketDiagnostic = await lstat(runtimeSocketPath)
+    .then((metadata) => `socketReady=${metadata.isSocket()}`)
+    .catch(() => "socketReady=false");
+  const smokeDiagnostic = `${childDiagnostic} ${socketDiagnostic}`;
   throw new Error(
     diagnostic.length === 0
-      ? (error instanceof Error ? error.message : "Packaged macOS smoke failed.")
-      : `${error instanceof Error ? error.message : "Packaged macOS smoke failed."} ${diagnostic.slice(0, 2_000)}`,
+      ? `${error instanceof Error ? error.message : "Packaged macOS smoke failed."} ${smokeDiagnostic}`
+      : `${error instanceof Error ? error.message : "Packaged macOS smoke failed."} ${smokeDiagnostic} ${diagnostic.slice(0, 2_000)}`,
   );
 } finally {
   await terminate(app);
