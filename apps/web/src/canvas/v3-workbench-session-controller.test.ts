@@ -280,6 +280,19 @@ describe("V3WorkbenchSessionController", () => {
     expect(
       restarted.getSnapshot().authority?.getSnapshot().document.nodesById[nodeId],
     ).toMatchObject({ name: "Rectangle" });
+
+    const renderer = restarted.getRendererSnapshot(document.pageIds[0]!);
+    expect(renderer).toMatchObject({
+      canRedo: false,
+      canUndo: false,
+      revision: 1,
+      selection: { selectedIds: [nodeId] },
+    });
+    expect(renderer.nodes).toEqual([
+      expect.objectContaining({ id: nodeId, name: "Rectangle" }),
+    ]);
+    expect(Object.isFrozen(renderer)).toBe(true);
+    expect(Object.isFrozen(renderer.nodes)).toBe(true);
   });
 
   it("surfaces persistence-open failure as a retryable error snapshot", async () => {
