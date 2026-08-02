@@ -12,7 +12,7 @@ import type { CanvasWorkbenchProject } from "./model.js";
 import { createPreviewSession } from "../preview/preview-session.js";
 
 describe("workbench agent review actions", () => {
-  it("applies an approved local proposal as one agent command", async () => {
+  it("fails closed rather than applying a full-node agent proposal", async () => {
     const project =
       canvasWorkbenchFixture as CanvasWorkbenchProject;
     const selectedNodeId = project.selectedNodeId;
@@ -73,22 +73,11 @@ describe("workbench agent review actions", () => {
 
     await actions.approveAgentPatch();
 
-    expect(commitScene).toHaveBeenCalledWith(
-      "Apply agent patch patch-test",
-      project.document.nodes,
-      {
-        actor: "agent",
-        targetIds: [selectedNodeId],
-      },
-    );
-    expect(setAgentPatchReview.mock.calls[0]?.[0]).toMatchObject({
-      currentRevision: project.document.revision,
-      status: "applying",
-    });
+    expect(commitScene).not.toHaveBeenCalled();
     expect(setAgentPatchReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentRevision: project.document.revision + 1,
-        status: "applied",
+        currentRevision: project.document.revision,
+        status: "failed",
       }),
     );
   });

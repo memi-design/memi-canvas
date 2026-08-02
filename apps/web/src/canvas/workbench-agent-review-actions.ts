@@ -86,38 +86,14 @@ export function createWorkbenchAgentReviewActions(
     ) {
       return null;
     }
-    const applyingReview: AgentPatchReview = Object.freeze({
+    const failedReview: AgentPatchReview = Object.freeze({
       ...review,
-      message: `Applying against revision ${review.currentRevision}.`,
-      status: "applying",
+      message:
+        "Agent patch blocked: V3 semantic operation receipts are required.",
+      status: "failed",
     });
-    context.setAgentPatchReview(applyingReview);
-    try {
-      const mutation = context.commitScene(
-        `Apply agent patch ${review.patch.id}`,
-        review.patch.proposedNodes,
-        {
-          actor: "agent",
-          targetIds: review.patch.targetIds,
-        },
-      );
-      const nextReview: AgentPatchReview = Object.freeze({
-        ...review,
-        currentRevision: mutation.revision,
-        message: `Applied at revision ${mutation.revision}.`,
-        status: "applied",
-      });
-      context.setAgentPatchReview(nextReview);
-      return { review: nextReview, trace: null };
-    } catch (error) {
-      const failedReview: AgentPatchReview = Object.freeze({
-        ...review,
-        message: `Failed without changing the document: ${failureMessage(error)}`,
-        status: "failed",
-      });
-      context.setAgentPatchReview(failedReview);
-      return { review: failedReview, trace: null };
-    }
+    context.setAgentPatchReview(failedReview);
+    return { review: failedReview, trace: null };
   };
 
   const approveAgentPatch = async () => {
@@ -313,45 +289,11 @@ export function createWorkbenchAgentReviewActions(
     if (context.runtimePort === undefined || preview === null) {
       return;
     }
-    const checkpoint = preview.checkpoint;
-    try {
-      if (
-        context.canonicalDocumentRevision !==
-        preview.currentDocumentRevision
-      ) {
-        throw new Error(
-          "The canvas changed after the restore preview was reviewed.",
-        );
-      }
-      const restoredDocument = context.commitScene(
-        `Restore checkpoint ${checkpoint.id}`,
-        checkpoint.documentNodes,
-        {
-          actor: "system",
-          selectedIds: checkpoint.selectedNodeIds,
-          targetIds: checkpoint.selectedNodeIds,
-        },
-      );
-      const result = await context.runtimePort.restore({
-        currentDocumentNodes: restoredDocument.nodes,
-        currentDocumentRevision: restoredDocument.revision,
-        previewId: preview.id,
-        projectId: context.persistenceProjectId,
-      });
-      context.appendTrace(
-        `Restored and verified ${checkpoint.id} without replaying effects.`,
-        checkpoint.selectedNodeIds.at(-1) ?? "canvas",
-        DEMO_HARNESS,
-      );
-      context.setRestorePreview(null);
-      context.setRuntimeSnapshot(result.snapshot);
-    } catch (error) {
-      context.appendTrace(
-        `Checkpoint restore failed: ${failureMessage(error)}`,
-        targetId(),
-        DEMO_HARNESS,
-      );
-    }
+    context.appendTrace(
+      "Checkpoint restore blocked: V3 semantic operation receipts are required.",
+      targetId(),
+      DEMO_HARNESS,
+    );
   };
 
   const rollbackAppliedAgentPatch = () => {
@@ -360,17 +302,8 @@ export function createWorkbenchAgentReviewActions(
     if (review?.status !== "applied" || snapshot === null) {
       return;
     }
-    context.commitScene(
-      `Roll back agent patch ${review.patch.id}`,
-      snapshot.envelope.documentNodes,
-      {
-        actor: "human",
-        selectedIds: snapshot.envelope.selectedNodeIds,
-        targetIds: review.patch.targetIds,
-      },
-    );
     context.appendTrace(
-      `Rolled back applied canvas draft ${review.patch.id}; runtime evidence remains available.`,
+      `Rollback blocked for ${review.patch.id}: V3 semantic operation receipts are required.`,
       targetId(),
       DEMO_HARNESS,
     );
