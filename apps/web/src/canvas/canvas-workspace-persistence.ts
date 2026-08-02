@@ -66,7 +66,6 @@ export interface CanvasWorkspacePersistence {
     workspaceId: string,
     importedScene: SceneState,
   ): CanvasPagesState | null;
-  save(workspaceId: string, state: CanvasPagesState): boolean;
 }
 
 export interface LegacyCanvasWorkspaceV3Migration {
@@ -188,7 +187,11 @@ export function readLegacyCanvasWorkspaceV3Migration(
   }
 }
 
-/** @deprecated Migration-only localStorage adapter. */
+/**
+ * @deprecated Migration-only localStorage reader. New workspace state must be
+ * committed through the V3 journal; this adapter intentionally has no save
+ * operation so legacy browser storage cannot become production authority.
+ */
 export function createCanvasWorkspacePersistence(
   storage: CanvasStorage,
 ): CanvasWorkspacePersistence {
@@ -230,38 +233,6 @@ export function createCanvasWorkspacePersistence(
         };
       } catch {
         return null;
-      }
-    },
-    save(workspaceId, state) {
-      if (!validWorkspaceId(workspaceId)) {
-        return false;
-      }
-      try {
-        const payload = {
-          schemaVersion: 1 as const,
-          kind: "memi-canvas-workspace" as const,
-          workspaceId,
-          activePageId: state.activePageId,
-          nextLocalPageNumber: state.nextLocalPageNumber,
-          localPages: state.pages
-            .filter(({ kind }) => kind === "local")
-            .map(({ id, name }) => ({ id, name })),
-        };
-        const parsed = WorkspaceManifestSchema.safeParse(payload);
-        if (!parsed.success) {
-          return false;
-        }
-        const serialized = JSON.stringify(parsed.data);
-        if (
-          new TextEncoder().encode(serialized).byteLength >
-          MAX_WORKSPACE_BYTES
-        ) {
-          return false;
-        }
-        storage.setItem(canvasWorkspaceKey(workspaceId), serialized);
-        return true;
-      } catch {
-        return false;
       }
     },
   };
