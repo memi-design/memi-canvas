@@ -5,6 +5,13 @@ import type {
   CanvasDocumentSnapshotV3,
   CanvasDocumentV3PersistencePort,
 } from "@memi/protocol";
+import {
+  CanvasDocumentAppendV3Schema,
+  CanvasDocumentIdentityV3Schema,
+  CanvasDocumentJournalV3Schema,
+  CanvasDocumentSnapshotV3Schema,
+} from "@memi/protocol";
+import { applyCanvasOperationV3 } from "@memi/canvas-document";
 
 import type { RuntimeClientV1 } from "./runtime-client.js";
 
@@ -39,12 +46,27 @@ function journalKey(identity: CanvasDocumentIdentityV3): string {
   return `${identity.projectId}:${identity.documentId}`;
 }
 
+function immutableClone<Value>(value: Value): Value {
+  const clone = structuredClone(value);
+  const freeze = (candidate: unknown): unknown => {
+    if (candidate !== null && typeof candidate === "object") {
+      for (const child of Object.values(candidate)) {
+        freeze(child);
+      }
+      Object.freeze(candidate);
+    }
+    return candidate;
+  };
+  return freeze(clone) as Value;
+}
+
 function journalFromSnapshot(
   snapshot: CanvasDocumentSnapshotV3,
   operations: CanvasDocumentJournalV3["operations"] = [],
 ): CanvasDocumentJournalV3 {
   const encoder = new TextEncoder();
-  return {
+  return immutableClone(
+    CanvasDocumentJournalV3Schema.parse({
     schemaVersion: 1,
     kind: "canvas-document-v3-journal",
     identity: snapshot.identity,
@@ -55,7 +77,28 @@ function journalFromSnapshot(
         total + encoder.encode(JSON.stringify(operation)).byteLength,
       0,
     ),
-  };
+    }),
+  );
+}
+
+function replayJournal(journal: CanvasDocumentJournalV3) {
+  return journal.operations.reduce(
+    (document, operation) => applyCanvasOperationV3(document, operation),
+    journal.snapshot.document,
+  );
+}
+
+function hasCurrentDocumentProof(
+  snapshot: CanvasDocumentSnapshotV3,
+  current: CanvasDocumentSnapshotV3["document"],
+): boolean {
+  return (
+    snapshot.identity.projectId === current.projectId &&
+    snapshot.identity.documentId === current.id &&
+    snapshot.document.revision === current.revision &&
+    snapshot.document.stateHash === current.stateHash &&
+    snapshot.document.operationCursor === current.operationCursor
+  );
 }
 
 /**
@@ -66,35 +109,54 @@ export function createEphemeralCanvasDocumentPersistence(): CanvasDocumentV3Pers
   const journals = new Map<string, CanvasDocumentJournalV3>();
   const port: CanvasDocumentV3PersistencePort = {
     async load(identity) {
-      return journals.get(journalKey(identity)) ?? null;
+      const parsedIdentity = CanvasDocumentIdentityV3Schema.parse(identity);
+      return journals.get(journalKey(parsedIdentity)) ?? null;
     },
     async initialize(snapshot) {
-      journals.set(journalKey(snapshot.identity), journalFromSnapshot(snapshot));
+      const parsedSnapshot = CanvasDocumentSnapshotV3Schema.parse(snapshot);
+      journals.set(
+        journalKey(parsedSnapshot.identity),
+        journalFromSnapshot(parsedSnapshot),
+      );
     },
     async append(append: CanvasDocumentAppendV3) {
-      const key = journalKey(append.identity);
+      const parsedAppend = CanvasDocumentAppendV3Schema.parse(append);
+      const key = journalKey(parsedAppend.identity);
       const journal = journals.get(key);
       if (journal === undefined) {
         throw new Error("Canvas V3 journal is not initialized.");
       }
+      const currentDocument = replayJournal(journal);
+      const nextDocument = applyCanvasOperationV3(
+        currentDocument,
+        parsedAppend.operation,
+      );
       const next = journalFromSnapshot(journal.snapshot, [
         ...journal.operations,
-        append.operation,
+        parsedAppend.operation,
       ]);
       journals.set(key, next);
       return {
         schemaVersion: 1,
-        identity: append.identity,
-        operationId: append.operation.id,
-        revision: append.operation.expectedRevision + 1,
-        stateHash: append.operation.resultingHash,
+        identity: parsedAppend.identity,
+        operationId: parsedAppend.operation.id,
+        revision: nextDocument.revision,
+        stateHash: nextDocument.stateHash,
       };
     },
     async checkpoint(snapshot) {
-      const existing = journals.get(journalKey(snapshot.identity));
+      const parsedSnapshot = CanvasDocumentSnapshotV3Schema.parse(snapshot);
+      const key = journalKey(parsedSnapshot.identity);
+      const existing = journals.get(key);
+      if (existing === undefined) {
+        throw new Error("Canvas V3 journal is not initialized.");
+      }
+      if (!hasCurrentDocumentProof(parsedSnapshot, replayJournal(existing))) {
+        throw new Error("Canvas V3 checkpoint is stale.");
+      }
       journals.set(
-        journalKey(snapshot.identity),
-        journalFromSnapshot(snapshot, existing?.operations ?? []),
+        key,
+        journalFromSnapshot(parsedSnapshot),
       );
     },
   };
