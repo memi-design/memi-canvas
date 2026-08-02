@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   findPackagedRuntimeSidecar,
   formatDirectChildDiagnostic,
+  macOsVisibleWindowProbe,
+  macOsWindowDiagnosticProbe,
   macOsProcessListArguments,
   type ProcessRow,
 } from "../../../../scripts/smoke-macos-app-process.js";
@@ -31,6 +33,28 @@ describe("packaged macOS smoke process proof", () => {
       "-axo",
       "pid=,ppid=,command=",
     ]);
+  });
+
+  it("binds the native window proof to the spawned PID, not an app name or title", () => {
+    const probe = macOsVisibleWindowProbe(appPid);
+
+    expect(probe).toContain("let targetPid = 41");
+    expect(probe).toContain("kCGWindowOwnerPID");
+    expect(probe).toContain("layer(window) == 0");
+    expect(probe).toContain("alpha(window) > 0");
+    expect(probe).toContain("size.width > 0 && size.height > 0");
+    expect(probe).not.toContain("kCGWindowOwnerName");
+    expect(probe).not.toContain("kCGWindowName");
+  });
+
+  it("produces bounded numeric diagnostics for only the spawned PID", () => {
+    const probe = macOsWindowDiagnosticProbe(appPid);
+
+    expect(probe).toContain("let targetPid = 41");
+    expect(probe).toContain("prefix(3)");
+    expect(probe).toContain("kCGWindowOwnerPID");
+    expect(probe).not.toContain("kCGWindowOwnerName");
+    expect(probe).not.toContain("kCGWindowName");
   });
 
   it("finds only the direct app child running the bundled runtime", () => {

@@ -7,6 +7,8 @@ import { join, resolve } from "node:path";
 import {
   findPackagedRuntimeSidecar,
   formatDirectChildDiagnostic,
+  macOsVisibleWindowProbe,
+  macOsWindowDiagnosticProbe,
   macOsProcessListArguments,
   type ProcessRow,
 } from "./smoke-macos-app-process.js";
@@ -36,21 +38,6 @@ const RPC_PROBE_TIMEOUT_MS = 5_000;
 // path has a strict length limit on macOS, so storage remains descriptive while
 // the private socket address stays compact.
 const SOCKET_RELATIVE_PATH = join("r", "s");
-const WINDOW_PROBE = `
-import CoreGraphics
-let windows = CGWindowListCopyWindowInfo(
-  [.optionAll],
-  kCGNullWindowID
-) as? [[String: Any]] ?? []
-let matches = windows.filter { window in
-  let owner = window[kCGWindowOwnerName as String] as? String
-  let title = window[kCGWindowName as String] as? String
-  let layer = window[kCGWindowLayer as String] as? Int
-  return owner == "Memi Canvas" && title == "Memi Canvas" && layer == 0
-}
-print(matches.count)
-`;
-
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
@@ -99,16 +86,25 @@ async function processRows(): Promise<readonly ProcessRow[]> {
     .filter((row): row is ProcessRow => row !== null);
 }
 
-async function waitForWindow(): Promise<number> {
+async function waitForWindow(appProcessId: number): Promise<number> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const stdout = await commandOutput("/usr/bin/swift", ["-e", WINDOW_PROBE]).catch(
-      () => "0",
-    );
+    const stdout = await commandOutput("/usr/bin/swift", [
+      "-e",
+      macOsVisibleWindowProbe(appProcessId),
+    ]).catch(() => "0");
     const windowCount = Number(stdout.trim());
     if (Number.isSafeInteger(windowCount) && windowCount > 0) return windowCount;
     await sleep(250);
   }
-  throw new Error("Packaged Memi Canvas launched without a native window.");
+  const diagnostic = await commandOutput("/usr/bin/swift", [
+    "-e",
+    macOsWindowDiagnosticProbe(appProcessId),
+  ])
+    .then((stdout) => stdout.trim().slice(0, 500))
+    .catch(() => "windowDiagnostics=unavailable");
+  throw new Error(
+    `Packaged Memi Canvas launched without a visible native window. ${diagnostic}`,
+  );
 }
 
 async function waitForPackagedRuntimeSidecar(
@@ -235,7 +231,7 @@ try {
     throw new Error("Packaged Memi Canvas did not return a process identifier.");
   }
   const [windowCount, sidecar] = await Promise.all([
-    waitForWindow(),
+    waitForWindow(app.pid),
     waitForPackagedRuntimeSidecar(app.pid),
     waitForRuntimeSocket(runtimeSocketPath),
   ]);

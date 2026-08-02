@@ -10,6 +10,76 @@ export function macOsProcessListArguments(): readonly string[] {
   return ["-ww", "-axo", "pid=,ppid=,command="];
 }
 
+function swiftWindowTargetPid(appProcessId: number): string {
+  if (!Number.isSafeInteger(appProcessId) || appProcessId < 1) {
+    throw new Error("The spawned macOS app PID is invalid.");
+  }
+  return String(appProcessId);
+}
+
+function swiftWindowPredicates(): string {
+  return `
+func ownerPid(_ window: [String: Any]) -> Int {
+  (window[kCGWindowOwnerPID as String] as? NSNumber)?.intValue ?? -1
+}
+func layer(_ window: [String: Any]) -> Int {
+  (window[kCGWindowLayer as String] as? NSNumber)?.intValue ?? -1
+}
+func alpha(_ window: [String: Any]) -> Double {
+  (window[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0
+}
+func dimensions(_ window: [String: Any]) -> (width: Double, height: Double) {
+  let bounds = window[kCGWindowBounds as String] as? NSDictionary
+  return (
+    (bounds?["Width"] as? NSNumber)?.doubleValue ?? 0,
+    (bounds?["Height"] as? NSNumber)?.doubleValue ?? 0
+  )
+}
+func isVisibleAppWindow(_ window: [String: Any], targetPid: Int) -> Bool {
+  let size = dimensions(window)
+  return ownerPid(window) == targetPid && layer(window) == 0 &&
+    alpha(window) > 0 && size.width > 0 && size.height > 0
+}
+`;
+}
+
+export function macOsVisibleWindowProbe(appProcessId: number): string {
+  const targetPid = swiftWindowTargetPid(appProcessId);
+  return `
+import CoreGraphics
+import Foundation
+let targetPid = ${targetPid}
+let windows = CGWindowListCopyWindowInfo(
+  [.optionAll],
+  kCGNullWindowID
+) as? [[String: Any]] ?? []
+${swiftWindowPredicates()}
+print(windows.filter { isVisibleAppWindow($0, targetPid: targetPid) }.count)
+`;
+}
+
+export function macOsWindowDiagnosticProbe(appProcessId: number): string {
+  const targetPid = swiftWindowTargetPid(appProcessId);
+  return `
+import CoreGraphics
+import Foundation
+let targetPid = ${targetPid}
+let windows = CGWindowListCopyWindowInfo(
+  [.optionAll],
+  kCGNullWindowID
+) as? [[String: Any]] ?? []
+${swiftWindowPredicates()}
+let appWindows = windows.filter { ownerPid($0) == targetPid }
+let visibleWindows = appWindows.filter { isVisibleAppWindow($0, targetPid: targetPid) }
+let samples = appWindows.prefix(3).map { window -> String in
+  let size = dimensions(window)
+  let number = (window[kCGWindowNumber as String] as? NSNumber)?.intValue ?? -1
+  return "\\(number),\\(layer(window)),\\(alpha(window)),\\(size.width)x\\(size.height)"
+}
+print("appWindows=\\(appWindows.count) visibleWindows=\\(visibleWindows.count) samples=\\(samples.joined(separator: ";"))")
+`;
+}
+
 function isPackagedRuntimeCommand(
   command: string,
   runtimeBunPath: string,
