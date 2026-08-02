@@ -56,6 +56,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     displayHistory,
     gesture,
     harnessId,
+    historyAvailability,
     modelId,
     permissionPolicy,
     persistenceProject,
@@ -421,8 +422,8 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     {
       canDeleteSelection,
       canDuplicateSelection: selectedNode !== undefined,
-      canRedo: scene.future.length > 0,
-      canUndo: scene.past.length > 0,
+      canRedo: historyAvailability.canRedo,
+      canUndo: historyAvailability.canUndo,
     },
   );
 
@@ -529,8 +530,8 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         activeTool: tool,
         activityOpen:
           workspaceTab === "runs" && !workspaceCollapsed,
-        canRedo: scene.future.length > 0,
-        canUndo: scene.past.length > 0,
+        canRedo: historyAvailability.canRedo,
+        canUndo: historyAvailability.canUndo,
         onActivityToggle: () => openWorkspaceTab("runs"),
         onFitAll: fitAll,
         onMenuToggle:

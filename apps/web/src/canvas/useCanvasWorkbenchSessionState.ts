@@ -103,6 +103,10 @@ export function useCanvasWorkbenchSessionState(
   const rendererSnapshot = v3Snapshot.status === "ready"
     ? v3Controller.getRendererSnapshot(v3Session.activePageId)
     : { canRedo: false, canUndo: false, nodes: [], revision: v3Session.document.revision, selection: createSelectionState([]) };
+  const historyAvailability = {
+    canRedo: rendererSnapshot.canRedo,
+    canUndo: rendererSnapshot.canUndo,
+  };
   const canonicalAuthority = v3Snapshot.status === "ready" ? v3Snapshot.authority : null;
   const canonicalSnapshot = {
     document: { revision: rendererSnapshot.revision },
@@ -493,6 +497,7 @@ export function useCanvasWorkbenchSessionState(
     displayHistory,
     gesture,
     harnessId,
+    historyAvailability,
     modelId,
     permissionPolicy,
     persistenceProject,
