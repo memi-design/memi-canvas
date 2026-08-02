@@ -14,10 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Typecheck, lint, Gate A contracts, and build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  quality-and-native:
+    name: macOS verification and native smoke
+    runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +32,8 @@ jobs:
 
       - run: npm ci
       - run: npm run verify
+      - name: Build the unsigned debug application and run native smoke checks
+        run: npm run verify:macos
 
   browser-chromium-e2e:
     name: Browser Chromium E2E
@@ -60,19 +62,3 @@ jobs:
             test-results
           if-no-files-found: ignore
           retention-days: 7
-
-  macos-native-smoke:
-    name: macOS native build and smoke
-    runs-on: macos-14
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.3
-          cache: npm
-
-      - run: npm ci
-      - name: Build the unsigned debug application and run native smoke checks
-        run: npm run verify:macos
