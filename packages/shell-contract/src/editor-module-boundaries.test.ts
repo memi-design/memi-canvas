@@ -8,6 +8,12 @@ const PRODUCTION_EDITOR_MODULES = [
   "apps/web/src/canvas/workspace-dock.tsx",
   "apps/web/src/canvas/model.ts",
   "apps/web/src/canvas/canvas-runtime-port.ts",
+  "apps/web/src/canvas/workbench-agent-review-actions.ts",
+  "apps/web/src/canvas/workbench-document-actions.ts",
+  "apps/web/src/canvas/workbench-history-actions.ts",
+  "apps/web/src/canvas/workbench-inspector-v3-actions.ts",
+  "apps/web/src/canvas/workbench-pointer-actions.ts",
+  "apps/web/src/canvas/workbench-v3-intents.ts",
 ] as const;
 
 describe("production editor module boundaries", () => {

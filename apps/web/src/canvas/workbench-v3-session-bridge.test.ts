@@ -67,6 +67,23 @@ describe("V3 workbench session bridge queue", () => {
     expect(failures).toHaveBeenCalledWith("durable write failed");
   });
 
+  it("propagates a durable receipt failure while recovering the serial queue", async () => {
+    const failures = vi.fn();
+    const enqueue = createRecoveredSerialQueue(failures, {
+      propagateFailure: true,
+    });
+    const later = vi.fn();
+    const failed = enqueue(async () => {
+      throw new Error("persistence receipt mismatch");
+    });
+    const recovered = enqueue(async () => later());
+
+    await expect(failed).rejects.toThrow("persistence receipt mismatch");
+    await expect(recovered).resolves.toBeUndefined();
+    expect(later).toHaveBeenCalledOnce();
+    expect(failures).toHaveBeenCalledWith("persistence receipt mismatch");
+  });
+
   it("contains unavailable-authority failures without returning a rejection", async () => {
     const failures = vi.fn();
     const enqueue = createRecoveredSerialQueue(failures);

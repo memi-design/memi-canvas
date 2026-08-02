@@ -19,6 +19,8 @@ import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-acti
 import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
 import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
+import { canonicalizeReconstructionReviewsV3 } from "./reconstruction-review-v3.js";
+import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -117,6 +119,12 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     });
   const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;
+  const canonicalReconstructionReviews = canonicalizeReconstructionReviewsV3({
+    document: v3Session.document,
+    legacyDocumentId: project.document.id,
+    pageId: v3Session.activePageId,
+    reviews: reconstructionReviews,
+  });
   const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
     scene.nodes.filter(({ id }) => id === nodeId),
   );
@@ -131,7 +139,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     nodes: scene.nodes,
     pageNavigation,
     project,
-    reviews: reconstructionReviews,
+    reviews: canonicalReconstructionReviews,
     selectedNodeId,
     selectedNodeIds,
   });
@@ -139,12 +147,20 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     canonicalSnapshot.nodes.filter(({ id }) => id === nodeId),
   );
   const inspectorSelectedNode = inspectorSelectedNodes.at(-1);
-  const resolvedSelectedNode =
+  const resolvedCanonicalSelectedNode =
     inspectorSelectedNode === undefined
       ? undefined
       : resolveComponentInstance(
           inspectorSelectedNode,
           canonicalSnapshot.nodes,
+        );
+  const resolvedSelectedNode =
+    resolvedCanonicalSelectedNode === undefined
+      ? undefined
+      : projectLegacyComponentMasterIdV3(
+          resolvedCanonicalSelectedNode,
+          project.document.id,
+          project.document.nodes,
         );
   const inspectorV3Actions = createWorkbenchInspectorV3Actions({
     commitIntentReceipt,
@@ -154,6 +170,13 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   const selectedHarness =
     project.harness.options.find((option) => option.id === harnessId) ??
     project.harness.options[0];
+  const publishLegacySelectionProjection = () => {
+    props.onSceneChange?.({
+      ...scene,
+      selectedNodeId:
+        canonicalAuthority?.getSnapshot().selection.anchorId ?? null,
+    });
+  };
 
   const {
     appendTrace,
@@ -170,8 +193,15 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     commitScene: unavailableMutation,
     createRootNode: unavailableMutation,
     redoScene: redoV3,
-    selectNode: (nodeId: string, additive: boolean) => v3History?.selectNodeIds(additive ? [...selectedNodeIds, nodeId] : [nodeId]),
-    selectNodeIds: (ids: readonly string[]) => v3History?.selectNodeIds(ids),
+    selectNode: (nodeId: string, additive: boolean) => {
+      suppressCanvasClick.current = false;
+      v3History?.selectNode(nodeId, additive);
+      publishLegacySelectionProjection();
+    },
+    selectNodeIds: (ids: readonly string[]) => {
+      v3History?.selectNodeIds(ids);
+      publishLegacySelectionProjection();
+    },
     undoScene: undoV3,
   };
   const {
@@ -184,10 +214,13 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     rollbackAppliedAgentPatch,
     verifyAppliedAgentPatch,
   } = createWorkbenchAgentReviewActions({
+    agentPatchBaseNodes: project.document.nodes,
+    agentPatchLegacyDocumentId: project.document.id,
     agentPatchReview,
     appendTrace,
     canonicalDocumentRevision:
       canonicalSnapshot.document.revision,
+    commitIntentReceipt,
     commitScene,
     documentNodes: scene.nodes,
     documentRevision: scene.revision,
@@ -756,16 +789,11 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     />
   );
 }
-
 // Keyed template boundary: changing documents or imported source remounts the
 // editing session so one document can never autosave another document's scene.
 export function CanvasWorkbench(props: CanvasWorkbenchProps) {
-  if (props.v3Session === undefined) {
-    return <div role="alert">Canvas V3 session is unavailable.</div>;
-  }
+  if (props.v3Session === undefined) return <div role="alert">Canvas V3 session is unavailable.</div>;
   const authorityProject = props.authorityProject ?? props.project;
-  const sessionKey = `${props.project.document.id}:${canvasSourceFingerprint(
-    authorityProject,
-  )}`;
+  const sessionKey = `${props.project.document.id}:${canvasSourceFingerprint(authorityProject)}`;
   return <CanvasWorkbenchSession key={sessionKey} {...props} />;
 }

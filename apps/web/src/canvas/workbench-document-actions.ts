@@ -502,7 +502,8 @@ export function createWorkbenchDocumentActions(
     const { source, ...withoutSource } = selectedNode;
     const detached: WorkbenchNode = {
       ...withoutSource,
-      frameContent: selectedNode.name,
+      frameContent:
+        selectedNode.frameContent ?? selectedNode.text ?? selectedNode.name,
       kind: "DraftFrame",
       provenance: provenanceFromSource(source),
     };

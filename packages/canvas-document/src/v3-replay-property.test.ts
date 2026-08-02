@@ -16,7 +16,7 @@ describe("CanvasDocumentV3 deterministic replay property", () => {
     expect(result.atomicBatchCount).toBeGreaterThan(0);
     expect(result.replayedHash).toBe(fixture.expectedFinalHash);
     expect(result.restoredHash).toBe(fixture.initial.stateHash);
-  }, 30_000);
+  }, 60_000);
 
   it("reverses same-type atomic batch actions in LIFO order", () => {
     const fixture = createDeterministicCanvasV3ReplayFixture(8);

@@ -9,10 +9,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import { Inspector } from "./parts.js";
 
-function renderWorkbench(): void {
-  render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+async function renderWorkbench() {
+  const v3Session = createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture);
+  render(
+    <CanvasWorkbench
+      project={canvasWorkbenchFixture}
+      v3Session={v3Session}
+    />,
+  );
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
+  return v3Session;
 }
 
 function viewport(): HTMLElement {
@@ -24,7 +33,7 @@ function canvasNode(name: string): HTMLElement {
 }
 
 describe("CanvasWorkbench professional interaction contract", () => {
-  it("uses a compact icon-first inspector when nothing is selected", () => {
+  it("uses a compact icon-first inspector when nothing is selected", async () => {
     render(
       <Inspector
         node={undefined}
@@ -41,14 +50,16 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toBeTruthy();
   });
 
-  it("supports additive selection, toggle selection, and clearing on empty canvas", () => {
+  it("supports additive selection, toggle selection, and clearing on empty canvas", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture)}
       />,
     );
+    await screen.findByRole("toolbar", { name: "Canvas tools" });
 
     fireEvent.pointerDown(canvasNode("Campaign card"), {
       button: 0,
@@ -74,14 +85,27 @@ describe("CanvasWorkbench professional interaction contract", () => {
     );
     expect(viewport().getAttribute("data-selection-count")).toBe("2");
 
-    fireEvent.click(canvasNode("Campaign card"), { shiftKey: true });
-    expect(canvasNode("Campaign card").getAttribute("aria-pressed")).toBe(
-      "false",
-    );
-    expect(viewport().getAttribute("data-selection-count")).toBe("1");
+    fireEvent.pointerDown(canvasNode("Campaign card"), {
+      button: 0,
+      pointerId: 3,
+      shiftKey: true,
+    });
+    fireEvent.pointerUp(viewport(), {
+      button: 0,
+      pointerId: 3,
+      shiftKey: true,
+    });
+    await waitFor(() => {
+      expect(canvasNode("Campaign card").getAttribute("aria-pressed")).toBe(
+        "false",
+      );
+      expect(viewport().getAttribute("data-selection-count")).toBe("1");
+    });
 
     fireEvent.click(viewport());
-    expect(viewport().getAttribute("data-selection-count")).toBe("0");
+    await waitFor(() => {
+      expect(viewport().getAttribute("data-selection-count")).toBe("0");
+    });
     expect(onSceneChange.mock.calls.at(-1)?.[0]).toMatchObject({
       selectedNodeId: null,
     });
@@ -90,8 +114,8 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toBeTruthy();
   });
 
-  it("makes the selected object visually identifiable with a dedicated bounds affordance", () => {
-    renderWorkbench();
+  it("makes the selected object visually identifiable with a dedicated bounds affordance", async () => {
+    await renderWorkbench();
 
     fireEvent.pointerDown(canvasNode("Campaign card"), {
       button: 0,
@@ -102,13 +126,17 @@ describe("CanvasWorkbench professional interaction contract", () => {
     expect(
       screen.getByLabelText("Selection bounds for Campaign card"),
     ).toBeTruthy();
+    const campaignId = canvasNode("Campaign card")
+      .closest<HTMLElement>("[data-node-id]")
+      ?.dataset.nodeId;
+    expect(campaignId).toBeTruthy();
     expect(
-      screen.getByTestId("canvas-node-tag-node-campaign-card").textContent,
+      screen.getByTestId(`canvas-node-tag-${campaignId}`).textContent,
     ).toContain("Campaign card");
   });
 
-  it("marquee-selects intersecting unlocked nodes as one ordered selection", () => {
-    renderWorkbench();
+  it("marquee-selects intersecting unlocked nodes as one ordered selection", async () => {
+    await renderWorkbench();
 
     fireEvent.pointerDown(viewport(), {
       pointerId: 7,
@@ -146,8 +174,8 @@ describe("CanvasWorkbench professional interaction contract", () => {
     );
   });
 
-  it("keeps the marquee under the pointer when the viewport is offset by editor chrome", () => {
-    renderWorkbench();
+  it("keeps the marquee under the pointer when the viewport is offset by editor chrome", async () => {
+    await renderWorkbench();
     const canvas = viewport();
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
       bottom: 680,
@@ -182,7 +210,7 @@ describe("CanvasWorkbench professional interaction contract", () => {
   });
 
   it("pans with an ordinary wheel and zooms around the pointer with ctrl-wheel", async () => {
-    renderWorkbench();
+    await renderWorkbench();
 
     fireEvent.wheel(viewport(), {
       deltaX: 24,
@@ -214,7 +242,7 @@ describe("CanvasWorkbench professional interaction contract", () => {
   });
 
   it("supports transient space-pan and middle-mouse pan without changing tools", async () => {
-    renderWorkbench();
+    await renderWorkbench();
     const selectTool = screen.getByRole("button", { name: "Select tool" });
 
     fireEvent.keyDown(document, { key: " " });
@@ -268,7 +296,7 @@ describe("CanvasWorkbench professional interaction contract", () => {
   });
 
   it("starts pan gestures over artwork instead of moving or swallowing the pointer", async () => {
-    renderWorkbench();
+    await renderWorkbench();
     const canvas = viewport();
     const campaign = canvasNode("Campaign card");
     const initialLeft = campaign.parentElement?.style.left;
@@ -302,15 +330,15 @@ describe("CanvasWorkbench professional interaction contract", () => {
     expect(campaign.parentElement?.style.top).toBe(initialTop);
   });
 
-  it("selects all, groups, ungroups, duplicates, deletes, and orders through shortcuts", () => {
-    renderWorkbench();
+  it("selects all, groups, ungroups, duplicates, deletes, and orders through shortcuts", async () => {
+    await renderWorkbench();
 
     fireEvent.keyDown(document, { key: "a", metaKey: true });
     expect(viewport().getAttribute("data-selection-count")).toBe("5");
 
     fireEvent.keyDown(document, { key: "g", metaKey: true });
     expect(
-      within(screen.getByRole("tree", { name: "Layers" })).getByRole(
+      await within(screen.getByRole("tree", { name: "Layers" })).findByRole(
         "treeitem",
         { name: /Group 1.*Group/ },
       ),
@@ -318,30 +346,45 @@ describe("CanvasWorkbench professional interaction contract", () => {
     expect(viewport().getAttribute("data-selection-count")).toBe("1");
 
     fireEvent.keyDown(document, { key: "g", metaKey: true, shiftKey: true });
-    expect(
-      within(screen.getByRole("tree", { name: "Layers" })).queryByRole(
-        "treeitem",
-        { name: /Group 1.*Group/ },
-      ),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("tree", { name: "Layers" })).queryByRole(
+          "treeitem",
+          { name: /Group 1.*Group/ },
+        ),
+      ).toBeNull();
+    });
 
     fireEvent.click(canvasNode("Campaign card"));
+    await waitFor(() => {
+      expect(canvasNode("Campaign card").getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+    });
     fireEvent.keyDown(document, { key: "d", metaKey: true });
-    expect(canvasNode("Campaign card copy")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", {
+        name: "Campaign card copy on canvas",
+      }),
+    ).toBeTruthy();
     fireEvent.keyDown(document, { key: "]", metaKey: true, altKey: true });
     fireEvent.keyDown(document, { key: "Backspace" });
-    expect(screen.queryByRole("button", {
-      name: "Campaign card copy on canvas",
-    })).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", {
+        name: "Campaign card copy on canvas",
+      })).toBeNull();
+    });
   });
 
-  it("moves a group and its descendants as one visual hierarchy", () => {
-    renderWorkbench();
+  it("moves a group and its descendants as one visual hierarchy", async () => {
+    await renderWorkbench();
     fireEvent.click(canvasNode("Campaign card"));
     fireEvent.click(canvasNode("Checkout exploration"), { shiftKey: true });
     fireEvent.keyDown(document, { key: "g", metaKey: true });
 
-    const group = canvasNode("Group 1");
+    const group = await screen.findByRole("button", {
+      name: "Group 1 on canvas",
+    });
     const campaign = canvasNode("Campaign card");
     const headline = canvasNode("Welcome headline");
     const campaignBefore = {
@@ -371,19 +414,23 @@ describe("CanvasWorkbench professional interaction contract", () => {
       pointerId: 43,
     });
 
-    expect(campaign.parentElement?.style.left).not.toBe(campaignBefore.left);
-    expect(campaign.parentElement?.style.top).not.toBe(campaignBefore.top);
-    expect(headline.parentElement?.style.left).not.toBe(headlineBefore.left);
-    expect(headline.parentElement?.style.top).not.toBe(headlineBefore.top);
+    await waitFor(() => {
+      expect(campaign.parentElement?.style.left).not.toBe(campaignBefore.left);
+      expect(campaign.parentElement?.style.top).not.toBe(campaignBefore.top);
+      expect(headline.parentElement?.style.left).not.toBe(headlineBefore.left);
+      expect(headline.parentElement?.style.top).not.toBe(headlineBefore.top);
+    });
   });
 
-  it("nudges a selected group and its descendants as one hierarchy", () => {
-    renderWorkbench();
+  it("nudges a selected group and its descendants as one hierarchy", async () => {
+    await renderWorkbench();
     fireEvent.click(canvasNode("Campaign card"));
     fireEvent.click(canvasNode("Checkout exploration"), { shiftKey: true });
     fireEvent.keyDown(document, { key: "g", metaKey: true });
 
-    const group = canvasNode("Group 1");
+    const group = await screen.findByRole("button", {
+      name: "Group 1 on canvas",
+    });
     const campaign = canvasNode("Campaign card");
     const child = canvasNode("Welcome headline");
     const before = {
@@ -393,12 +440,14 @@ describe("CanvasWorkbench professional interaction contract", () => {
     };
     fireEvent.keyDown(viewport(), { key: "ArrowRight" });
 
-    expect(group.parentElement?.style.left).not.toBe(before.group);
-    expect(campaign.parentElement?.style.left).not.toBe(before.campaign);
-    expect(child.parentElement?.style.left).not.toBe(before.child);
+    await waitFor(() => {
+      expect(group.parentElement?.style.left).not.toBe(before.group);
+      expect(campaign.parentElement?.style.left).not.toBe(before.campaign);
+      expect(child.parentElement?.style.left).not.toBe(before.child);
+    });
   });
 
-  it("inherits hidden and locked interaction state from group ancestry", () => {
+  it("inherits hidden and locked interaction state from group ancestry", async () => {
     const base = {
       hidden: false,
       kind: "Rectangle" as const,
@@ -430,8 +479,12 @@ describe("CanvasWorkbench professional interaction contract", () => {
       selectedNodeId: null,
     };
     const { unmount } = render(
-      <CanvasWorkbench project={hiddenProject} />,
+      <CanvasWorkbench
+        project={hiddenProject}
+        v3Session={createCanvasWorkbenchV3TestSession(hiddenProject)}
+      />,
     );
+    await screen.findByRole("toolbar", { name: "Canvas tools" });
     expect(
       screen.queryByRole("button", { name: "Hidden child on canvas" }),
     ).toBeNull();
@@ -459,7 +512,13 @@ describe("CanvasWorkbench professional interaction contract", () => {
         ],
       },
     };
-    render(<CanvasWorkbench project={lockedProject} />);
+    render(
+      <CanvasWorkbench
+        project={lockedProject}
+        v3Session={createCanvasWorkbenchV3TestSession(lockedProject)}
+      />,
+    );
+    await screen.findByRole("toolbar", { name: "Canvas tools" });
     expect(
       screen
         .getByRole("button", { name: "Locked child on canvas" })
@@ -467,8 +526,8 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toBe("true");
   });
 
-  it("opens an accessible contextual menu and protects source-backed nodes", () => {
-    renderWorkbench();
+  it("opens an accessible contextual menu and protects source-backed nodes", async () => {
+    await renderWorkbench();
 
     fireEvent.contextMenu(canvasNode("Dashboard desktop"), {
       clientX: 320,
@@ -489,7 +548,7 @@ describe("CanvasWorkbench professional interaction contract", () => {
       within(menu).getByRole("menuitem", { name: "Detach from source" }),
     );
     expect(
-      within(screen.getByRole("region", { name: "Inspector" })).getByText(
+      await within(screen.getByRole("region", { name: "Inspector" })).findByText(
         "Kind: DraftFrame",
       ),
     ).toBeTruthy();
@@ -503,11 +562,15 @@ describe("CanvasWorkbench professional interaction contract", () => {
         screen.getByRole("menu", { name: "Canvas selection actions" }),
       ).getByRole("menuitem", { name: /Duplicate/ }),
     );
-    expect(canvasNode("Dashboard desktop copy")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", {
+        name: "Dashboard desktop copy on canvas",
+      }),
+    ).toBeTruthy();
   });
 
-  it("right-click selects the target before opening actions for it", () => {
-    renderWorkbench();
+  it("right-click selects the target before opening actions for it", async () => {
+    await renderWorkbench();
     fireEvent.click(canvasNode("Campaign card"));
 
     fireEvent.contextMenu(canvasNode("Welcome headline"), {
@@ -528,15 +591,19 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toContain("Welcome headline");
   });
 
-  it("frames, componentizes, and locks a selection through canonical actions", () => {
-    renderWorkbench();
+  it("frames, componentizes, and locks a selection through canonical actions", async () => {
+    await renderWorkbench();
 
     fireEvent.click(canvasNode("Campaign card"));
     fireEvent.keyDown(document, { key: "g", metaKey: true, altKey: true });
-    expect(canvasNode("Frame 2")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Frame 2 on canvas" }),
+    ).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "k", metaKey: true, altKey: true });
-    const component = canvasNode("Component 1");
+    const component = await screen.findByRole("button", {
+      name: "Component 1 on canvas",
+    });
     expect(component).toBeTruthy();
 
     fireEvent.contextMenu(component, { clientX: 320, clientY: 240 });
@@ -555,17 +622,21 @@ describe("CanvasWorkbench professional interaction contract", () => {
       within(menu).getByRole("menuitem", { name: "Lock selection" }),
     );
 
-    expect(component.getAttribute("aria-disabled")).toBe("true");
+    await waitFor(() => {
+      expect(component.getAttribute("aria-disabled")).toBe("true");
+    });
   });
 
-  it("creates a local component master that can immediately place an instance", () => {
-    renderWorkbench();
+  it("creates a local component master that can immediately place an instance", async () => {
+    await renderWorkbench();
 
     fireEvent.click(canvasNode("Campaign card"));
     fireEvent.keyDown(document, { key: "k", metaKey: true, altKey: true });
 
     fireEvent.click(screen.getByRole("button", { name: "Assets" }));
-    const assets = screen.getByRole("list", { name: "Source components" });
+    const assets = await screen.findByRole("list", {
+      name: "Source components",
+    });
     expect(
       within(assets).getByRole("button", { name: /Component 1/ }),
     ).toBeTruthy();
@@ -573,7 +644,11 @@ describe("CanvasWorkbench professional interaction contract", () => {
     fireEvent.click(canvasNode("Component 1"));
     fireEvent.keyDown(document, { key: "d", metaKey: true });
 
-    expect(canvasNode("Component 1 copy")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", {
+        name: "Component 1 copy on canvas",
+      }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Component 1 copy on canvas" })
         .closest("[data-node-kind]")
@@ -581,8 +656,8 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toBe("ComponentInstance");
   });
 
-  it("duplicates a detached draft with option-drag and commits one history entry", () => {
-    renderWorkbench();
+  it("duplicates a detached draft with option-drag and commits one history entry", async () => {
+    const v3Session = await renderWorkbench();
 
     const campaign = canvasNode("Campaign card");
     fireEvent.pointerDown(campaign, {
@@ -604,16 +679,25 @@ describe("CanvasWorkbench professional interaction contract", () => {
       altKey: true,
     });
 
-    expect(canvasNode("Campaign card copy")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Agent activity" }));
-    const history = screen.getByRole("list", { name: "Semantic history" });
-    expect(within(history).getByText("Duplicate and move Campaign card"))
-      .toBeTruthy();
-    expect(within(history).getAllByRole("listitem")).toHaveLength(1);
+    expect(
+      await screen.findByRole("button", {
+        name: "Campaign card copy on canvas",
+      }),
+    ).toBeTruthy();
+    await waitFor(async () => {
+      const journal = await v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: v3Session.document.id,
+        projectId: v3Session.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Duplicate and move Campaign card",
+      ]);
+    });
   });
 
-  it("rolls back an unfinished move when pointer capture is lost", () => {
-    renderWorkbench();
+  it("rolls back an unfinished move when pointer capture is lost", async () => {
+    await renderWorkbench();
 
     const campaign = canvasNode("Campaign card");
     const node = campaign.parentElement;
@@ -649,7 +733,7 @@ describe("CanvasWorkbench professional interaction contract", () => {
   });
 
   it("keeps camera and drag scale stable while an object gesture is active", async () => {
-    renderWorkbench();
+    await renderWorkbench();
 
     const campaign = canvasNode("Campaign card");
     fireEvent.pointerDown(campaign, {

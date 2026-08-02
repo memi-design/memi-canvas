@@ -110,6 +110,7 @@ export interface V3WorkbenchHistoryActions {
     input: V3SemanticWorkbenchAction,
   ) => Promise<CanvasOperationV3>;
   readonly redoScene: () => Promise<CanvasOperationV3 | null>;
+  readonly selectNode: (nodeId: string, additive: boolean) => void;
   readonly selectNodeIds: (nodeIds: readonly string[]) => void;
   readonly undoScene: () => Promise<CanvasOperationV3 | null>;
 }
@@ -154,9 +155,19 @@ export function createV3WorkbenchHistoryActions(
     context.authority.setSelection(createSelectionState(ordered));
   };
 
+  const selectNode = (nodeId: string, additive: boolean) => {
+    const nextSelection = updateSelection(
+      context.authority.getSnapshot().selection,
+      nodeId,
+      additive ? "toggle" : "replace",
+    );
+    context.authority.setSelection(nextSelection);
+  };
+
   return {
     commitSemanticAction,
     redoScene,
+    selectNode,
     selectNodeIds,
     undoScene,
   };

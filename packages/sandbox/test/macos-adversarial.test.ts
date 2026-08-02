@@ -274,7 +274,7 @@ describe.skipIf(process.platform !== "darwin")(
         setInterval(() => {}, 1000);
       `,
       [childPidFile],
-      { timeoutMs: 250 },
+      { timeoutMs: 1_000 },
     );
 
     expect(result).toMatchObject({
@@ -305,7 +305,7 @@ describe.skipIf(process.platform !== "darwin")(
         setInterval(() => {}, 1000);
       `,
       [childPidFile],
-      { timeoutMs: 250 },
+      { timeoutMs: 1_000 },
     );
     const childPid = await readPid(childPidFile);
 

@@ -4,6 +4,7 @@ import {
   type CanvasDocumentV3,
   type CanvasPageId,
 } from "@memi/protocol";
+import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
 
 import { projectCanvasDocumentV2ToWorkbenchNodes } from "./canonical-workbench-authority.js";
 import type { WorkbenchNode } from "./model.js";
@@ -70,5 +71,63 @@ export function projectCanvasDocumentV3ToWorkbench(
 ): readonly WorkbenchNode[] {
   return projectCanvasDocumentV2ToWorkbenchNodes(
     projectPageDocument(document, pageId),
+  ).map((node) => projectComponentDefinitionDefaults(document, node));
+}
+
+function projectComponentDefinitionDefaults(
+  document: CanvasDocumentV3,
+  node: WorkbenchNode,
+): WorkbenchNode {
+  const component = node.component;
+  if (component?.classification !== "master") return node;
+  const definition = document.componentsById[component.componentId];
+  if (definition === undefined) return node;
+  const label = definition.propertyDefinitions.label?.defaultValue;
+  const icon = definition.propertyDefinitions.icon?.defaultValue;
+  const selected = definition.propertyDefinitions.selected?.defaultValue;
+  const variant = definition.propertyDefinitions.variant?.defaultValue;
+  return {
+    ...node,
+    component: {
+      ...component,
+      props: {
+        ...component.props,
+        ...(typeof label === "string" ? { label } : {}),
+        ...(typeof icon === "string" ? { icon } : {}),
+        ...(typeof selected === "boolean" ? { selected } : {}),
+      },
+      ...(typeof variant === "string" ? { variant } : {}),
+    },
+  };
+}
+
+/**
+ * Restores a pre-migration master identity only for legacy-facing UI copy.
+ * The V3 instance binding remains canonical and is never mutated by this view.
+ */
+export function projectLegacyComponentMasterIdV3(
+  node: WorkbenchNode,
+  legacyDocumentId: string,
+  legacyNodes: readonly WorkbenchNode[],
+): WorkbenchNode {
+  const masterId = node.component?.masterId;
+  if (
+    node.component?.classification !== "instance" ||
+    masterId === undefined
+  ) {
+    return node;
+  }
+  const legacyMaster = legacyNodes.find((candidate) =>
+    candidate.component?.classification === "master" &&
+    mapLegacyCanvasIdV2(
+      "node",
+      `${legacyDocumentId}:${candidate.id}`,
+    ).canonicalId === masterId
   );
+  return legacyMaster === undefined
+    ? node
+    : {
+        ...node,
+        component: { ...node.component, masterId: legacyMaster.id },
+      };
 }

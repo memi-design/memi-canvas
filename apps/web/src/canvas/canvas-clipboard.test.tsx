@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +32,7 @@ import {
 } from "./canvas-clipboard.js";
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import type {
   CanvasWorkbenchProject,
   WorkbenchNode,
@@ -126,6 +128,18 @@ function destinationProject(): CanvasWorkbenchProject {
   };
 }
 
+async function renderWorkbench(project: CanvasWorkbenchProject) {
+  const v3Session = createCanvasWorkbenchV3TestSession(project);
+  const view = render(
+    <CanvasWorkbench
+      project={project}
+      v3Session={v3Session}
+    />,
+  );
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
+  return { v3Session, view };
+}
+
 afterEach(() => {
   cleanup();
   clearCanvasSessionClipboard();
@@ -133,7 +147,7 @@ afterEach(() => {
 });
 
 describe("canvas clipboard payload", () => {
-  it("creates a bounded truthful image node at the canvas cursor", () => {
+  it("creates a bounded truthful image node at the canvas cursor", async () => {
     const bytes = Uint8Array.from(
       atob(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
@@ -308,7 +322,7 @@ describe("canvas clipboard payload", () => {
     ).toBeNull();
   });
 
-  it("copies a selected hierarchy with styles, provenance, and component references", () => {
+  it("copies a selected hierarchy with styles, provenance, and component references", async () => {
     const payload = createCanvasClipboardPayload({
       documentId: "source-document",
       nodes: [componentMaster, componentInstance],
@@ -392,7 +406,7 @@ describe("canvas clipboard payload", () => {
     ).resolves.toEqual(payload);
   });
 
-  it("does not fabricate a Canvas reference from an image-only paste", () => {
+  it("does not fabricate a Canvas reference from an image-only paste", async () => {
     expect(
       readCanvasClipboardFromPasteData({
         getData: () => "",
@@ -430,7 +444,7 @@ describe("canvas clipboard payload", () => {
     expect(image?.src).not.toContain("blob:");
   });
 
-  it("rejects malformed, oversized, and over-deep payloads", () => {
+  it("rejects malformed, oversized, and over-deep payloads", async () => {
     const valid = createCanvasClipboardPayload({
       documentId: "source-document",
       nodes: [componentMaster, componentInstance],
@@ -491,7 +505,7 @@ describe("canvas clipboard payload", () => {
     ).toBeNull();
   });
 
-  it("pastes fresh collision-safe ids with one offset and remapped hierarchy references", () => {
+  it("pastes fresh collision-safe ids with one offset and remapped hierarchy references", async () => {
     const payload = createCanvasClipboardPayload({
       documentId: "source-document",
       nodes: [componentMaster, componentInstance],
@@ -523,7 +537,7 @@ describe("canvas clipboard payload", () => {
     });
   });
 
-  it("round-trips nested hierarchy and reconnects an external component by semantic identity", () => {
+  it("round-trips nested hierarchy and reconnects an external component by semantic identity", async () => {
     const frame: WorkbenchNode = {
       hidden: false,
       id: "frame",
@@ -590,7 +604,7 @@ describe("canvas clipboard payload", () => {
     expect(pastedInstance?.provenance).toEqual(componentInstance.provenance);
   });
 
-  it("drops an instance master reference when its external master is unavailable", () => {
+  it("drops an instance master reference when its external master is unavailable", async () => {
     const externalInstance: WorkbenchNode = {
       ...componentInstance,
       id: "external-instance",
@@ -611,7 +625,7 @@ describe("canvas clipboard payload", () => {
     expect(result?.pastedNodes[0]?.component?.masterId).toBeUndefined();
   });
 
-  it("cuts only deletable hierarchy nodes while retaining source-backed nodes", () => {
+  it("cuts only deletable hierarchy nodes while retaining source-backed nodes", async () => {
     const sourceBacked: WorkbenchNode = {
       ...componentMaster,
       id: "source-frame",
@@ -671,7 +685,8 @@ describe("CanvasWorkbench clipboard integration", () => {
         },
       },
     });
-    render(<CanvasWorkbench project={destinationProject()} />);
+    const project = destinationProject();
+    await renderWorkbench(project);
 
     fireEvent.keyDown(document, { ctrlKey: true, key: "v" });
 
@@ -687,7 +702,8 @@ describe("CanvasWorkbench clipboard integration", () => {
       ),
       (character) => character.charCodeAt(0),
     );
-    render(<CanvasWorkbench project={destinationProject()} />);
+    const project = destinationProject();
+    await renderWorkbench(project);
     fireEvent.pointerMove(screen.getByRole("region", { name: "Infinite canvas" }), {
       clientX: 312,
       clientY: 228,
@@ -727,14 +743,15 @@ describe("CanvasWorkbench clipboard integration", () => {
     expect(imageNode.parentElement?.style.top).toBe("228px");
   });
 
-  it("pastes the validated Memi MIME payload delivered by a browser paste event", () => {
+  it("pastes the validated Memi MIME payload delivered by a browser paste event", async () => {
     const payload = createCanvasClipboardPayload({
       documentId: canvasWorkbenchFixture.document.id,
       nodes: canvasWorkbenchFixture.document.nodes,
       selectedIds: ["node-campaign-card"],
     });
     expect(payload).not.toBeNull();
-    render(<CanvasWorkbench project={destinationProject()} />);
+    const project = destinationProject();
+    await renderWorkbench(project);
     const pasteEvent = new Event("paste", {
       bubbles: true,
       cancelable: true,
@@ -755,42 +772,44 @@ describe("CanvasWorkbench clipboard integration", () => {
 
     expect(pasteEvent.defaultPrevented).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Campaign card on canvas" }),
+      await screen.findByRole("button", { name: "Campaign card on canvas" }),
     ).toBeTruthy();
   });
 
-  it("keeps the internal clipboard across document remounts and pastes in one history and trace entry", () => {
-    const first = render(
-      <CanvasWorkbench project={canvasWorkbenchFixture} />,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Campaign card on canvas" }),
-    );
+  it("keeps the internal clipboard across document remounts and pastes in one history and trace entry", async () => {
+    const first = await renderWorkbench(canvasWorkbenchFixture);
+    const campaign = screen.getByRole("button", {
+      name: "Campaign card on canvas",
+    });
+    const campaignId = campaign.closest<HTMLElement>("[data-node-id]")
+      ?.dataset.nodeId;
+    expect(campaignId).toBeTruthy();
+    fireEvent.click(campaign);
     fireEvent.keyDown(document, { key: "c", metaKey: true });
-    expect(readCanvasSessionClipboard()?.rootIds).toEqual([
-      "node-campaign-card",
-    ]);
+    expect(readCanvasSessionClipboard()?.rootIds).toEqual([campaignId]);
 
-    first.unmount();
-    render(<CanvasWorkbench project={destinationProject()} />);
+    first.view.unmount();
+    const project = destinationProject();
+    const destination = await renderWorkbench(project);
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
 
     expect(
-      screen.getByRole("button", { name: "Campaign card on canvas" }),
+      await screen.findByRole("button", { name: "Campaign card on canvas" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Agent activity" }));
-    const history = screen.getByRole("list", { name: "Semantic history" });
-    expect(within(history).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(history).getByText("Paste 3 layers")).toBeTruthy();
-    expect(
-      within(screen.getByRole("log", { name: "Trace" })).getAllByText(
-        "Human · Paste 3 layers · r3 → r4 · applied",
-      ),
-    ).toHaveLength(1);
+    await waitFor(async () => {
+      const journal = await destination.v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: destination.v3Session.document.id,
+        projectId: destination.v3Session.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Paste 3 layers",
+      ]);
+    });
   });
 
-  it("supports copy, cut, and paste shortcuts without relying on clipboard permissions", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+  it("supports copy, cut, and paste shortcuts without relying on clipboard permissions", async () => {
+    await renderWorkbench(canvasWorkbenchFixture);
 
     const dashboard = screen.getByRole("button", {
       name: "Dashboard desktop on canvas",
@@ -804,21 +823,27 @@ describe("CanvasWorkbench clipboard integration", () => {
     );
     fireEvent.keyDown(document, { key: "c", ctrlKey: true });
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
-    expect(
-      screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-    ).toHaveLength(2);
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
+      ).toHaveLength(2);
+    });
     fireEvent.keyDown(document, { key: "x", ctrlKey: true });
-    expect(
-      screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-    ).toHaveLength(1);
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
+      ).toHaveLength(1);
+    });
     fireEvent.keyDown(document, { key: "v", ctrlKey: true });
-    expect(
-      screen.getAllByRole("button", { name: "Campaign card on canvas" }),
-    ).toHaveLength(2);
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "Campaign card on canvas" }),
+      ).toHaveLength(2);
+    });
   });
 
-  it("offers Cut, Copy, and Paste in the selection context menu", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+  it("offers Cut, Copy, and Paste in the selection context menu", async () => {
+    await renderWorkbench(canvasWorkbenchFixture);
     fireEvent.contextMenu(
       screen.getByRole("button", { name: "Campaign card on canvas" }),
       { clientX: 320, clientY: 240 },

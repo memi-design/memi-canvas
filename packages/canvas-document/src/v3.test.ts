@@ -117,6 +117,18 @@ describe("CanvasDocumentV3 engine", () => {
         create,
       ),
     ).toThrow(/exact resulting/i);
+    expect(() =>
+      revertCanvasOperationV3(created, {
+        ...create,
+        expectedRevision: create.expectedRevision + 1,
+      }),
+    ).toThrow(/exact resulting/i);
+    expect(() =>
+      revertCanvasOperationV3(created, {
+        ...create,
+        resultingHash: `sha256:${"0".repeat(64)}`,
+      }),
+    ).toThrow(/exact resulting/i);
 
     const inverse = invertCanvasOperationV3(created, create, {
       id: ids.operation[1],

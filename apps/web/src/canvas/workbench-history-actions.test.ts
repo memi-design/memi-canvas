@@ -12,7 +12,11 @@ import {
   createCanonicalWorkbenchAuthority,
   type CanonicalWorkbenchAuthority,
 } from "./canonical-workbench-authority.js";
-import { CanonicalWorkbenchAuthorityV3 } from "./canonical-workbench-authority-v3.js";
+import {
+  CanonicalWorkbenchAuthorityV3,
+  migrateLegacyWorkbenchProjectionToV3,
+} from "./canonical-workbench-authority-v3.js";
+import { createLegacyWorkbenchProjection } from "./legacy-workbench-projection.js";
 import { createSelectionState, type WorkbenchNode } from "./model.js";
 import { createAuthoringSelectionTransaction } from "./authoring-selection.js";
 import {
@@ -118,6 +122,45 @@ function historyActions(
 }
 
 describe("operation-native workbench history actions", () => {
+  it("adds and toggles nodes against the latest V3 selection", async () => {
+    const migration = migrateLegacyWorkbenchProjectionToV3(
+      createLegacyWorkbenchProjection({
+        nodes: [rectangle("card", 20, 30), rectangle("headline", 80, 90)],
+        revision: 0,
+        selectedNodeId: null,
+      }),
+      {
+        legacyDocumentId: "selection-document",
+        legacyProjectId: "selection-project",
+      },
+    );
+    const canonicalAuthority = await CanonicalWorkbenchAuthorityV3.open({
+      document: migration.document,
+      persistence: v3MemoryPort(),
+      selection: migration.selection,
+    });
+    const actions = createV3WorkbenchHistoryActions({
+      authority: canonicalAuthority,
+      actorId: "local-user",
+      createOperationId: () => "opn_01J00000000000000000000000",
+      now: () => "2026-08-02T12:00:00.000Z",
+    });
+    const cardId = migration.legacyReceipt.nodeIds.card!;
+    const headlineId = migration.legacyReceipt.nodeIds.headline!;
+
+    actions.selectNode(cardId, false);
+    actions.selectNode(headlineId, true);
+    expect(canonicalAuthority.getSnapshot().selection.selectedIds).toEqual([
+      cardId,
+      headlineId,
+    ]);
+
+    actions.selectNode(cardId, true);
+    expect(canonicalAuthority.getSnapshot().selection.selectedIds).toEqual([
+      headlineId,
+    ]);
+  });
+
   it("commits renderer edits through V3 semantic operations and durable inverse history", async () => {
     const document = createCanvasDocumentV3({
       id: "doc_01J00000000000000000000000",

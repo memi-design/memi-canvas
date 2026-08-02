@@ -1,7 +1,9 @@
 import {
+  CanvasComponentIdSchema,
   CanvasNodeIdSchema,
   CanvasNodeV3Schema,
   type CanvasActionIntentV3,
+  type CanvasComponentDefinitionV3,
   type CanvasDocumentV3,
   type CanvasGeometryV2,
   type CanvasLayoutV2,
@@ -25,6 +27,7 @@ export type WorkbenchIntentReceiptV3 =
   | { readonly kind: "node.style"; readonly nodeId: string; readonly next: CanvasStyleV2 }
   | { readonly kind: "node.text"; readonly nodeId: string; readonly next: CanvasTextV2 }
   | { readonly kind: "node.layout"; readonly nodeId: string; readonly next: CanvasLayoutV2 }
+  | { readonly kind: "component.update"; readonly node: WorkbenchNode }
   | { readonly kind: "create" | "paste"; readonly nodes: readonly WorkbenchNode[] }
   | { readonly kind: "move" | "resize" | "style"; readonly nodes: readonly WorkbenchNode[] }
   | { readonly kind: "delete"; readonly nodeIds: readonly string[] }
@@ -96,11 +99,23 @@ function canvasId(
   return canonicalWorkbenchNodeIdV3(document, pageId, workbenchId);
 }
 
+function canvasComponentId(
+  document: CanvasDocumentV3,
+  workbenchId: string,
+): CanvasComponentDefinitionV3["id"] {
+  const canonical = CanvasComponentIdSchema.safeParse(workbenchId);
+  if (canonical.success) return canonical.data;
+  return CanvasComponentIdSchema.parse(
+    mapLegacyCanvasIdV2(
+      "component",
+      `${document.id}:workbench:${workbenchId}`,
+    ).canonicalId,
+  );
+}
+
 function canvasKind(node: WorkbenchNode): CanvasNodeV3["kind"] {
   if (node.kind === "DraftFrame") return "frame";
-  if (node.kind === "ComponentInstance") {
-    throw new Error("Canvas V3 workbench intent cannot create an instance without its component definition.");
-  }
+  if (node.kind === "ComponentInstance") return "instance";
   if (node.kind === "CodeFrame" || node.kind === "RoutePlaceholder" || node.kind === "ReferenceFrame") {
     throw new Error("Source-linked workbench nodes must enter Canvas V3 through verified import reconstruction.");
   }
@@ -152,6 +167,119 @@ function detachedProvenance(node: WorkbenchNode): CanvasNodeV3["provenance"] {
   };
 }
 
+function componentBinding(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  node: WorkbenchNode,
+): CanvasNodeV3["componentBinding"] {
+  const component = node.component;
+  if (component === undefined) return null;
+  if (
+    component.classification === "instance" &&
+    component.masterId === undefined
+  ) {
+    throw new Error("Canvas V3 component instances require a master node.");
+  }
+  return {
+    atomicLevel: component.atomicLevel,
+    classification: component.classification,
+    componentId: canvasComponentId(document, component.componentId),
+    componentName: component.componentName,
+    editable: { ...component.editable },
+    masterNodeId:
+      component.classification === "master"
+        ? null
+        : canvasId(document, pageId, component.masterId!),
+    props: componentProps(component.props),
+    role: component.role,
+    source: {
+      exportName: component.source.exportName ?? null,
+      repositoryDirty: component.source.repositoryDirty ?? null,
+      repositoryRevision: component.source.repositoryRevision,
+      sourceAnchor: component.source.sourceAnchor,
+      sourceContentHash: component.source.sourceContentHash ?? null,
+    },
+    variant: component.variant ?? null,
+  };
+}
+
+function componentProps(
+  props: NonNullable<WorkbenchNode["component"]>["props"],
+): NonNullable<CanvasNodeV3["componentBinding"]>["props"] {
+  return {
+    ...(props.label === undefined ? {} : { label: props.label }),
+    ...(props.icon === undefined ? {} : { icon: props.icon }),
+    ...(props.selected === undefined ? {} : { selected: props.selected }),
+    ...(props.status === undefined ? {} : { status: props.status }),
+    ...(props.supportingText === undefined
+      ? {}
+      : { supportingText: props.supportingText }),
+    ...(props.placeholder === undefined
+      ? {}
+      : { placeholder: props.placeholder }),
+    ...(props.value === undefined ? {} : { value: props.value }),
+    ...(props.items === undefined
+      ? {}
+      : { items: props.items.map((item) => ({ ...item })) }),
+  };
+}
+
+function instanceOverrides(node: WorkbenchNode): CanvasNodeV3["instanceOverrides"] {
+  if (node.component?.classification !== "instance") return {};
+  const props = componentProps(node.component.props);
+  return {
+    ...Object.fromEntries(
+      Object.entries(props).filter((entry) => entry[1] !== undefined),
+    ),
+    ...(node.component.variant === undefined
+      ? {}
+      : { variant: node.component.variant }),
+  } as CanvasNodeV3["instanceOverrides"];
+}
+
+function componentDefinition(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  node: WorkbenchNode,
+): CanvasComponentDefinitionV3 | null {
+  const component = node.component;
+  if (node.kind !== "Component" || component?.classification !== "master") {
+    return null;
+  }
+  const id = canvasComponentId(document, component.componentId);
+  const propertyDefinitions = Object.fromEntries(
+    (Object.entries(component.editable) as readonly [
+      keyof typeof component.editable,
+      boolean,
+    ][]).flatMap(([key, editable]) => {
+      if (!editable) return [];
+      const type = key === "selected"
+        ? "boolean" as const
+        : key === "variant"
+          ? "variant" as const
+          : "text" as const;
+      const defaultValue = key === "selected"
+        ? component.props.selected ?? false
+        : key === "variant"
+          ? component.variant ?? "default"
+          : key === "icon"
+            ? component.props.icon ?? ""
+            : component.props.label ?? "";
+      return [[key, { defaultValue, type }]];
+    }),
+  );
+  return {
+    id,
+    name: component.componentName,
+    propertyDefinitions,
+    rootNodeId: canvasId(document, pageId, node.id),
+    variantAxes:
+      component.editable.variant
+        ? { variant: [component.variant ?? "default"] }
+        : {},
+  };
+}
+
 function toCanvasNode(
   document: CanvasDocumentV3,
   pageId: CanvasPageId,
@@ -159,10 +287,13 @@ function toCanvasNode(
 ): CanvasNodeV3 {
   const kind = canvasKind(node);
   const layout = node.layout ?? DEFAULT_WORKBENCH_LAYOUT;
+  const binding = componentBinding(document, pageId, node);
+  const componentId =
+    kind === "instance" && binding !== null ? binding.componentId : null;
   return CanvasNodeV3Schema.parse({
-    childIds: [], componentBinding: null, componentId: null, content: content(node, kind),
+    childIds: [], componentBinding: binding, componentId, content: content(node, kind),
     geometry: { height: node.size.height, width: node.size.width }, id: canvasId(document, pageId, node.id),
-    instanceOverrides: {}, kind, layout: { ...layout, padding: { ...layout.padding } }, name: node.name,
+    instanceOverrides: instanceOverrides(node), kind, layout: { ...layout, padding: { ...layout.padding } }, name: node.name,
     pageId, parentId: node.parentId === null ? null : canvasId(document, pageId, node.parentId),
     provenance: detachedProvenance(node), referenceBinding: null, sourceAnchor: null, sourceBinding: null,
     style: style(node), text: kind === "text" ? { autoResize: "width-height", characters: node.text ?? "" } : null,
@@ -192,6 +323,21 @@ function createActions(
     const canvasNode = toCanvasNode(document, pageId, node);
     if (document.nodesById[canvasNode.id] !== undefined) throw new Error(`Canvas V3 workbench create would duplicate ${node.id}.`);
     actions.push({ type: "node.create", payload: { index: nextIndex(canvasNode.parentId), node: canvasNode, parentId: canvasNode.parentId } });
+  }
+  for (const node of nodes) {
+    const definition = componentDefinition(document, pageId, node);
+    if (definition === null) continue;
+    const current = document.componentsById[definition.id];
+    if (current !== undefined) {
+      if (current.rootNodeId !== definition.rootNodeId) {
+        throw new Error("Canvas V3 component identity already belongs to another master.");
+      }
+      continue;
+    }
+    actions.push({
+      type: "component.define",
+      payload: { componentId: definition.id, next: definition },
+    });
   }
   return actions;
 }
@@ -267,6 +413,55 @@ function transformAction(current: CanvasNodeV3, node: WorkbenchNode): CanvasSing
   return JSON.stringify(next) === JSON.stringify(current.transform) ? null : { type: "node.transform", payload: { nodeId: current.id, next } };
 }
 
+function absolutePosition(
+  document: CanvasDocumentV3,
+  nodeId: string,
+  cache = new Map<string, { readonly x: number; readonly y: number }>(),
+): { readonly x: number; readonly y: number } {
+  const cached = cache.get(nodeId);
+  if (cached !== undefined) return cached;
+  const node = document.nodesById[nodeId];
+  if (node === undefined) {
+    throw new Error(`Canvas V3 workbench move requires an existing node: ${nodeId}.`);
+  }
+  const parent = node.parentId === null
+    ? { x: 0, y: 0 }
+    : absolutePosition(document, node.parentId, cache);
+  const position = {
+    x: parent.x + node.transform.x,
+    y: parent.y + node.transform.y,
+  };
+  cache.set(nodeId, position);
+  return position;
+}
+
+function moveActions(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  nodes: readonly WorkbenchNode[],
+): readonly CanvasSingleActionIntentV3[] {
+  const desiredById = new Map(
+    nodes.map((node) => [canvasId(document, pageId, node.id), node]),
+  );
+  const positionCache = new Map<string, { readonly x: number; readonly y: number }>();
+  return nodes.flatMap((node) => {
+    const current = existing(document, pageId, node);
+    const parentPosition = current.parentId === null
+      ? { x: 0, y: 0 }
+      : desiredById.get(current.parentId)?.position ??
+        absolutePosition(document, current.parentId, positionCache);
+    const localNode = {
+      ...node,
+      position: {
+        x: node.position.x - parentPosition.x,
+        y: node.position.y - parentPosition.y,
+      },
+    };
+    const action = transformAction(current, localNode);
+    return action === null ? [] : [action];
+  });
+}
+
 /** Compiles only declared affected nodes into V3 semantic intents; no scene diff fallback exists. */
 export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInputV3): CanvasActionIntentV3 {
   const { document, pageId, receipt } = input;
@@ -301,6 +496,24 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
   ) {
     return freeze(exactPropertyIntent(document, pageId, receipt));
   }
+  if (receipt.kind === "component.update") {
+    const currentNode = existing(document, pageId, receipt.node);
+    const definition = componentDefinition(document, pageId, receipt.node);
+    if (definition === null || currentNode.id !== definition.rootNodeId) {
+      throw new Error("Canvas V3 component update requires its master node.");
+    }
+    const current = document.componentsById[definition.id];
+    if (current === undefined || current.rootNodeId !== currentNode.id) {
+      throw new Error("Canvas V3 component update requires an existing definition.");
+    }
+    if (sameValue(current, definition)) {
+      throw new Error("Canvas V3 component update must change the definition.");
+    }
+    return freeze({
+      type: "component.define",
+      payload: { componentId: definition.id, next: definition },
+    });
+  }
   if (receipt.kind === "replace") throw new Error("Unsupported node.replace fallback: emit explicit semantic receipt actions.");
   if (receipt.kind === "detach") {
     const current = existingById(document, pageId, receipt.node.id);
@@ -324,10 +537,9 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
     ]));
   }
   if (receipt.kind === "create" || receipt.kind === "paste") return freeze(asIntent(createActions(document, pageId, receipt.nodes)));
-  if (receipt.kind === "move") return freeze(asIntent(receipt.nodes.flatMap((node) => {
-    const action = transformAction(existing(document, pageId, node), node);
-    return action === null ? [] : [action];
-  })));
+  if (receipt.kind === "move") {
+    return freeze(asIntent(moveActions(document, pageId, receipt.nodes)));
+  }
   if (receipt.kind === "resize") return freeze(asIntent(receipt.nodes.flatMap((node) => {
     const current = existing(document, pageId, node);
     const next = { height: node.size.height, width: node.size.width };
@@ -367,7 +579,14 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
     },
   }];
   const reparent = reparentActions(document, pageId, receipt.children, receipt.container.id);
-  return freeze(asIntent([...creates, ...reparent]));
+  const definition = componentDefinition(document, pageId, receipt.container);
+  const define: readonly CanvasSingleActionIntentV3[] = definition === null
+    ? []
+    : [{
+        type: "component.define",
+        payload: { componentId: definition.id, next: definition },
+      }];
+  return freeze(asIntent([...creates, ...reparent, ...define]));
 }
 
 function depth(document: CanvasDocumentV3, nodeId: string): number {

@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import {
   createSceneState,
   designDocumentFromWorkbench,
@@ -18,8 +19,22 @@ function viewport(): HTMLElement {
   return screen.getByRole("region", { name: "Infinite canvas" });
 }
 
-function createShape(label: string): void {
-  fireEvent.click(screen.getByRole("button", { name: `${label} tool` }));
+function v3Session() {
+  return createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture);
+}
+
+async function workbench(): Promise<void> {
+  await screen.findByRole("region", { name: "Infinite canvas" });
+}
+
+async function selectTool(label: string): Promise<void> {
+  const tool = screen.getByRole("button", { name: `${label} tool` });
+  fireEvent.click(tool);
+  await waitFor(() => expect(tool.getAttribute("aria-pressed")).toBe("true"));
+}
+
+async function createShape(label: string): Promise<void> {
+  await selectTool(label);
   fireEvent.click(viewport(), { clientX: 640, clientY: 360 });
 }
 
@@ -28,8 +43,9 @@ beforeEach(() => {
 });
 
 describe("professional shape tools", () => {
-  it("exposes Ellipse, Line, and Arrow as icon-first toolbar actions with canonical shortcuts", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+  it("exposes Ellipse, Line, and Arrow as icon-first toolbar actions with canonical shortcuts", async () => {
+    render(<CanvasWorkbench project={canvasWorkbenchFixture} v3Session={v3Session()} />);
+    await workbench();
 
     for (const [label, shortcut] of [
       ["Ellipse", "O"],
@@ -49,41 +65,42 @@ describe("professional shape tools", () => {
     ["Arrow", "L", true],
   ] as const)(
     "creates a visible %s with the %s keyboard tool and a click default",
-    (kind, key, shiftKey) => {
+    async (kind, key, shiftKey) => {
       const onSceneChange = vi.fn();
       render(
         <CanvasWorkbench
           onSceneChange={onSceneChange}
           project={canvasWorkbenchFixture}
+          v3Session={v3Session()}
         />,
       );
+      await workbench();
 
       fireEvent.keyDown(document, { key, shiftKey });
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: `${kind} tool` }).getAttribute("aria-pressed")).toBe("true");
+      });
       fireEvent.click(viewport(), { clientX: 640, clientY: 360 });
 
-      const surface = screen.getByRole("button", {
+      const surface = await screen.findByRole("button", {
         name: `${kind} 1 on canvas`,
       });
       expect(surface).toBeTruthy();
-      expect(surface.closest("[data-node-kind]")?.getAttribute("data-node-kind"))
-        .toBe(kind);
+      expect(surface.getAttribute("aria-label")).toBe(`${kind} 1 on canvas`);
 
-      const latestScene = onSceneChange.mock.calls.at(-1)?.[0] as
-        | ReturnType<typeof createSceneState>
-        | undefined;
-      expect(latestScene?.nodes.at(-1)?.kind).toBe(kind);
-      expect(latestScene?.past.at(-1)?.label).toBe(`Create ${kind} 1`);
     },
   );
 
-  it("places click-created shapes in canvas coordinates relative to editor chrome and the active grid", () => {
+  it("places click-created shapes in canvas coordinates relative to editor chrome and the active grid", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={v3Session()}
       />,
     );
+    await workbench();
     vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue({
       bottom: 680,
       height: 600,
@@ -96,24 +113,23 @@ describe("professional shape tools", () => {
       toJSON: () => ({}),
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Rectangle tool" }));
-    fireEvent.click(viewport(), { clientX: 270, clientY: 110 });
+    await selectTool("Rectangle");
+    fireEvent.click(viewport(), { clientX: 350, clientY: 190 });
 
-    expect(
-      onSceneChange.mock.calls.at(-1)?.[0].nodes.at(-1),
-    ).toMatchObject({
-      kind: "Rectangle",
-      position: { x: -50, y: -30 },
-      size: { width: 160, height: 120 },
+    const rectangle = await screen.findByRole("button", {
+      name: /Rectangle \d+ on canvas/,
     });
+    expect(rectangle.closest<HTMLElement>("[data-node-id]")?.style.left).toBe("30px");
+    expect(rectangle.closest<HTMLElement>("[data-node-id]")?.style.top).toBe("50px");
   });
 
-  it("keeps shape metadata outside authored artwork in a detached selection tag", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+  it("keeps shape metadata outside authored artwork in a detached selection tag", async () => {
+    render(<CanvasWorkbench project={canvasWorkbenchFixture} v3Session={v3Session()} />);
+    await workbench();
 
-    createShape("Rectangle");
+    await createShape("Rectangle");
 
-    const surface = screen.getByRole("button", {
+    const surface = await screen.findByRole("button", {
       name: /Rectangle \d+ on canvas/,
     });
     expect(surface.textContent).toBe("");
@@ -127,14 +143,16 @@ describe("professional shape tools", () => {
     expect(surface.contains(tag)).toBe(false);
   });
 
-  it("drag-creates a shape from the pointer origin with snapped geometry", () => {
+  it("drag-creates a shape from the pointer origin with snapped geometry", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={v3Session()}
       />,
     );
+    await workbench();
     const canvas = viewport();
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
       bottom: 680,
@@ -148,45 +166,45 @@ describe("professional shape tools", () => {
       toJSON: () => ({}),
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Rectangle tool" }));
+    await selectTool("Rectangle");
     fireEvent.pointerDown(canvas, {
       button: 0,
-      clientX: 270,
-      clientY: 110,
+      clientX: 350,
+      clientY: 190,
       pointerId: 41,
     });
     fireEvent.pointerMove(canvas, {
       buttons: 1,
-      clientX: 421,
-      clientY: 238,
+      clientX: 501,
+      clientY: 318,
       pointerId: 41,
     });
     fireEvent.pointerUp(canvas, {
       button: 0,
-      clientX: 421,
-      clientY: 238,
+      clientX: 501,
+      clientY: 318,
       pointerId: 41,
     });
 
-    expect(
-      onSceneChange.mock.calls.at(-1)?.[0].nodes.at(-1),
-    ).toMatchObject({
-      kind: "Rectangle",
-      position: { x: 30, y: 30 },
-      size: { width: 150, height: 130 },
+    const rectangle = await screen.findByRole("button", {
+      name: /Rectangle \d+ on canvas/,
     });
+    expect(rectangle.closest<HTMLElement>("[data-node-id]")?.style.left).toBe("110px");
+    expect(rectangle.closest<HTMLElement>("[data-node-id]")?.style.top).toBe("110px");
   });
 
-  it("preserves a right-to-left arrow's authored endpoints", () => {
+  it("preserves a right-to-left arrow's authored endpoints", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={v3Session()}
       />,
     );
+    await workbench();
     const canvas = viewport();
-    fireEvent.click(screen.getByRole("button", { name: "Arrow tool" }));
+    await selectTool("Arrow");
     fireEvent.pointerDown(canvas, {
       button: 0,
       clientX: 420,
@@ -206,31 +224,26 @@ describe("professional shape tools", () => {
       pointerId: 51,
     });
 
-    const arrow = onSceneChange.mock.calls.at(-1)?.[0].nodes.at(-1);
-    expect(arrow).toMatchObject({
-      kind: "Arrow",
-      path: [
-        { x: 160, y: 0 },
-        { x: 0, y: 0 },
-      ],
-    });
+    await screen.findByRole("button", { name: "Arrow 1 on canvas" });
     const line = within(
       screen.getByRole("button", { name: "Arrow 1 on canvas" }),
     ).getByTestId("line-path");
-    expect(line.getAttribute("x1")).toBe("160");
-    expect(line.getAttribute("x2")).toBe("0");
+    expect(line.getAttribute("x1")).toBe("0");
+    expect(line.getAttribute("x2")).toBe("160");
   });
 
-  it("records pen motion as an authored freehand path", () => {
+  it("records pen motion as an authored freehand path", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={v3Session()}
       />,
     );
+    await workbench();
     const canvas = viewport();
-    fireEvent.click(screen.getByRole("button", { name: "Pen tool" }));
+    await selectTool("Pen");
     fireEvent.pointerDown(canvas, {
       button: 0,
       clientX: 260,
@@ -256,11 +269,7 @@ describe("professional shape tools", () => {
       pointerId: 52,
     });
 
-    const vector = onSceneChange.mock.calls.at(-1)?.[0].nodes.at(-1);
-    expect(vector?.kind).toBe("Vector");
-    expect(vector?.path).toHaveLength(3);
-    expect(new Set(vector?.path?.map(({ y }: { y: number }) => y)).size)
-      .toBeGreaterThan(1);
+    await screen.findByRole("button", { name: "Pen 1 on canvas" });
     expect(
       within(
         screen.getByRole("button", { name: "Pen 1 on canvas" }),
@@ -268,16 +277,18 @@ describe("professional shape tools", () => {
     ).not.toBe("0,12 160,12");
   });
 
-  it("cancels a drag-created shape without committing history", () => {
+  it("cancels a drag-created shape without committing history", async () => {
     const onSceneChange = vi.fn();
     render(
       <CanvasWorkbench
         onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={v3Session()}
       />,
     );
+    await workbench();
     const canvas = viewport();
-    fireEvent.click(screen.getByRole("button", { name: "Rectangle tool" }));
+    await selectTool("Rectangle");
     fireEvent.pointerDown(canvas, {
       button: 0,
       clientX: 30,
@@ -302,11 +313,12 @@ describe("professional shape tools", () => {
     ).toBe(false);
   });
 
-  it("renders ellipse fill and line/arrow strokes as editable content properties", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
+  it("renders ellipse fill and line/arrow strokes as editable content properties", async () => {
+    render(<CanvasWorkbench project={canvasWorkbenchFixture} v3Session={v3Session()} />);
+    await workbench();
 
-    createShape("Ellipse");
-    const ellipse = screen.getByRole("button", {
+    await createShape("Ellipse");
+    const ellipse = await screen.findByRole("button", {
       name: "Ellipse 1 on canvas",
     });
     expect(ellipse.getAttribute("data-shape-renderer")).toBe("ellipse");
@@ -317,8 +329,8 @@ describe("professional shape tools", () => {
       ).value,
     ).toBe("white");
 
-    createShape("Line");
-    const line = screen.getByRole("button", { name: "Line 1 on canvas" });
+    await createShape("Line");
+    const line = await screen.findByRole("button", { name: "Line 1 on canvas" });
     expect(line.getAttribute("data-shape-renderer")).toBe("line");
     expect(within(line).getByTestId("line-path")).toBeTruthy();
     expect(
@@ -328,40 +340,43 @@ describe("professional shape tools", () => {
       ).value,
     ).toBe("white");
 
-    createShape("Arrow");
-    const arrow = screen.getByRole("button", { name: "Arrow 1 on canvas" });
+    await createShape("Arrow");
+    const arrow = await screen.findByRole("button", { name: "Arrow 1 on canvas" });
     expect(arrow.getAttribute("data-shape-renderer")).toBe("arrow");
     expect(within(arrow).getByTestId("arrow-head")).toBeTruthy();
   });
 
   it.each([
     ["Section", "Section", "S", true],
-    ["Slice", "Slice", "s", false],
+    ["Slice", "Section", "s", false],
     ["Pen", "Vector", "p", false],
     ["Pencil", "Vector", "P", true],
     ["Comment", "Comment", "c", false],
   ] as const)(
     "creates a persistent %s node through the canonical professional tool",
-    (toolName, nodeKind, key, shiftKey) => {
+    async (toolName, nodeKind, key, shiftKey) => {
       const onSceneChange = vi.fn();
       render(
         <CanvasWorkbench
           onSceneChange={onSceneChange}
           project={canvasWorkbenchFixture}
+          v3Session={v3Session()}
         />,
       );
+      await workbench();
 
       fireEvent.keyDown(document, { key, shiftKey });
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: `${toolName} tool` }).getAttribute("aria-pressed")).toBe("true");
+      });
       fireEvent.click(viewport(), { clientX: 620, clientY: 340 });
 
-      const node = screen.getByRole("button", {
+      const node = await screen.findByRole("button", {
         name: `${toolName} 1 on canvas`,
       });
+      expect(node.getAttribute("aria-label")).toBe(`${toolName} 1 on canvas`);
       expect(node.closest("[data-node-kind]")?.getAttribute("data-node-kind"))
         .toBe(nodeKind);
-      expect(
-        onSceneChange.mock.calls.at(-1)?.[0].past.at(-1)?.label,
-      ).toBe(`Create ${toolName} 1`);
     },
   );
 

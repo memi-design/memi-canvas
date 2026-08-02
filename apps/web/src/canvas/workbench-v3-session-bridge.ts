@@ -58,10 +58,14 @@ export function createCanvasOperationId(
   );
 }
 
-export function createRecoveredSerialQueue(onFailure: (message: string) => void) {
+export function createRecoveredSerialQueue(
+  onFailure: (message: string) => void,
+  options: { readonly propagateFailure?: boolean } = {},
+) {
   let pending = Promise.resolve();
   return (task: () => Promise<void>) => {
-    pending = pending.then(task, task).catch((error: unknown) => {
+    const attempt = pending.then(task, task);
+    pending = attempt.catch((error: unknown) => {
       onFailure(
         (
           error instanceof Error
@@ -70,7 +74,7 @@ export function createRecoveredSerialQueue(onFailure: (message: string) => void)
         ).slice(0, 256),
       );
     });
-    return pending;
+    return options.propagateFailure === true ? attempt : pending;
   };
 }
 
@@ -93,7 +97,10 @@ export function useWorkbenchV3SessionBridge(input: {
   const latest = useRef(input);
   latest.current = input;
   const queue = useRef(
-    createRecoveredSerialQueue((message) => input.onFailure(message)),
+    createRecoveredSerialQueue(
+      (message) => input.onFailure(message),
+      { propagateFailure: true },
+    ),
   );
   const history = input.authority === null
     ? null
@@ -147,7 +154,7 @@ export function useWorkbenchV3SessionBridge(input: {
             }),
       });
     };
-    void queue.current(task);
+    return queue.current(task);
   };
 
   const historyTask = (kind: "undo" | "redo") => {
@@ -164,7 +171,7 @@ export function useWorkbenchV3SessionBridge(input: {
       });
       if (kind === "undo") await currentHistory.undoScene();
       else await currentHistory.redoScene();
-    });
+    }).catch(() => undefined);
   };
 
   return {

@@ -8,6 +8,11 @@ import {
   type AgentPatchApplication,
   type AgentPatchReview,
 } from "./agent-patch.js";
+import {
+  agentPatchUsesLegacyNodeIds,
+  agentPatchV3Receipt,
+  legacyAgentPatchV3NodeId,
+} from "./agent-patch-v3-receipt.js";
 import type {
   CanvasRuntimePortV1,
   CanvasRuntimeRestorePreview,
@@ -17,6 +22,7 @@ import type { WorkbenchNode } from "./model.js";
 import type {
   WorkbenchHistoryActions,
 } from "./workbench-history-actions.js";
+import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import type { WorkspaceDockTab } from "./workspace-dock.js";
 import type { PreviewSession } from "../preview/preview-session.js";
 
@@ -27,9 +33,16 @@ type AppendTrace = (
 ) => void;
 
 export interface WorkbenchAgentReviewActionsContext {
+  readonly agentPatchBaseNodes?: readonly WorkbenchNode[];
+  readonly agentPatchLegacyDocumentId?: string;
   readonly agentPatchReview: AgentPatchReview | null;
   readonly appendTrace: AppendTrace;
   readonly canonicalDocumentRevision: number;
+  readonly commitIntentReceipt?: (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    options?: { readonly selectedIds?: readonly string[] },
+  ) => Promise<void> | void;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   readonly documentNodes: readonly WorkbenchNode[];
   readonly documentRevision: number;
@@ -56,7 +69,7 @@ export interface WorkbenchAgentReviewActionsContext {
 export interface WorkbenchAgentReviewActions {
   readonly applyApprovedAgentPatch: () => Promise<void>;
   readonly applyReviewedAgentPatch:
-    () => AgentPatchApplication | null;
+    () => Promise<AgentPatchApplication | null>;
   readonly approveAgentPatch: () => Promise<void>;
   readonly confirmRuntimeCheckpointRestore: () => Promise<void>;
   readonly rejectPendingAgentPatch: () => void;
@@ -77,7 +90,7 @@ export function createWorkbenchAgentReviewActions(
 ): WorkbenchAgentReviewActions {
   const targetId = () => context.selectedNodeId ?? "canvas";
 
-  const applyReviewedAgentPatch = () => {
+  const applyReviewedAgentPatch = async () => {
     const review = context.agentPatchReview;
     if (
       review === null ||
@@ -86,14 +99,51 @@ export function createWorkbenchAgentReviewActions(
     ) {
       return null;
     }
-    const failedReview: AgentPatchReview = Object.freeze({
-      ...review,
-      message:
-        "Agent patch blocked: V3 semantic operation receipts are required.",
-      status: "failed",
-    });
-    context.setAgentPatchReview(failedReview);
-    return { review: failedReview, trace: null };
+    try {
+      if (context.commitIntentReceipt === undefined) {
+        throw new Error("V3 semantic operation receipts are required.");
+      }
+      const patchUsesLegacyIds = agentPatchUsesLegacyNodeIds(
+        review.patch.targetIds,
+        context.documentNodes,
+      );
+      const legacyDocumentId = context.agentPatchLegacyDocumentId;
+      const resolveNodeId =
+        patchUsesLegacyIds && legacyDocumentId !== undefined
+          ? (nodeId: string) => legacyAgentPatchV3NodeId(
+              legacyDocumentId,
+              nodeId,
+            )
+          : (nodeId: string) => nodeId;
+      const receipt = agentPatchV3Receipt(
+        review.patch,
+        patchUsesLegacyIds
+          ? context.agentPatchBaseNodes ?? context.documentNodes
+          : context.documentNodes,
+        resolveNodeId,
+      );
+      await context.commitIntentReceipt(
+        `Apply agent patch ${review.patch.id}`,
+        receipt,
+        { selectedIds: review.patch.targetIds.map(resolveNodeId) },
+      );
+      const appliedReview: AgentPatchReview = Object.freeze({
+        ...review,
+        currentRevision: context.documentRevision + 1,
+        message: `Applied at revision ${context.documentRevision + 1}.`,
+        status: "applied",
+      });
+      context.setAgentPatchReview(appliedReview);
+      return { review: appliedReview, trace: null };
+    } catch (error) {
+      const failedReview: AgentPatchReview = Object.freeze({
+        ...review,
+        message: `Agent patch blocked: ${failureMessage(error)}`,
+        status: "failed",
+      });
+      context.setAgentPatchReview(failedReview);
+      return { review: failedReview, trace: null };
+    }
   };
 
   const approveAgentPatch = async () => {
@@ -103,7 +153,7 @@ export function createWorkbenchAgentReviewActions(
     }
     const runtimeProposal = context.runtimeSnapshot?.proposal;
     if (context.runtimePort === undefined) {
-      applyReviewedAgentPatch();
+      await applyReviewedAgentPatch();
       return;
     }
     if (
@@ -153,7 +203,7 @@ export function createWorkbenchAgentReviewActions(
         currentRevision: context.canonicalDocumentRevision,
         runId: snapshot.runId,
       });
-      applyReviewedAgentPatch();
+      await applyReviewedAgentPatch();
     } catch (error) {
       context.appendTrace(
         `Demo apply blocked: ${failureMessage(error)}`,

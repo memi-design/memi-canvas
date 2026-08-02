@@ -13,43 +13,76 @@ import {
   type AgentSelectionContext,
 } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
-import { createSceneState } from "./model.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
+import type { CanvasWorkbenchV3Session } from "./CanvasWorkbench.types.js";
 import { sourceProjectFixture } from "./source-project.fixture.js";
-import {
-  createCanvasAutosave,
-  type CanvasAutosave,
-} from "./persistence.js";
 import {
   createDemoCanvasRuntimePort,
   type CanvasRuntimePortV1,
 } from "./canvas-runtime-port.js";
 
-function renderWorkbench(
+async function renderWorkbench(
   props: {
     readonly onHarnessChange?: (harnessId: string) => void;
     readonly onSendAgentContext?: (context: AgentSelectionContext) => void;
-    readonly persistence?: CanvasAutosave;
     readonly runtimePort?: CanvasRuntimePortV1;
+    readonly v3Session?: CanvasWorkbenchV3Session;
   } = {},
-): void {
-  render(<CanvasWorkbench project={canvasWorkbenchFixture} {...props} />);
+) {
+  const {
+    v3Session = createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture),
+    ...workbenchProps
+  } = props;
+  const view = render(
+    <CanvasWorkbench
+      project={canvasWorkbenchFixture}
+      v3Session={v3Session}
+      {...workbenchProps}
+    />,
+  );
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
+  return { v3Session, view };
+}
+
+async function renderSourceWorkbench(): Promise<void> {
+  render(
+    <CanvasWorkbench
+      project={sourceProjectFixture}
+      v3Session={createCanvasWorkbenchV3TestSession(sourceProjectFixture)}
+    />,
+  );
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
 }
 
 function viewport(): HTMLElement {
   return screen.getByRole("region", { name: "Infinite canvas" });
 }
 
-function selectLayer(name: RegExp): HTMLElement {
-  const layer = within(
-    screen.getByRole("tree", { name: "Layers" }),
-  ).getByRole("treeitem", { name });
+async function selectLayer(name: RegExp): Promise<HTMLElement> {
+  const tree = screen.getByRole("tree", { name: "Layers" });
+  for (;;) {
+    const collapsed = within(tree)
+      .getAllByRole("treeitem")
+      .find((item) => item.getAttribute("aria-expanded") === "false");
+    if (collapsed === undefined) {
+      break;
+    }
+    fireEvent.click(collapsed.querySelector(".layer-group-row")!);
+    await waitFor(() => {
+      expect(collapsed.getAttribute("aria-expanded")).toBe("true");
+    });
+  }
+  const layer = await within(tree).findByRole("treeitem", { name });
   fireEvent.click(layer);
+  await waitFor(() => {
+    expect(layer.getAttribute("aria-selected")).toBe("true");
+  });
   return layer;
 }
 
 describe("CanvasWorkbench first usable contract", () => {
   it("renders lightweight chrome around an unbounded pan-and-zoom viewport", async () => {
-    renderWorkbench();
+    await renderWorkbench();
 
     expect(
       screen.getByRole("toolbar", { name: "Canvas tools" }),
@@ -96,8 +129,8 @@ describe("CanvasWorkbench first usable contract", () => {
     });
   });
 
-  it("supports standard keyboard navigation across the nested layers tree", () => {
-    renderWorkbench();
+  it("supports standard keyboard navigation across the nested layers tree", async () => {
+    await renderWorkbench();
 
     const tree = screen.getByRole("tree", { name: "Layers" });
     const routeInventory = within(tree).getByRole("treeitem", {
@@ -129,8 +162,8 @@ describe("CanvasWorkbench first usable contract", () => {
     expect(document.activeElement).toBe(visibleItems[0]);
   });
 
-  it("shares selection across canvas and layers, then groups manipulation into semantic history", () => {
-    renderWorkbench();
+  it("shares selection across canvas and layers, then groups manipulation into semantic history", async () => {
+    const { v3Session } = await renderWorkbench();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Campaign card on canvas" }),
@@ -141,7 +174,7 @@ describe("CanvasWorkbench first usable contract", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
 
-    const dashboardLayer = selectLayer(/Dashboard desktop.*CodeFrame/);
+    const dashboardLayer = await selectLayer(/Dashboard desktop.*CodeFrame/);
     expect(dashboardLayer.getAttribute("aria-selected")).toBe("true");
 
     const dashboard = screen.getByRole("button", {
@@ -170,13 +203,20 @@ describe("CanvasWorkbench first usable contract", () => {
 
     const x = screen.getByRole("spinbutton", { name: "X" }) as HTMLInputElement;
     const y = screen.getByRole("spinbutton", { name: "Y" }) as HTMLInputElement;
-    expect(x.value).toBe("140");
-    expect(y.value).toBe("143");
-    fireEvent.click(screen.getByRole("button", { name: "Agent activity" }));
-    const history = screen.getByRole("list", { name: "Semantic history" });
-    expect(within(history).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(history).getByText("Move Dashboard desktop")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+    await waitFor(() => {
+      expect(x.value).toBe("140");
+      expect(y.value).toBe("143");
+    });
+    await waitFor(async () => {
+      const journal = await v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: v3Session.document.id,
+        projectId: v3Session.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Move Dashboard desktop",
+      ]);
+    });
     const reopenedX = screen.getByRole("spinbutton", {
       name: "X",
     }) as HTMLInputElement;
@@ -197,31 +237,43 @@ describe("CanvasWorkbench first usable contract", () => {
       clientX: 760,
       clientY: 480,
     });
-    expect(
-      (screen.getByRole("spinbutton", { name: "Width" }) as HTMLInputElement)
-        .value,
-    ).toBe("760");
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("spinbutton", { name: "Width" }) as HTMLInputElement)
+          .value,
+      ).toBe("760");
+    });
 
     fireEvent.keyDown(viewport(), { key: "ArrowRight" });
-    expect(reopenedX.value).toBe("141");
+    await waitFor(() => {
+      expect(reopenedX.value).toBe("141");
+    });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(reopenedX.value).toBe("140");
+    await waitFor(() => {
+      expect(reopenedX.value).toBe("140");
+    });
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
-    expect(reopenedX.value).toBe("141");
+    await waitFor(() => {
+      expect(reopenedX.value).toBe("141");
+    });
   });
 
-  it("creates primitives and supports inspector edit, duplicate, delete, lock, and hide", () => {
-    renderWorkbench();
+  it("creates primitives and supports inspector edit, duplicate, delete, lock, and hide", async () => {
+    await renderWorkbench();
 
     for (const tool of ["Text", "Rectangle", "Frame"]) {
       fireEvent.click(screen.getByRole("button", { name: `${tool} tool` }));
       fireEvent.click(viewport(), { clientX: 640, clientY: 360 });
+      const created = await screen.findByRole("button", {
+        name: `${tool} 2 on canvas`,
+      });
+      fireEvent.click(created);
       expect(
-        screen.getByRole("heading", { level: 2, name: `${tool} 2` }),
+        await screen.findByRole("heading", { level: 2, name: `${tool} 2` }),
       ).toBeTruthy();
     }
 
-    selectLayer(/Welcome headline.*Text/);
+    await selectLayer(/Welcome headline.*Text/);
     const name = screen.getByRole("textbox", {
       name: "Name",
     }) as HTMLInputElement;
@@ -229,11 +281,15 @@ describe("CanvasWorkbench first usable contract", () => {
       name: "Text content",
     }) as HTMLInputElement;
     fireEvent.change(name, { target: { value: "Primary greeting" } });
-    fireEvent.blur(name);
+    await act(async () => {
+      fireEvent.blur(name);
+    });
     fireEvent.change(text, { target: { value: "Good morning, Ada" } });
-    fireEvent.blur(text);
+    await act(async () => {
+      fireEvent.blur(text);
+    });
     expect(
-      screen.getByRole("button", { name: "Primary greeting on canvas" })
+      (await screen.findByRole("button", { name: "Primary greeting on canvas" }))
         .textContent,
     ).toContain("Good morning, Ada");
 
@@ -241,38 +297,44 @@ describe("CanvasWorkbench first usable contract", () => {
       screen.getByRole("button", { name: "Duplicate selection" }),
     );
     expect(
-      within(screen.getByRole("tree", { name: "Layers" })).getByRole(
+      await within(screen.getByRole("tree", { name: "Layers" })).findByRole(
         "treeitem",
         { name: /Primary greeting copy.*Text/ },
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete selection" }));
-    expect(
-      within(screen.getByRole("tree", { name: "Layers" })).queryByRole(
-        "treeitem",
-        { name: /Primary greeting copy.*Text/ },
-      ),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("tree", { name: "Layers" })).queryByRole(
+          "treeitem",
+          { name: /Primary greeting copy.*Text/ },
+        ),
+      ).toBeNull();
+    });
 
-    selectLayer(/Promo panel.*Rectangle/);
+    await selectLayer(/Promo panel.*Rectangle/);
     fireEvent.click(screen.getByRole("button", { name: "Lock selection" }));
-    expect(
-      screen
-        .getByRole("button", { name: "Promo panel on canvas" })
-        .getAttribute("aria-disabled"),
-    ).toBe("true");
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Promo panel on canvas" })
+          .getAttribute("aria-disabled"),
+      ).toBe("true");
+    });
     fireEvent.click(screen.getByRole("button", { name: "Hide selection" }));
-    expect(
-      screen.queryByRole("button", { name: "Promo panel on canvas" }),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Promo panel on canvas" }),
+      ).toBeNull();
+    });
     expect(
       screen.getByRole("button", { name: "Show selection" }),
     ).toBeTruthy();
   });
 
-  it("duplicates or detaches a CodeFrame as a draft without source-authority cloning", () => {
-    renderWorkbench();
-    selectLayer(/Dashboard desktop.*CodeFrame/);
+  it("duplicates or detaches a CodeFrame as a draft without source-authority cloning", async () => {
+    await renderWorkbench();
+    await selectLayer(/Dashboard desktop.*CodeFrame/);
 
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(within(inspector).getByText("Kind: CodeFrame")).toBeTruthy();
@@ -284,7 +346,7 @@ describe("CanvasWorkbench first usable contract", () => {
         name: "Duplicate selection",
       }),
     );
-    expect(within(inspector).getByText("Kind: DraftFrame")).toBeTruthy();
+    expect(await within(inspector).findByText("Kind: DraftFrame")).toBeTruthy();
     expect(
       within(inspector).getByText("Authority: canvas document"),
     ).toBeTruthy();
@@ -294,7 +356,7 @@ describe("CanvasWorkbench first usable contract", () => {
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(within(inspector).getByText("Kind: CodeFrame")).toBeTruthy();
+    expect(await within(inspector).findByText("Kind: CodeFrame")).toBeTruthy();
 
     fireEvent.click(
       within(inspector).getByRole("button", {
@@ -302,7 +364,7 @@ describe("CanvasWorkbench first usable contract", () => {
       }),
     );
 
-    expect(within(inspector).getByText("Kind: DraftFrame")).toBeTruthy();
+    expect(await within(inspector).findByText("Kind: DraftFrame")).toBeTruthy();
     expect(
       within(inspector).getByText("Authority: canvas document"),
     ).toBeTruthy();
@@ -322,8 +384,8 @@ describe("CanvasWorkbench first usable contract", () => {
     ).toBeTruthy();
   });
 
-  it("lists source component masters as assets and duplicates them as instances", () => {
-    render(<CanvasWorkbench project={sourceProjectFixture} />);
+  it("lists source component masters as assets and duplicates them as instances", async () => {
+    await renderSourceWorkbench();
 
     fireEvent.click(screen.getByRole("button", { name: "Assets" }));
     const assets = screen.getByRole("list", { name: "Source components" });
@@ -343,7 +405,7 @@ describe("CanvasWorkbench first usable contract", () => {
       }),
     );
 
-    expect(within(inspector).getByText("Instance · atom · button")).toBeTruthy();
+    expect(await within(inspector).findByText("Instance · atom · button")).toBeTruthy();
     expect(within(inspector).getByText(/Master: northstar-button-primary-master/))
       .toBeTruthy();
 
@@ -384,15 +446,17 @@ describe("CanvasWorkbench first usable contract", () => {
         name: "Delete selection",
       }),
     );
-    expect(
-      screen.queryByRole("button", {
-        name: "Button / Primary copy on canvas",
-      }),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: "Button / Primary copy on canvas",
+        }),
+      ).toBeNull();
+    });
   }, 10_000);
 
   it("reveals a layer selected from the navigator in the current viewport", async () => {
-    render(<CanvasWorkbench project={sourceProjectFixture} />);
+    await renderSourceWorkbench();
     const canvas = screen.getByRole("region", { name: "Infinite canvas" });
     const initialCameraX = canvas.getAttribute("data-camera-x");
 
@@ -415,8 +479,8 @@ describe("CanvasWorkbench first usable contract", () => {
   it("switches harnesses and sends only the selected node into a bounded agent context capsule", async () => {
     const onHarnessChange = vi.fn();
     const onSendAgentContext = vi.fn();
-    renderWorkbench({ onHarnessChange, onSendAgentContext });
-    selectLayer(/Dashboard desktop.*CodeFrame/);
+    await renderWorkbench({ onHarnessChange, onSendAgentContext });
+    await selectLayer(/Dashboard desktop.*CodeFrame/);
 
     const context = screen.getByRole("region", { name: "Agent prompt" });
     expect(within(context).getByText("Dashboard desktop")).toBeTruthy();
@@ -439,7 +503,9 @@ describe("CanvasWorkbench first usable contract", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "X" }), {
       target: { value: "101" },
     });
-    fireEvent.blur(screen.getByRole("spinbutton", { name: "X" }));
+    await act(async () => {
+      fireEvent.blur(screen.getByRole("spinbutton", { name: "X" }));
+    });
     fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), {
       target: { value: "Audit the spacing and propose a fix" },
     });
@@ -450,20 +516,23 @@ describe("CanvasWorkbench first usable contract", () => {
       expect(onSendAgentContext).toHaveBeenCalledTimes(1);
     });
     const submitted = onSendAgentContext.mock.calls[0]?.[0];
+    const selectedDashboardId = screen
+      .getByRole("button", { name: "Dashboard desktop on canvas" })
+      .closest<HTMLElement>("[data-node-id]")
+      ?.dataset.nodeId;
+    expect(selectedDashboardId).toBeTruthy();
     expect(submitted).toMatchObject({
       documentId: "document-northstar",
       harnessId: "claude",
-      nodeIds: ["node-dashboard-desktop"],
       revision: 8,
       prompt: "Audit the spacing and propose a fix",
       promptMode: "plan",
       modelId: "gpt-5.5",
       permissionPolicy: "approval",
       reasoningEffort: "xhigh",
-      capsule: {
-        selectedIds: ["node-dashboard-desktop"],
-      },
     });
+    expect(submitted.nodeIds).toEqual([selectedDashboardId]);
+    expect(submitted.capsule.selectedIds).toEqual([selectedDashboardId]);
     expect(JSON.stringify(submitted.capsule)).not.toContain("Campaign card");
     expect(new TextEncoder().encode(JSON.stringify(submitted.capsule)).length)
       .toBeLessThanOrEqual(65_536);
@@ -480,8 +549,8 @@ describe("CanvasWorkbench first usable contract", () => {
       ...demoRuntime,
       submit: vi.fn().mockRejectedValue(new Error("Runtime unavailable")),
     };
-    renderWorkbench({ runtimePort });
-    selectLayer(/Dashboard desktop.*CodeFrame/);
+    await renderWorkbench({ runtimePort });
+    await selectLayer(/Dashboard desktop.*CodeFrame/);
 
     const prompt = screen.getByRole("textbox", {
       name: "Prompt",
@@ -507,101 +576,96 @@ describe("CanvasWorkbench first usable contract", () => {
     ).toBeTruthy();
   });
 
-  it("recovers local scene, semantic history, selection, and trace, then continues autosaving", async () => {
-    localStorage.clear();
-    const persistence = createCanvasAutosave(localStorage);
-    const scene = {
-      ...createSceneState(canvasWorkbenchFixture),
-      selectedNodeId: "node-campaign-card",
-      revision: 8,
-      past: [
-        {
-          id: 1,
-          label: "Move Dashboard desktop",
-          before: canvasWorkbenchFixture.document.nodes,
-          after: canvasWorkbenchFixture.document.nodes,
-          beforeSelectedNodeId: "node-dashboard-desktop",
-          afterSelectedNodeId: "node-campaign-card",
-          beforeRevision: 7,
-          afterRevision: 8,
-        },
-      ],
-      nextHistoryId: 2,
-    };
-    const trace = [
-      ...canvasWorkbenchFixture.trace,
-      {
-        id: "workbench-trace-7",
-        action: "Recovered local edit",
-        targetNodeId: "node-campaign-card",
-      },
-    ];
-    expect(
-      persistence.save(canvasWorkbenchFixture, scene, trace),
-    ).toBe(true);
+  it("recovers durable V3 edits across remounts and continues journaling", async () => {
+    const initialSession = createCanvasWorkbenchV3TestSession(
+      canvasWorkbenchFixture,
+    );
+    const { view } = await renderWorkbench({ v3Session: initialSession });
+    await selectLayer(/Dashboard desktop.*CodeFrame/);
 
-    renderWorkbench({ persistence });
-
-    expect(
-      selectLayer(/Campaign card.*DraftFrame/).getAttribute(
-        "aria-selected",
-      ),
-    ).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Agent activity" }));
-    expect(
-      within(screen.getByRole("list", { name: "Semantic history" }))
-        .getByText("Move Dashboard desktop"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByRole("log", { name: "Trace" })).getByText(
-        "Recovered local edit",
-      ),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
-
-    fireEvent.change(screen.getByRole("spinbutton", { name: "X" }), {
-      target: { value: "999" },
+    const xField = screen.getByRole("spinbutton", {
+      name: "X",
+    }) as HTMLInputElement;
+    fireEvent.change(xField, { target: { value: "222" } });
+    await act(async () => {
+      fireEvent.blur(xField);
     });
-    fireEvent.blur(screen.getByRole("spinbutton", { name: "X" }));
-    fireEvent.change(screen.getByRole("combobox", {
-      name: "Agent harness",
-    }), {
-      target: { value: "claude" },
+    await waitFor(async () => {
+      const journal = await initialSession.persistence.load({
+        schemaVersion: 1,
+        documentId: initialSession.document.id,
+        projectId: initialSession.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Move Dashboard desktop",
+      ]);
     });
-    await waitFor(() => {
-      const saved = persistence.load(canvasWorkbenchFixture);
-      expect(saved?.scene.revision).toBe(9);
-      expect(
-        saved?.trace.some(({ id }) => id === "workbench-trace-8"),
-      ).toBe(true);
-      expect(
-        saved?.trace.some(
-          ({ id, action }) =>
-            id.startsWith("editor-command-trace-") &&
-            action.startsWith("Human ·"),
-        ),
-      ).toBe(true);
+
+    view.unmount();
+    const recoveredSession = Object.freeze({
+      ...initialSession,
+      persistence: initialSession.persistence,
+    });
+    await renderWorkbench({ v3Session: recoveredSession });
+    await selectLayer(/Dashboard desktop.*CodeFrame/);
+    expect(
+      (screen.getByRole("spinbutton", { name: "X" }) as HTMLInputElement)
+        .value,
+    ).toBe("222");
+
+    const recoveredX = screen.getByRole("spinbutton", { name: "X" });
+    fireEvent.change(recoveredX, { target: { value: "333" } });
+    await act(async () => {
+      fireEvent.blur(recoveredX);
+    });
+    await waitFor(async () => {
+      const journal = await recoveredSession.persistence.load({
+        schemaVersion: 1,
+        documentId: recoveredSession.document.id,
+        projectId: recoveredSession.document.projectId,
+      });
+      expect(journal?.operations.map(({ expectedRevision }) => expectedRevision))
+        .toEqual([
+          canvasWorkbenchFixture.document.revision,
+          canvasWorkbenchFixture.document.revision + 1,
+        ]);
     });
   });
 
-  it("persists an undo state with a future command and a monotonic history identity", async () => {
-    localStorage.clear();
-    const persistence = createCanvasAutosave(localStorage);
-    renderWorkbench({ persistence });
+  it("persists an undo operation with a durable V3 history identity", async () => {
+    const v3Session = createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture);
+    await renderWorkbench({ v3Session });
 
     fireEvent.click(screen.getByRole("button", { name: "Rectangle tool" }));
-    fireEvent.click(screen.getByRole("region", { name: "Infinite canvas" }), {
-      clientX: 640,
-      clientY: 360,
+    fireEvent.click(viewport(), { clientX: 640, clientY: 360 });
+    expect(
+      await screen.findByRole("button", { name: "Rectangle 2 on canvas" }),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Undo" }).getAttribute(
+          "aria-disabled",
+        ),
+      ).toBe("false");
     });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
-    await waitFor(() => {
-      const recovered = persistence.load(canvasWorkbenchFixture);
-      expect(recovered?.scene.future).toHaveLength(1);
-      expect(recovered?.scene.nextHistoryId).toBeGreaterThan(
-        recovered?.scene.future[0]?.id ?? 0,
-      );
+    await waitFor(async () => {
+      const journal = await v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: v3Session.document.id,
+        projectId: v3Session.document.projectId,
+      });
+      expect(journal?.operations).toHaveLength(2);
+      expect(journal?.operations[1]?.undoOf).toBe(journal?.operations[0]?.id);
+      expect(journal?.operations.map(({ expectedRevision }) => expectedRevision))
+        .toEqual([
+          canvasWorkbenchFixture.document.revision,
+          canvasWorkbenchFixture.document.revision + 1,
+        ]);
     });
+    expect(
+      screen.queryByRole("button", { name: "Rectangle 2 on canvas" }),
+    ).toBeNull();
   });
 });

@@ -36,6 +36,8 @@ export default defineConfig({
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
+        "**/*.bun-test.ts",
+        "packages/runtime/src/**/bun-*.ts",
         "**/main.tsx"
       ],
       thresholds: {

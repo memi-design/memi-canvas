@@ -18,7 +18,7 @@ export interface CreateWorkbenchInspectorV3ActionsInput {
     label: string,
     receipt: WorkbenchIntentReceiptV3,
     options?: Readonly<{ readonly selectedIds?: readonly string[] }>,
-  ) => void;
+  ) => unknown;
   readonly projectNodes: readonly WorkbenchNode[];
   readonly setPreview: (nodes: readonly WorkbenchNode[] | null) => void;
 }
@@ -70,7 +70,9 @@ function receiptFor(
       left.stroke !== right.stroke ||
       left.strokeAlign !== right.strokeAlign ||
       left.strokeWeight !== right.strokeWeight ||
-      left.opacity !== right.opacity,
+      left.opacity !== right.opacity ||
+      left.hidden !== right.hidden ||
+      left.locked !== right.locked,
   );
   if (moved.length) groups.push({ kind: "move", nodes: moved });
   if (resized.length) groups.push({ kind: "resize", nodes: resized });
@@ -101,6 +103,9 @@ function receiptFor(
     nodeId: node.id,
     next: node.layout ?? DEFAULT_WORKBENCH_LAYOUT,
   }));
+  changed((left, right) => !equal(left.component, right.component))
+    .filter((node) => node.component?.classification === "master")
+    .forEach((node) => groups.push({ kind: "component.update", node }));
   if (!groups.length) return null;
   const only = groups[0];
   return groups.length === 1 && only !== undefined
@@ -126,12 +131,26 @@ export function createWorkbenchInspectorV3Actions(
     clearPreview() { input.setPreview(null); },
     commit(mutation: InspectorV3Mutation) {
       const before = input.projectNodes.filter((node) => mutation.targetIds.includes(node.id));
-      const receipt = receiptFor(before, projected(mutation));
+      const after = projected(mutation);
+      const receipt = receiptFor(before, after);
       if (receipt === null) return;
-      input.commitIntentReceipt(mutation.label, receipt, {
+      const pending = input.commitIntentReceipt(mutation.label, receipt, {
         selectedIds: mutation.targetIds,
       });
-      input.setPreview(null);
+      if (
+        pending !== null &&
+        typeof pending === "object" &&
+        "then" in pending &&
+        typeof pending.then === "function"
+      ) {
+        const targets = new Set(mutation.targetIds);
+        input.setPreview(input.projectNodes.map((node) =>
+          targets.has(node.id) ? mutation.update(node) : node
+        ));
+        void Promise.resolve(pending).finally(() => input.setPreview(null));
+      } else {
+        input.setPreview(null);
+      }
     },
   });
 }

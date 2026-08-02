@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthoringPropertySections } from "./AuthoringPropertySections.js";
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import { createCanonicalWorkbenchAuthority } from "./canonical-workbench-authority.js";
 import {
   createSceneState,
@@ -18,21 +20,31 @@ import {
 } from "./model.js";
 import { createCanvasAutosave } from "./persistence.js";
 
-function selectPromoPanel(): void {
+async function selectPromoPanel(): Promise<void> {
   const tree = screen.getByRole("tree", { name: "Layers" });
   const drafts = within(tree).getByRole("treeitem", { name: "Drafts" });
-  fireEvent.click(drafts.querySelector(".layer-group-row")!);
+  if (drafts.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(drafts.querySelector(".layer-group-row")!);
+  }
   fireEvent.click(
-    within(tree).getByRole("treeitem", {
+    await within(tree).findByRole("treeitem", {
       name: /Promo panel.*Rectangle/,
     }),
   );
+  await screen.findByRole("heading", { level: 2, name: "Promo panel" });
 }
 
-function selectCampaignCard(): void {
+async function selectCampaignCard(): Promise<void> {
   fireEvent.click(
     screen.getByRole("button", { name: "Campaign card on canvas" }),
   );
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("button", { name: "Campaign card on canvas" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
 }
 
 function canvasPromoPanel(): HTMLElement {
@@ -41,10 +53,22 @@ function canvasPromoPanel(): HTMLElement {
     .closest<HTMLElement>("[data-node-id]")!;
 }
 
-function commitNumber(label: string, value: string): void {
+async function commitNumber(label: string, value: string): Promise<void> {
   const field = screen.getByLabelText(label);
   fireEvent.change(field, { target: { value } });
-  fireEvent.blur(field);
+  await act(async () => {
+    fireEvent.blur(field);
+  });
+}
+
+async function renderWorkbench(): Promise<void> {
+  render(
+    <CanvasWorkbench
+      project={canvasWorkbenchFixture}
+      v3Session={createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture)}
+    />,
+  );
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
 }
 
 beforeEach(() => {
@@ -52,7 +76,7 @@ beforeEach(() => {
 });
 
 describe("professional authoring properties", () => {
-  it("coalesces a numeric field session into one semantic change", () => {
+  it("coalesces a numeric field session into one semantic change", async () => {
     const onChange = vi.fn();
     const onPreview = vi.fn();
     const node = createSceneState(canvasWorkbenchFixture).nodes.find(
@@ -81,7 +105,7 @@ describe("professional authoring properties", () => {
     expect(onChange.mock.calls[0]?.[1](node).size.width).toBe(308);
   });
 
-  it("coalesces a typed color session until the field is committed", () => {
+  it("coalesces a typed color session until the field is committed", async () => {
     const onChange = vi.fn();
     const onPreview = vi.fn();
     const node = createSceneState(canvasWorkbenchFixture).nodes.find(
@@ -108,7 +132,7 @@ describe("professional authoring properties", () => {
     expect(onChange.mock.calls[0]?.[1](node).fill).toBe("#222222");
   });
 
-  it("projects mixed selection values and commits one selection transaction", () => {
+  it("projects mixed selection values and commits one selection transaction", async () => {
     const onChange = vi.fn();
     const onChangeSelection = vi.fn();
     const first = createSceneState(canvasWorkbenchFixture).nodes.find(
@@ -141,7 +165,7 @@ describe("professional authoring properties", () => {
     expect(transaction.update(second).opacity).toBe(0.75);
   });
 
-  it("supports independent corner radii without destroying the other corners", () => {
+  it("supports independent corner radii without destroying the other corners", async () => {
     const onChange = vi.fn();
     const node = {
       ...createSceneState(canvasWorkbenchFixture).nodes.find(
@@ -167,7 +191,7 @@ describe("professional authoring properties", () => {
     ).toBe("Link corner radii");
   });
 
-  it("resynchronizes the corner mode when the selected node changes externally", () => {
+  it("resynchronizes the corner mode when the selected node changes externally", async () => {
     const onChange = vi.fn();
     const node = createSceneState(canvasWorkbenchFixture).nodes.find(
       ({ id }) => id === "node-promo-panel",
@@ -188,7 +212,7 @@ describe("professional authoring properties", () => {
     expect(screen.queryByLabelText("Corner radius")).toBeNull();
   });
 
-  it("keeps a zero-width stroke hidden when only its color changes", () => {
+  it("keeps a zero-width stroke hidden when only its color changes", async () => {
     const onChange = vi.fn();
     const node = {
       ...createSceneState(canvasWorkbenchFixture).nodes.find(
@@ -210,17 +234,17 @@ describe("professional authoring properties", () => {
     });
   });
 
-  it("authors gap and independent padding sides for eligible containers as undoable commands", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
-    selectPromoPanel();
+  it("authors gap and independent padding sides for eligible containers as undoable commands", async () => {
+    await renderWorkbench();
+    await selectPromoPanel();
     expect(screen.queryByLabelText("Gap")).toBeNull();
 
-    selectCampaignCard();
-    commitNumber("Gap", "12");
-    commitNumber("Padding top", "16");
-    commitNumber("Padding right", "20");
-    commitNumber("Padding bottom", "24");
-    commitNumber("Padding left", "28");
+    await selectCampaignCard();
+    await commitNumber("Gap", "12");
+    await commitNumber("Padding top", "16");
+    await commitNumber("Padding right", "20");
+    await commitNumber("Padding bottom", "24");
+    await commitNumber("Padding left", "28");
 
     expect((screen.getByLabelText("Gap") as HTMLInputElement).value).toBe(
       "12",
@@ -239,24 +263,26 @@ describe("professional authoring properties", () => {
     ).toBe("28");
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(
-      (screen.getByLabelText("Padding left") as HTMLInputElement).value,
-    ).toBe("0");
-    expect(
-      (screen.getByLabelText("Padding bottom") as HTMLInputElement).value,
-    ).toBe("24");
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Padding left") as HTMLInputElement).value,
+      ).toBe("0");
+      expect(
+        (screen.getByLabelText("Padding bottom") as HTMLInputElement).value,
+      ).toBe("24");
+    });
   });
 
-  it("edits transform, appearance, fill, and stroke through structured inspector controls", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
-    selectPromoPanel();
+  it("edits transform, appearance, fill, and stroke through structured inspector controls", async () => {
+    await renderWorkbench();
+    await selectPromoPanel();
     expect(
       (screen.getByLabelText("Fill swatch") as HTMLInputElement).value,
     ).toBe("#dbeafe");
 
-    commitNumber("Rotation", "15");
-    commitNumber("Opacity", "64");
-    commitNumber("Corner radius", "18");
+    await commitNumber("Rotation", "15");
+    await commitNumber("Opacity", "64");
+    await commitNumber("Corner radius", "18");
     const fillColor = screen.getByLabelText("Fill color");
     fireEvent.change(fillColor, {
       target: { value: "#" },
@@ -270,29 +296,35 @@ describe("professional authoring properties", () => {
     fireEvent.change(fillColor, {
       target: { value: "#ff5470" },
     });
-    fireEvent.blur(fillColor);
+    await act(async () => {
+      fireEvent.blur(fillColor);
+    });
     const strokeColor = screen.getByLabelText("Stroke color");
     fireEvent.change(strokeColor, {
       target: { value: "#111111" },
     });
-    fireEvent.blur(strokeColor);
-    commitNumber("Stroke weight", "3");
+    await act(async () => {
+      fireEvent.blur(strokeColor);
+    });
+    await commitNumber("Stroke weight", "3");
 
     const node = canvasPromoPanel();
     const surface = within(node).getByRole("button", {
       name: "Promo panel on canvas",
     });
-    expect(node.style.transform).toBe("rotate(15deg)");
-    expect(node.style.opacity).toBe("0.64");
-    expect(surface.style.backgroundColor).toBe("rgb(255, 84, 112)");
-    expect(surface.style.borderRadius).toBe("18px");
-    expect(surface.style.borderColor).toBe("rgb(17, 17, 17)");
-    expect(surface.style.borderWidth).toBe("3px");
+    await waitFor(() => {
+      expect(node.style.transform).toBe("rotate(15deg)");
+      expect(node.style.opacity).toBe("0.64");
+      expect(surface.style.backgroundColor).toBe("rgb(255, 84, 112)");
+      expect(surface.style.borderRadius).toBe("18px");
+      expect(surface.style.borderColor).toBe("rgb(17, 17, 17)");
+      expect(surface.style.borderWidth).toBe("3px");
+    });
   });
 
-  it("previews inspector values immediately and commits one history entry on blur", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
-    selectPromoPanel();
+  it("previews inspector values immediately and commits one history entry on blur", async () => {
+    await renderWorkbench();
+    await selectPromoPanel();
 
     const cornerRadius = screen.getByLabelText("Corner radius");
     fireEvent.change(cornerRadius, { target: { value: "4" } });
@@ -303,13 +335,20 @@ describe("professional authoring properties", () => {
     expect(surface.style.borderRadius).toBe("4px");
 
     fireEvent.blur(cornerRadius);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Undo" }).hasAttribute("disabled"),
+      ).toBe(false);
+    });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(surface.style.borderRadius).toBe("0px");
+    await waitFor(() => {
+      expect(surface.style.borderRadius).toBe("0px");
+    });
   });
 
-  it("previews a typed stroke weight without concatenating the committed value", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
-    selectPromoPanel();
+  it("previews a typed stroke weight without concatenating the committed value", async () => {
+    await renderWorkbench();
+    await selectPromoPanel();
 
     const strokeColor = screen.getByLabelText("Stroke color");
     fireEvent.focus(strokeColor);
@@ -317,43 +356,51 @@ describe("professional authoring properties", () => {
     const strokeWeight = screen.getByLabelText(
       "Stroke weight",
     ) as HTMLInputElement;
-    act(() => {
+    await act(async () => {
       fireEvent.blur(strokeColor);
       fireEvent.focus(strokeWeight);
     });
     fireEvent.change(strokeWeight, { target: { value: "" } });
     expect(strokeWeight.value).toBe("");
-    fireEvent.change(strokeWeight, {
-      target: { value: "3" },
+    await act(async () => {
+      fireEvent.change(strokeWeight, {
+        target: { value: "3" },
+      });
     });
     expect(strokeWeight.value).toBe("3");
 
     const surface = within(canvasPromoPanel()).getByRole("button", {
       name: "Promo panel on canvas",
     });
-    expect(surface.style.borderWidth).toBe("3px");
+    await waitFor(() => {
+      expect(surface.style.borderWidth).toBe("3px");
+    });
   });
 
-  it("records each completed property edit as an undoable semantic command", () => {
-    render(<CanvasWorkbench project={canvasWorkbenchFixture} />);
-    selectPromoPanel();
+  it("records each completed property edit as an undoable semantic command", async () => {
+    await renderWorkbench();
+    await selectPromoPanel();
 
-    commitNumber("Corner radius", "12");
-    expect(
-      within(canvasPromoPanel()).getByRole("button", {
-        name: "Promo panel on canvas",
-      }).style.borderRadius,
-    ).toBe("12px");
+    await commitNumber("Corner radius", "12");
+    await waitFor(() => {
+      expect(
+        within(canvasPromoPanel()).getByRole("button", {
+          name: "Promo panel on canvas",
+        }).style.borderRadius,
+      ).toBe("12px");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(
-      within(canvasPromoPanel()).getByRole("button", {
-        name: "Promo panel on canvas",
-      }).style.borderRadius,
-    ).toBe("0px");
+    await waitFor(() => {
+      expect(
+        within(canvasPromoPanel()).getByRole("button", {
+          name: "Promo panel on canvas",
+        }).style.borderRadius,
+      ).toBe("0px");
+    });
   });
 
-  it("preserves authored properties through canonical operations and local recovery", () => {
+  it("preserves authored properties through canonical operations and local recovery", async () => {
     const initial = createSceneState(canvasWorkbenchFixture);
     const authoredNodes = replaceNode(
       initial.nodes,
