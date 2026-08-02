@@ -621,8 +621,10 @@ export function ProjectHome({
             src="/memi-canvas-icon.png"
           />
           <span>
-            <strong>Memi</strong>
-            <small>Design workspace</small>
+            <strong>Memi Canvas</strong>
+            <small aria-label="Memi Canvas development status" role="status">
+              In development
+            </small>
           </span>
         </header>
 

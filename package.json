@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && vite-node scripts/assert-production-runtime-boundary.ts",
+    "build": "tsc --noEmit && npm run verify:public-truth && vite build && vite-node scripts/assert-production-runtime-boundary.ts",
     "build:runtime-sidecar": "vite-node scripts/build-runtime-sidecar.ts",
     "build:e2e": "tsc --noEmit && vite build",
     "lint": "oxlint .",
@@ -23,6 +23,7 @@
     "macos:build": "npm --workspace @memi/macos run build",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm run test:coverage && npm run build",
+    "verify:public-truth": "vite-node scripts/assert-public-truth-boundary.ts",
     "smoke:runtime-sidecar": "vite-node scripts/smoke-runtime-sidecar.ts",
     "verify:macos": "npm --workspace @memi/macos run tauri -- build --debug --bundles app && npm run smoke:runtime-sidecar && vite-node scripts/smoke-macos-app.ts",
     "verify:full": "npm run verify && npm run test:e2e && npm run verify:macos"

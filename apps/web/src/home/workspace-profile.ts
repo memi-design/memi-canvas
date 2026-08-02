@@ -25,7 +25,7 @@ export const DEFAULT_WORKSPACE_PROFILE: WorkspaceProfile = Object.freeze({
   kind: "memi-workspace-profile",
   schemaVersion: 1,
   userName: "Designer",
-  workspaceName: "Memi Studio",
+  workspaceName: "Memi Workspace",
 });
 
 function byteLength(value: string): number {

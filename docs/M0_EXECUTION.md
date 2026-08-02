@@ -55,7 +55,7 @@ At M0 exit, the team can start M1 knowing:
 ### Out of scope
 
 - Production application features
-- Production importer, renderer, harness, trace, or patch implementation
+- Production importer, renderer, harness, trace, or patch implementation (out of scope for M0)
 - Figma, FigJam, or Code Connect compatibility
 - Desktop shell or Tauri wrapper
 - Hosted collaboration or multi-human CRDT

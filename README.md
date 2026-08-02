@@ -7,7 +7,7 @@
 > A local-first, canvas-native design engineering workbench for understanding, creating, and verifying software interfaces with humans and agents.
 
 <p>
-  <a href="https://github.com/memi-design/memi-canvas"><img src="https://img.shields.io/badge/status-work%20in%20progress-bd3f63" alt="Work in progress" /></a>
+  <a href="https://github.com/memi-design/memi-canvas"><img src="https://img.shields.io/badge/status-in%20development-bd3f63" alt="In development" /></a>
   <a href="https://github.com/memi-design/memi-canvas/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-171718" alt="Apache 2.0 license" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-171718" alt="macOS" />
   <img src="https://img.shields.io/badge/local--first-yes-171718" alt="Local first" />
@@ -15,7 +15,7 @@
 
 Memi Canvas explores an inverse-Figma workflow: start with a real repository or a blank canvas, work visually, and keep every proposed change tied to source evidence, a document revision, and a reviewable trace.
 
-This repository is an **open-source M0 development snapshot**. The editor, canonical document model, durable import jobs, local runtime bridge, and review foundations are implemented and under active convergence. Verified all-screen import, live provider execution, and production source mutation are not complete and are not claimed here.
+**Public status: In development.** This repository is an open-source M0 development snapshot, not a production release. The editor, canonical document model, durable import jobs, local runtime bridge, and review foundations are implemented and under active convergence. Verified all-screen import, live provider execution, and production source mutation are not complete and are not claimed here.
 
 ## Current product
 
@@ -31,7 +31,7 @@ This repository is an **open-source M0 development snapshot**. The editor, canon
 
 <p align="center"><sub>The current deterministic M0 review workspace. This screenshot shows demo evidence, not a verified production import.</sub></p>
 
-## What works today
+## Implemented development foundations
 
 | Surface | Current state |
 | --- | --- |
@@ -66,7 +66,7 @@ For the browser-only development surface:
 npm run dev
 ```
 
-The native development command builds a local sidecar launcher and starts the Vite/Tauri application. It does not require administrator privileges. Importing a repository can execute its approved local build recipe inside a Memi-managed worktree; review the displayed recipe before starting an import.
+The native development command builds a local sidecar launcher and starts the Vite/Tauri application. It does not require administrator privileges. In the development runtime, importing a repository can execute its approved local build recipe inside a Memi-managed worktree; review the displayed recipe before starting an import. This does not make the repository a production importer or enable production source editing.
 
 ## Architecture
 
@@ -128,7 +128,7 @@ Native and browser E2E gates are available through `npm run verify:full`, but th
 
 ## Status and roadmap
 
-Memi Canvas is not Figma parity, a hosted collaboration service, or a production source editor today. The public development sequence is:
+Memi Canvas remains **In development**. It is not Figma parity, a hosted collaboration service, a production importer, or a production source editor today. The public development sequence is:
 
 1. Converge every editor action on one immutable document and operation authority.
 2. Complete the fast creation surface: layout, text, components, variables, vectors, prototypes, and whiteboarding.

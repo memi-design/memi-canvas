@@ -26,12 +26,12 @@ describe("workspace profile persistence", () => {
         kind: "memi-workspace-profile",
         schemaVersion: 1,
         userName: "Sarvesh",
-        workspaceName: "Memi Studio",
+        workspaceName: "Memi Workspace",
       }),
     ).toBe(true);
     expect(persistence.load()).toMatchObject({
       userName: "Sarvesh",
-      workspaceName: "Memi Studio",
+      workspaceName: "Memi Workspace",
     });
 
     storage.setItem(

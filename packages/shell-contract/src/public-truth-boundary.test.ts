@@ -8,7 +8,7 @@ import {
 describe("Memi Canvas public truth boundary", () => {
   it("rejects unqualified production importer and source-editing claims", () => {
     const source = [
-      "Memi Canvas is a production importer.",
+      "This is not a toy. Memi Canvas is a production importer.",
       "Production source editing is available from the canvas.",
       "The editor mutates repository source in production.",
     ].join("\n");
@@ -40,6 +40,15 @@ describe("Memi Canvas public truth boundary", () => {
     expect(findUnqualifiedProductionClaims(source, "public-copy.md")).toEqual(
       [],
     );
+  });
+
+  it("does not mistake ordinary production source files for editing claims", () => {
+    expect(
+      findUnqualifiedProductionClaims(
+        "The build compiles production source files and verifies the bundle.",
+        "build-notes.md",
+      ),
+    ).toEqual([]);
   });
 
   it("keeps the checked-in public brand and capability surfaces truthful", async () => {
