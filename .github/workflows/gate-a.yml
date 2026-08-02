@@ -1,0 +1,57 @@
+name: Gate A
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-a-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck, lint, Gate A contracts, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Run focused Gate A V3 and shell contracts
+        run: >-
+          npx vitest run
+          apps/web/src/canvas/canvas-workspace-persistence.test.ts
+          apps/web/src/canvas/workbench-history-actions.test.ts
+          packages/protocol/src/canvas-v3.test.ts
+          packages/shell-contract/src/editor-module-boundaries.test.ts
+      - run: npm run build
+
+  desktop-e2e:
+    name: Desktop Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Run the bounded desktop browser suite
+        run: npm run test:e2e -- --project=desktop
