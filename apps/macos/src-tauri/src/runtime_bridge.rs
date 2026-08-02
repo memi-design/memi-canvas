@@ -508,6 +508,13 @@ fn runtime_socket_path(app_data: &Path) -> Result<PathBuf, String> {
     Ok(socket_path)
 }
 
+fn ensure_private_socket_parent(socket_path: &Path) -> Result<(), String> {
+    let parent = socket_path
+        .parent()
+        .ok_or_else(|| "Runtime socket parent is invalid".to_owned())?;
+    ensure_private_directory(parent)
+}
+
 pub(crate) fn start_runtime_bridge(
     app: &AppHandle,
     app_data: &Path,
@@ -522,6 +529,7 @@ pub(crate) fn start_runtime_bridge(
     let runtime_root = app_data.join("runtime");
     ensure_private_directory(&runtime_root)?;
     let socket_path = runtime_socket_path(app_data)?;
+    ensure_private_socket_parent(&socket_path)?;
     if socket_path.exists() {
         let metadata = fs::symlink_metadata(&socket_path)
             .map_err(|_| "Stale runtime socket could not be inspected".to_owned())?;
@@ -881,15 +889,19 @@ pub(crate) fn artifact_protocol_response(
 mod tests {
     use super::{
         artifact_http_response, artifact_path_for_id, constant_time_bearer_matches,
-        exchange_runtime_rpc_with_lifecycle, import_log_path_for_job, is_secret_key,
-        managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
+        ensure_private_socket_parent, exchange_runtime_rpc_with_lifecycle, import_log_path_for_job,
+        is_secret_key, managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
         runtime_diagnostics_enabled, runtime_health_envelope, runtime_socket_is_ready,
         runtime_socket_path, validate_runtime_envelope, RuntimeLifecycle,
     };
     use serde_json::json;
     use std::{
         fs,
-        os::unix::{fs::PermissionsExt, net::UnixListener, process::CommandExt},
+        os::unix::{
+            fs::{symlink, PermissionsExt},
+            net::UnixListener,
+            process::CommandExt,
+        },
         path::Path,
         process::{Command, Stdio},
         sync::Arc,
@@ -937,6 +949,33 @@ mod tests {
             runtime_socket_path(&root),
             Err("Memi storage path is too long for the private runtime transport".to_owned())
         );
+    }
+
+    #[test]
+    fn runtime_socket_parent_rejects_a_symlink_escape() {
+        let nonce = format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = Path::new("/tmp").join(format!("memi-rt-root-{nonce}"));
+        let outside = Path::new("/tmp").join(format!("memi-rt-outside-{nonce}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, root.join("r")).unwrap();
+        let socket_path = runtime_socket_path(&root).unwrap();
+
+        assert_eq!(
+            ensure_private_socket_parent(&socket_path),
+            Err("Runtime storage must be a real directory".to_owned())
+        );
+
+        let _ = fs::remove_file(root.join("r"));
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]
