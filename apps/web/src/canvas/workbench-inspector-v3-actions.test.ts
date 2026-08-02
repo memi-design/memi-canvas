@@ -49,7 +49,11 @@ describe("workbench inspector V3 actions", () => {
     actions.preview(mutation);
     expect(setPreview).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: first.id })]));
     actions.commit(mutation);
-    expect(commitIntentReceipt).toHaveBeenCalledWith("Move two", expect.objectContaining({ kind: "move" }), { actor: "human" });
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Move two",
+      expect.objectContaining({ kind: "move" }),
+      { selectedIds: [first.id, second.id] },
+    );
     expect(setPreview).toHaveBeenLastCalledWith(null);
     actions.clearPreview();
     expect(setPreview).toHaveBeenLastCalledWith(null);

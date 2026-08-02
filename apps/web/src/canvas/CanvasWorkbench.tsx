@@ -114,12 +114,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
       ]),
     });
-  if (v3SessionStatus !== "ready") {
-    const message = v3SessionStatus === "error"
-      ? `Canvas V3 session failed: ${v3SessionError ?? "Unknown error."}`
-      : "Opening Canvas V3 session…";
-    return <div role="alert">{message}</div>;
-  }
   const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;
   const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
@@ -501,6 +495,13 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           x: contextMenu.x,
           y: contextMenu.y,
         };
+
+  if (v3SessionStatus !== "ready") {
+    const message = v3SessionStatus === "error"
+      ? `Canvas V3 session failed: ${v3SessionError ?? "Unknown error."}`
+      : "Opening Canvas V3 session…";
+    return <div role="alert">{message}</div>;
+  }
 
   return (
     <CanvasWorkbenchView

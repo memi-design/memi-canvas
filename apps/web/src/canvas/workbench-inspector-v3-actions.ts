@@ -17,7 +17,7 @@ export interface CreateWorkbenchInspectorV3ActionsInput {
   readonly commitIntentReceipt: (
     label: string,
     receipt: WorkbenchIntentReceiptV3,
-    options?: Readonly<{ readonly actor: "human" }>,
+    options?: Readonly<{ readonly selectedIds?: readonly string[] }>,
   ) => void;
   readonly projectNodes: readonly WorkbenchNode[];
   readonly setPreview: (nodes: readonly WorkbenchNode[] | null) => void;
@@ -48,7 +48,10 @@ function receiptFor(
   before: readonly WorkbenchNode[],
   after: readonly WorkbenchNode[],
 ): WorkbenchIntentReceiptV3 | null {
-  const groups: WorkbenchIntentReceiptV3[] = [];
+  const groups: Exclude<
+    WorkbenchIntentReceiptV3,
+    { readonly kind: "batch" }
+  >[] = [];
   const changed = (
     predicate: (left: WorkbenchNode, right: WorkbenchNode) => boolean,
   ) => after.filter((node, index) => {
@@ -73,7 +76,12 @@ function receiptFor(
   if (resized.length) groups.push({ kind: "resize", nodes: resized });
   if (styled.length) groups.push({ kind: "style", nodes: styled });
   const names = changed((left, right) => left.name !== right.name);
-  const text = changed((left, right) => left.kind === "Text" && right.kind === "Text" && left.text !== right.text);
+  const text = changed(
+    (left, right) =>
+      left.kind === "Text" &&
+      right.kind === "Text" &&
+      left.text !== right.text,
+  );
   const layout = changed((left, right) => !equal(left.layout, right.layout));
   names.forEach((node) => groups.push({
     kind: "node.name",
@@ -83,13 +91,16 @@ function receiptFor(
   text.forEach((node) => groups.push({
     kind: "node.text",
     nodeId: node.id,
-    next: { autoResize: "width-height", characters: node.text ?? node.frameContent ?? node.name },
-  } as WorkbenchIntentReceiptV3));
+    next: {
+      autoResize: "width-height",
+      characters: node.text ?? node.name,
+    },
+  }));
   layout.forEach((node) => groups.push({
     kind: "node.layout",
     nodeId: node.id,
     next: node.layout ?? DEFAULT_WORKBENCH_LAYOUT,
-  } as WorkbenchIntentReceiptV3));
+  }));
   if (!groups.length) return null;
   const only = groups[0];
   return groups.length === 1 && only !== undefined
@@ -117,7 +128,9 @@ export function createWorkbenchInspectorV3Actions(
       const before = input.projectNodes.filter((node) => mutation.targetIds.includes(node.id));
       const receipt = receiptFor(before, projected(mutation));
       if (receipt === null) return;
-      input.commitIntentReceipt(mutation.label, receipt, { actor: "human" });
+      input.commitIntentReceipt(mutation.label, receipt, {
+        selectedIds: mutation.targetIds,
+      });
       input.setPreview(null);
     },
   });
