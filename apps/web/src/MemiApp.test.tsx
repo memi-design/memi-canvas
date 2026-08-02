@@ -199,8 +199,9 @@ describe("Memi application journey", () => {
       }),
     }));
     const runtimeClient = {
+      canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
       sessions: { migrateLegacy, restore, save },
-    } as Pick<RuntimeClientV1, "sessions">;
+    } as Pick<RuntimeClientV1, "sessions" | "canvasDocuments">;
 
     render(
       <MemiApp
@@ -315,9 +316,10 @@ describe("Memi application journey", () => {
     const list = vi.fn(async () => ({ jobs: [listedCommitted] }));
     const get = vi.fn(async () => ({ job: committed }));
     const runtimeClient = {
+      canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
       imports: { get, list },
       sessions: {},
-    } as unknown as Pick<RuntimeClientV1, "sessions"> &
+    } as unknown as Pick<RuntimeClientV1, "sessions" | "canvasDocuments"> &
       Partial<Pick<RuntimeClientV1, "imports">>;
 
     render(
@@ -561,11 +563,7 @@ describe("Memi application journey", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Checkout system" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: "Checkout / Mobile on canvas",
-      }),
-    ).toBeTruthy();
+    expect(screen.getByText(/changes are temporary/u)).toBeTruthy();
     expect(storage.values.has("memi.project-library.v1")).toBe(true);
     expect(
       [...storage.values.keys()].some((key) =>

@@ -37,24 +37,8 @@ function createStorage() {
 }
 
 describe("LocalDesignConsumer workspace session", () => {
-  it("restores the locally chosen canvas harness for the same project", () => {
+  it("uses an explicit temporary V3 boundary in browser-only mode", () => {
     const storage = createStorage();
-    const first = render(
-      <LocalDesignConsumer
-        onExit={() => {}}
-        project={project}
-        storage={storage}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Agent harness"), {
-      target: { value: "claude-code" },
-    });
-    expect(
-      (screen.getByLabelText("Agent harness") as HTMLSelectElement).value,
-    ).toBe("claude-code");
-    first.unmount();
-
     render(
       <LocalDesignConsumer
         onExit={() => {}}
@@ -63,9 +47,8 @@ describe("LocalDesignConsumer workspace session", () => {
       />,
     );
 
-    expect(
-      (screen.getByLabelText("Agent harness") as HTMLSelectElement).value,
-    ).toBe("claude-code");
+    expect(screen.getByText(/changes are temporary/u)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Infinite canvas" })).toBeTruthy();
   });
 
   it("restores and persists session metadata through the injected runtime while document recovery stays separate", async () => {
@@ -82,8 +65,9 @@ describe("LocalDesignConsumer workspace session", () => {
       session: null,
     }));
     const runtimeClient = {
+      canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
       sessions: { migrateLegacy, restore, save },
-    } as Pick<RuntimeClientV1, "sessions">;
+    } as Pick<RuntimeClientV1, "sessions" | "canvasDocuments">;
     const runtimeProjectId = ProjectIdSchema.parse(
       "prj_01J00000000000000000000000",
     );

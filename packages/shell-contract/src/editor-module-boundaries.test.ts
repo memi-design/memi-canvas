@@ -78,5 +78,9 @@ describe("production editor module boundaries", () => {
       /createCanvasAutosave|\bpersistence=\{persistence\}/u,
     );
     expect(consumer).toContain("migrateLegacyWorkspaceSession");
+    expect(consumer).toContain(
+      "createRuntimeClientCanvasDocumentPersistence",
+    );
+    expect(consumer).toContain("v3Session");
   });
 });

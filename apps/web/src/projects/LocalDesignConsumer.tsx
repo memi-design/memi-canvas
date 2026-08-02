@@ -14,11 +14,16 @@ import { CANVAS_HARNESSES } from "../canvas/harness-config.js";
 import type { CanvasWorkbenchProject } from "../canvas/model.js";
 import type { CanvasReconstructionReview } from "../canvas/reconstruction-review.js";
 import {
-  createCanvasAutosave,
   canvasSourceFingerprint,
-  type CanvasAutosave,
   type CanvasStorage,
 } from "../canvas/persistence.js";
+import {
+  createLegacyWorkbenchProjection,
+} from "../canvas/legacy-workbench-projection.js";
+import {
+  migrateLegacyWorkbenchProjectionToV3,
+} from "../canvas/canonical-workbench-authority-v3.js";
+import { hashCanvasDocumentV3 } from "@memi/canvas-document";
 import {
   WorkspaceSessionController,
   createCanvasWorkspaceSessionDraft,
@@ -28,6 +33,10 @@ import {
 } from "../canvas/workspace-session-controller.js";
 import { migrateLegacyWorkspaceSession } from "../canvas/workspace-session-migration.js";
 import type { RuntimeClientV1 } from "../runtime/runtime-client.js";
+import {
+  createEphemeralCanvasDocumentPersistence,
+  createRuntimeClientCanvasDocumentPersistence,
+} from "../runtime/runtime-client-canvas-document-persistence.js";
 import type { WorkspaceSessionDraftV1 } from "@memi/protocol";
 import { openLocalPreviewInHelium } from "../platform/helium.js";
 import type { ProjectRecord } from "./project-library.js";
@@ -174,16 +183,6 @@ function localDesignProject(
   };
 }
 
-function autosaveBoundary(
-  storage: CanvasStorage,
-): CanvasAutosave | undefined {
-  try {
-    return createCanvasAutosave(storage);
-  } catch {
-    return undefined;
-  }
-}
-
 const subscribeToNoSession = (): (() => void) => () => {};
 const readNoSession =
   (): WorkspaceSessionControllerSnapshot | null => null;
@@ -202,7 +201,7 @@ export function LocalDesignConsumer({
   readonly agentDefaults?: CanvasAgentDefaults;
   readonly onExit: () => void;
   readonly project: ProjectRecord;
-  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions">;
+  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions" | "canvasDocuments">;
   readonly runtimePort?: CanvasRuntimePortV1;
   readonly runtimeProjectId?: WorkspaceRuntimeProjectId;
   readonly reconstructionArtifactLoader?:
@@ -215,7 +214,9 @@ export function LocalDesignConsumer({
   const [harnessPreference, setHarnessPreference] = useState(() =>
     readHarnessPreference(storage, canvasProject.document.id),
   );
-  const [persistence] = useState(() => autosaveBoundary(storage));
+  const [ephemeralPersistence] = useState(() =>
+    createEphemeralCanvasDocumentPersistence(),
+  );
   const [sessionWarning, setSessionWarning] =
     useState<string | undefined>();
   const [reconstructionWarning, setReconstructionWarning] =
@@ -266,6 +267,39 @@ export function LocalDesignConsumer({
         : createRuntimeClientWorkspaceSessionPort(runtimeClient),
     [runtimeClient, runtimeProjectId],
   );
+  const v3Session = useMemo(() => {
+    const migration = migrateLegacyWorkbenchProjectionToV3(
+      createLegacyWorkbenchProjection({
+        nodes: canvasProject.document.nodes,
+        revision: canvasProject.document.revision,
+        selectedNodeId: canvasProject.selectedNodeId,
+      }),
+      {
+        legacyDocumentId: canvasProject.document.id,
+        legacyProjectId: canvasProject.id,
+      },
+    );
+    const rebasedDocument = {
+      ...migration.document,
+      projectId: runtimeProjectId ?? migration.document.projectId,
+    };
+    const document = Object.freeze({
+      ...rebasedDocument,
+      stateHash: hashCanvasDocumentV3(rebasedDocument),
+    });
+    const activePageId = document.pageIds[0];
+    if (activePageId === undefined) {
+      throw new Error("Canvas V3 migration produced no active page.");
+    }
+    return Object.freeze({
+      activePageId,
+      document,
+      persistence:
+        runtimeClient === undefined
+          ? ephemeralPersistence
+          : createRuntimeClientCanvasDocumentPersistence(runtimeClient),
+    });
+  }, [canvasProject, ephemeralPersistence, runtimeClient, runtimeProjectId]);
   const sessionController = useMemo(
     () =>
       workspaceRuntime === undefined
@@ -408,8 +442,8 @@ export function LocalDesignConsumer({
   const workspaceWarning =
     reconstructionWarning ??
     sessionWarning ??
-    (persistence === undefined
-      ? "File storage unavailable · edits remain in this session only"
+    (runtimeClient === undefined
+      ? "Native persistence unavailable · changes are temporary in this browser session"
       : undefined);
 
   return (
@@ -420,6 +454,7 @@ export function LocalDesignConsumer({
       {...(initialWorkspaceSession === null
         ? {}
         : { initialWorkspaceSession })}
+      v3Session={v3Session}
       onExit={onExit}
       onOpenInHelium={(url) => {
         void openLocalPreviewInHelium(url);
@@ -448,7 +483,6 @@ export function LocalDesignConsumer({
               sessionWriter.write(state);
             },
           })}
-      {...(persistence === undefined ? {} : { persistence })}
       onHarnessChange={(harnessId) => {
         if (
           saveHarnessPreference(

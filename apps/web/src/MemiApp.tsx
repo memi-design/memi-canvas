@@ -115,7 +115,7 @@ export interface MemiAppProps {
   readonly repositoryCaptureRuntime?: RepositoryCaptureRuntime;
   readonly reconstructionArtifactLoader?:
     RepositoryReconstructionArtifactLoader;
-  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions"> &
+  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions" | "canvasDocuments"> &
     Partial<Pick<RuntimeClientV1, "imports">>;
   readonly truthfulImportResetReady?: boolean;
 }

@@ -6,7 +6,10 @@ import {
 } from "@memi/protocol";
 import { createCanvasDocumentV3 } from "@memi/canvas-document";
 
-import { createRuntimeClientCanvasDocumentPersistence } from "./runtime-client-canvas-document-persistence.js";
+import {
+  createEphemeralCanvasDocumentPersistence,
+  createRuntimeClientCanvasDocumentPersistence,
+} from "./runtime-client-canvas-document-persistence.js";
 
 const now = "2026-08-01T18:00:00.000Z";
 
@@ -89,6 +92,40 @@ describe("RuntimeClient CanvasDocumentV3 persistence adapter", () => {
     expect(client.canvasDocuments.append).toHaveBeenCalledWith({ append });
     expect(client.canvasDocuments.checkpoint).toHaveBeenCalledWith({
       snapshot: initial,
+    });
+  });
+
+  it("keeps the browser fallback V3-only and in memory", async () => {
+    const initial = snapshot();
+    const port = createEphemeralCanvasDocumentPersistence();
+    const append = {
+      schemaVersion: 1 as const,
+      kind: "canvas-document-v3-append" as const,
+      identity: initial.identity,
+      operation: {
+        id: "opn_01J00000000000000000000000",
+        documentId: initial.document.id,
+        expectedRevision: 0,
+        expectedHash: initial.document.stateHash,
+        resultingHash:
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    } as never;
+
+    expect(await port.load(initial.identity)).toBeNull();
+    await port.initialize(initial);
+    expect(await port.append(append)).toMatchObject({
+      operationId: "opn_01J00000000000000000000000",
+      revision: 1,
+    });
+    await port.checkpoint(initial);
+    expect(await port.load(initial.identity)).toMatchObject({
+      snapshot: initial,
+      operations: [
+        expect.objectContaining({
+          id: "opn_01J00000000000000000000000",
+        }),
+      ],
     });
   });
 });
