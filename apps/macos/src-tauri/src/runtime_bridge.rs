@@ -514,7 +514,8 @@ pub(crate) fn start_runtime_bridge(
     }
     let token = random_runtime_token()?;
     let plan_key = plan_integrity_key(app_data)?;
-    let mut sidecar = runtime_command()?
+    let mut sidecar = runtime_command()?;
+    sidecar
         .env("MEMI_RUNTIME_TOKEN", &token)
         .env("MEMI_RUNTIME_SOCKET", &socket_path)
         .env("MEMI_RUNTIME_APP_DATA", app_data)
