@@ -16,6 +16,7 @@ const ids = {
   document: "doc_01J00000000000000000000000",
   page: "pag_01J00000000000000000000000",
   node: "nod_01J00000000000000000000000",
+  otherNode: "nod_01J00000000000000000000001",
   operation: "opn_01J00000000000000000000000",
   screenshot: "art_01J00000000000000000000000",
   hierarchy: "art_01J00000000000000000000001",
@@ -295,6 +296,60 @@ describe("Canvas V3 protocol", () => {
                   nodeId: ids.node,
                   prior: geometryAction.payload.next,
                   next: geometryAction.payload.prior,
+                },
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+
+    const createdNode = node();
+    expect(
+      CanvasOperationV3Schema.safeParse({
+        ...operation,
+        type: "node.create",
+        action: {
+          type: "node.create",
+          payload: { node: createdNode, parentId: null, index: 0 },
+        },
+        inverseAction: {
+          type: "node.delete",
+          payload: {
+            nodeId: createdNode.id,
+            prior: { node: createdNode, parentId: null, index: 0 },
+          },
+        },
+      }).success,
+    ).toBe(true);
+
+    const secondTransform = {
+      type: "node.transform" as const,
+      payload: {
+        nodeId: ids.otherNode,
+        prior: node().transform,
+        next: { ...node().transform, x: 40 },
+      },
+    };
+    expect(
+      CanvasOperationV3Schema.safeParse({
+        ...operation,
+        type: "atomic.batch",
+        action: {
+          type: "atomic.batch",
+          payload: { actions: [action, secondTransform] },
+        },
+        inverseAction: {
+          type: "atomic.batch",
+          payload: {
+            actions: [
+              operation.inverseAction,
+              {
+                type: "node.transform",
+                payload: {
+                  nodeId: ids.otherNode,
+                  prior: secondTransform.payload.next,
+                  next: secondTransform.payload.prior,
                 },
               },
             ],
