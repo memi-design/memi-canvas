@@ -478,6 +478,10 @@ fn runtime_command() -> Result<Command, String> {
     packaged_runtime_command()?.map_or_else(local_development_runtime_command, Ok)
 }
 
+fn runtime_diagnostics_enabled(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("stderr"))
+}
+
 fn runtime_health_envelope() -> Value {
     json!({
         "schemaVersion": 1,
@@ -525,7 +529,14 @@ pub(crate) fn start_runtime_bridge(
     sidecar
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(
+            if runtime_diagnostics_enabled(std::env::var_os("MEMI_RUNTIME_DIAGNOSTICS").as_deref())
+            {
+                Stdio::inherit()
+            } else {
+                Stdio::null()
+            },
+        )
         .process_group(0);
     let child = sidecar
         .spawn()
@@ -857,8 +868,8 @@ mod tests {
         artifact_http_response, artifact_path_for_id, constant_time_bearer_matches,
         exchange_runtime_rpc_with_lifecycle, import_log_path_for_job, is_secret_key,
         managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
-        runtime_health_envelope, runtime_socket_is_ready, validate_runtime_envelope,
-        RuntimeLifecycle,
+        runtime_diagnostics_enabled, runtime_health_envelope, runtime_socket_is_ready,
+        validate_runtime_envelope, RuntimeLifecycle,
     };
     use serde_json::json;
     use std::{
@@ -1016,6 +1027,17 @@ mod tests {
             packaged_runtime_sidecar_path(Path::new("/workspace/target/debug/memi-canvas-macos",)),
             None,
         );
+    }
+
+    #[test]
+    fn runtime_diagnostics_require_the_exact_opt_in_value() {
+        assert!(runtime_diagnostics_enabled(Some(std::ffi::OsStr::new(
+            "stderr"
+        ))));
+        assert!(!runtime_diagnostics_enabled(Some(std::ffi::OsStr::new(
+            "1"
+        ))));
+        assert!(!runtime_diagnostics_enabled(None));
     }
 
     #[test]

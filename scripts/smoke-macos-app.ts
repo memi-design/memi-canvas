@@ -220,6 +220,7 @@ const app = spawn(EXECUTABLE_PATH, [], {
   env: {
     ...process.env,
     MEMI_CANVAS_RUNTIME_STORAGE_ROOT: storageRoot,
+    MEMI_RUNTIME_DIAGNOSTICS: "stderr",
   },
   stdio: ["ignore", "ignore", "pipe"],
 });
