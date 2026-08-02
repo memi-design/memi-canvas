@@ -242,6 +242,35 @@ async function installTruthfulRuntimeFixture(
                     relativeRoot: ".",
                   },
                 ],
+                scenarios: Array.from(
+                  { length: entry.screenCount },
+                  (_, scenarioIndex) => ({
+                    id: `csc_${idBody(nextJob * 100 + scenarioIndex)}`,
+                    applicationId: `app_${nextJob}`,
+                    route:
+                      scenarioIndex === 0
+                        ? "/"
+                        : `/screen-${scenarioIndex + 1}`,
+                    state: "default",
+                    viewport: {
+                      name:
+                        entry.platform === "react-web"
+                          ? "desktop"
+                          : "mobile",
+                      width: entry.platform === "react-web" ? 1280 : 390,
+                      height: entry.platform === "react-web" ? 800 : 844,
+                      scale: 1,
+                    },
+                    sourceAnchor: {
+                      relativePath:
+                        entry.platform === "swiftui"
+                          ? `App/Screen${scenarioIndex + 1}View.swift`
+                          : `src/app/screen-${scenarioIndex + 1}/page.tsx`,
+                      symbol: null,
+                      contentHash,
+                    },
+                  }),
+                ),
                 recipes: [
                   {
                     applicationId: `app_${nextJob}`,
