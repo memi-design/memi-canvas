@@ -262,7 +262,9 @@ async function installTruthfulRuntimeFixture(
                     purpose:
                       entry.platform === "swiftui" ? "build" : "launch",
                     hash: contentHash,
-                    expiresAt: "2026-07-30T12:00:00.000Z",
+                    // Keep the deterministic fixture valid independently of
+                    // the wall-clock date on CI runners.
+                    expiresAt: "2099-01-01T00:00:00.000Z",
                   },
                 ],
                 inventory: {

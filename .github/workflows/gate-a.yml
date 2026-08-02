@@ -32,8 +32,17 @@ jobs:
       - name: Run focused Gate A V3 and shell contracts
         run: >-
           npx vitest run
+          apps/web/src/canvas/CanvasWorkbench.v3-production.test.ts
           apps/web/src/canvas/canvas-workspace-persistence.test.ts
+          apps/web/src/projects/local-design-canvas-v3.test.ts
+          apps/web/src/canvas/runtime-capture-v3-materialization-adapter.test.ts
+          apps/web/src/canvas/v3-workbench-session-controller.test.ts
+          apps/web/src/canvas/workbench-inspector-v3-actions.test.ts
+          apps/web/src/canvas/workbench-v3-intents.test.ts
+          apps/web/src/canvas/workbench-v3-session-bridge.test.ts
           apps/web/src/canvas/workbench-history-actions.test.ts
+          apps/web/src/runtime/runtime-client-canvas-document-persistence.test.ts
+          packages/canvas-document/src/v3-replay-property.test.ts
           packages/protocol/src/canvas-v3.test.ts
           packages/shell-contract/src/editor-module-boundaries.test.ts
       - run: npm run build
@@ -55,3 +64,13 @@ jobs:
         run: npx playwright install chromium
       - name: Run the bounded desktop browser suite
         run: npm run test:e2e -- --project=desktop
+      - name: Upload Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-a-playwright-evidence
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
