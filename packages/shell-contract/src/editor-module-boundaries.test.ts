@@ -67,4 +67,16 @@ describe("production editor module boundaries", () => {
     expect(main).toContain('search.get("runtime") === "demo"');
     expect(consumer).not.toContain("createDemoCanvasRuntimePort");
   });
+
+  it("keeps browser SceneState autosave outside the production editor authority", async () => {
+    const consumer = await readFile(
+      "apps/web/src/projects/LocalDesignConsumer.tsx",
+      "utf8",
+    );
+
+    expect(consumer).not.toMatch(
+      /createCanvasAutosave|\bpersistence=\{persistence\}/u,
+    );
+    expect(consumer).toContain("migrateLegacyWorkspaceSession");
+  });
 });

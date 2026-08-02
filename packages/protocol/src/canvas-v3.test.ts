@@ -254,5 +254,53 @@ describe("Canvas V3 protocol", () => {
     expect(() =>
       CanvasOperationV3Schema.parse({ ...operation, type: "node.style" }),
     ).toThrow(/type/i);
+    expect(
+      CanvasOperationV3Schema.safeParse({
+        ...operation,
+        inverseAction: {
+          type: "node.geometry",
+          payload: {
+            nodeId: ids.node,
+            prior: node().geometry,
+            next: node().geometry,
+          },
+        },
+      }).success,
+    ).toBe(false);
+
+    const geometryAction = {
+      type: "node.geometry" as const,
+      payload: {
+        nodeId: ids.node,
+        prior: node().geometry,
+        next: { ...node().geometry, width: 480 },
+      },
+    };
+    expect(
+      CanvasOperationV3Schema.safeParse({
+        ...operation,
+        type: "atomic.batch",
+        action: {
+          type: "atomic.batch",
+          payload: { actions: [action, geometryAction] },
+        },
+        inverseAction: {
+          type: "atomic.batch",
+          payload: {
+            actions: [
+              operation.inverseAction,
+              {
+                type: "node.geometry",
+                payload: {
+                  nodeId: ids.node,
+                  prior: geometryAction.payload.next,
+                  next: geometryAction.payload.prior,
+                },
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 });
