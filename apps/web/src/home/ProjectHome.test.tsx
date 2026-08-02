@@ -162,10 +162,10 @@ describe("ProjectHome", () => {
 
     expect(brandIcon?.getAttribute("src")).toBe("/memi-canvas-icon.png");
     expect(brandIcon?.getAttribute("alt")).toBe("");
-    expect(screen.getByText("Memi Canvas")).toBeTruthy();
+    expect(screen.getByText("memi Canvas")).toBeTruthy();
     expect(
       screen.getByRole("status", {
-        name: "Memi Canvas development status",
+        name: "memi Canvas development status",
       }).textContent,
     ).toBe("In development");
     expect(buzzr.getAttribute("data-project-kind")).toBe("design");

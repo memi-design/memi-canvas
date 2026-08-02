@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Memi Canvas",
+  "productName": "memi Canvas",
   "version": "0.0.0",
   "identifier": "design.memi.canvas",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Memi Canvas",
+        "title": "memi Canvas",
         "width": 1440,
         "height": 900,
         "minWidth": 960,

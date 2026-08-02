@@ -1,4 +1,4 @@
-# Memi Canvas Program Status
+# memi Canvas Program Status
 
 As of: 2026-08-02
 Public status: In development

@@ -1,4 +1,9 @@
-# Memi Canvas app icon
+# memi Canvas app icon
+
+Canonical icon source URL: <https://raw.githubusercontent.com/memi-design/memi-canvas/main/apps/macos/src-tauri/icons/source/MemiCanvas-Iteration-02.icon/icon.json>
+
+The public truth gate verifies this URL against the checked-in brand manifest
+without fetching it at runtime.
 
 The editable source of truth is
 `source/MemiCanvas-Iteration-02.icon`. Keep that Icon Composer bundle intact so
