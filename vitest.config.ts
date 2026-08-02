@@ -36,6 +36,8 @@ export default defineConfig({
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
+        // Bun SQLite adapters have dedicated Bun tests and cannot run in Vitest's Node process.
+        "**/bun-*.ts",
         "**/main.tsx"
       ],
       thresholds: {

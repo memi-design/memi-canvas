@@ -1,6 +1,7 @@
-# Memi Canvas Program Status
+# memi Canvas Program Status
 
 As of: 2026-08-02
+Public status: In development
 Overall: RED
 Active milestone: M0, product and architecture lock
 Next decision: M1 go/no-go

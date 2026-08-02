@@ -81,7 +81,7 @@ function homeProps(
     onOpenProject: vi.fn(),
     projects,
     userName: "Sarvesh",
-    workspaceName: "Memi Studio",
+    workspaceName: "Memi Workspace",
     ...overrides,
   };
 }
@@ -162,6 +162,12 @@ describe("ProjectHome", () => {
 
     expect(brandIcon?.getAttribute("src")).toBe("/memi-canvas-icon.png");
     expect(brandIcon?.getAttribute("alt")).toBe("");
+    expect(screen.getByText("memi Canvas")).toBeTruthy();
+    expect(
+      screen.getByRole("status", {
+        name: "memi Canvas development status",
+      }).textContent,
+    ).toBe("In development");
     expect(buzzr.getAttribute("data-project-kind")).toBe("design");
     expect(buzzr.getAttribute("data-project-status")).toBe("attention");
     expect(buzzr.querySelectorAll("img")).toHaveLength(0);

@@ -109,7 +109,7 @@ const CSS_FONT_WEIGHT_PATTERN = /font-weight\s*:\s*(\d+|bold|bolder)\b/gi;
 const JS_FONT_WEIGHT_PATTERN =
   /fontWeight\s*:\s*(?:"|')?(\d+|bold|bolder)(?:"|')?\b/gi;
 
-describe("consolidated Memi Studio design system contract", () => {
+describe("consolidated Memi Canvas design system contract", () => {
   it("uses a proportional interface family and reserves mono for code", () => {
     const tokenSource = stripComments(readFileSync(TOKEN_SOURCE, "utf8"));
 

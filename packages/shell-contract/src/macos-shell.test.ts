@@ -14,7 +14,7 @@ describe("Memi Canvas macOS shell boundary", () => {
 
     expect(config).toMatchObject({
       identifier: "design.memi.canvas",
-      productName: "Memi Canvas",
+      productName: "memi Canvas",
       build: {
         devUrl: "http://127.0.0.1:5173",
         frontendDist: "../../../dist/web",
@@ -23,7 +23,7 @@ describe("Memi Canvas macOS shell boundary", () => {
         windows: [
           expect.objectContaining({
             label: "main",
-            title: "Memi Canvas",
+            title: "memi Canvas",
           }),
         ],
       },

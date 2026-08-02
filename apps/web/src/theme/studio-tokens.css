@@ -9,7 +9,7 @@
     "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Monaco, Consolas,
     monospace;
 
-  /* Primitives: the only authored Memi Studio color values. */
+  /* Primitives: the only authored Memi Canvas color values. */
   --studio-color-surface-canvas: oklch(13.90% 0.0029 246.26);
   --studio-color-surface-panel: oklch(17.23% 0.0026 247.98);
   --studio-color-surface-raised: oklch(20.39% 0.0025 247.95);
