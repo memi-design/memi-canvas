@@ -15,10 +15,21 @@ function isPackagedRuntimeCommand(
   runtimeBunPath: string,
   runtimeEntryPath: string,
 ): boolean {
-  const packagedBunCommand = `${runtimeBunPath} ${runtimeEntryPath}`;
-  return (
-    command === packagedBunCommand ||
-    command.startsWith(`${packagedBunCommand} `)
+  const launcherResourcePath = (path: string): string =>
+    path.replace(
+      "/Contents/Resources/",
+      "/Contents/MacOS/../Resources/",
+    );
+  // The signed shell launcher derives Resources from Contents/MacOS and its
+  // exec argv preserves that single lexical spelling. Treat only that known
+  // pair as equivalent; do not normalize arbitrary dot-dot paths.
+  const allowedCommands = [
+    `${runtimeBunPath} ${runtimeEntryPath}`,
+    `${launcherResourcePath(runtimeBunPath)} ${launcherResourcePath(runtimeEntryPath)}`,
+  ];
+  return allowedCommands.some(
+    (allowedCommand) =>
+      command === allowedCommand || command.startsWith(`${allowedCommand} `),
   );
 }
 

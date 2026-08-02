@@ -18,6 +18,11 @@ const packagedRuntime = (pid: number, parentPid: number): ProcessRow => ({
   parentPid,
   command: `${runtimeBun} ${runtimeEntry}`,
 });
+const launcherRuntime = (pid: number, parentPid: number): ProcessRow => ({
+  pid,
+  parentPid,
+  command: `${runtimeBun.replace("/Contents/Resources/", "/Contents/MacOS/../Resources/")} ${runtimeEntry.replace("/Contents/Resources/", "/Contents/MacOS/../Resources/")}`,
+});
 
 describe("packaged macOS smoke process proof", () => {
   it("requests untruncated BSD ps command output before comparing bundle paths", () => {
@@ -38,6 +43,14 @@ describe("packaged macOS smoke process proof", () => {
     );
   });
 
+  it("accepts only the launcher's known bundle-local lexical resource paths", () => {
+    const rows: readonly ProcessRow[] = [launcherRuntime(42, appPid)];
+
+    expect(findPackagedRuntimeSidecar(rows, appPid, runtimeBun, runtimeEntry)).toEqual(
+      launcherRuntime(42, appPid),
+    );
+  });
+
   it("rejects a wrapper descendant, global Bun, source entry, and unrelated process", () => {
     const rows: readonly ProcessRow[] = [
       { pid: 42, parentPid: appPid, command: `${runtimeBun} /workspace/main.js` },
@@ -45,6 +58,13 @@ describe("packaged macOS smoke process proof", () => {
       { pid: 44, parentPid: appPid, command: "/bin/sh bundled-launcher" },
       packagedRuntime(45, 44),
       packagedRuntime(46, 999),
+      { pid: 47, parentPid: appPid, command: runtimeBun },
+      { pid: 48, parentPid: appPid, command: `${runtimeBun} ${runtimeEntry}.evil` },
+      {
+        pid: 49,
+        parentPid: appPid,
+        command: `${runtimeBun.replace("/Contents/Resources/", "/Contents/MacOS/../../Resources/")} ${runtimeEntry.replace("/Contents/Resources/", "/Contents/MacOS/../../Resources/")}`,
+      },
     ];
 
     expect(findPackagedRuntimeSidecar(rows, appPid, runtimeBun, runtimeEntry)).toBeUndefined();
