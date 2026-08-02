@@ -69,10 +69,13 @@ describe("production editor module boundaries", () => {
   });
 
   it("keeps browser SceneState autosave outside the production editor authority", async () => {
-    const consumer = await readFile(
-      "apps/web/src/projects/LocalDesignConsumer.tsx",
-      "utf8",
-    );
+    const [consumer, agentReview] = await Promise.all([
+      readFile("apps/web/src/projects/LocalDesignConsumer.tsx", "utf8"),
+      readFile(
+        "apps/web/src/canvas/workbench-agent-review-actions.ts",
+        "utf8",
+      ),
+    ]);
 
     expect(consumer).not.toMatch(
       /createCanvasAutosave|\bpersistence=\{persistence\}/u,
@@ -82,5 +85,6 @@ describe("production editor module boundaries", () => {
       "createRuntimeClientCanvasDocumentPersistence",
     );
     expect(consumer).toContain("v3Session");
+    expect(agentReview).not.toContain("context.commitScene(");
   });
 });

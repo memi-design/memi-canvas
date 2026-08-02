@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createWorkspaceSessionDraft } from "@memi/protocol";
 
 import {
   createAgentPatch,
@@ -22,7 +23,7 @@ import type {
   PointerGesture,
   SelectionMarquee,
 } from "./CanvasWorkbench.types.js";
-import { createCanonicalWorkbenchAuthority } from "./canonical-workbench-authority.js";
+import { V3WorkbenchSessionController } from "./v3-workbench-session-controller.js";
 import {
   createFrameStateScheduler,
   type FrameStateScheduler,
@@ -54,135 +55,72 @@ import type { ProfessionalCanvasTool } from "./commands.js";
 import type { WorkspaceDockTab } from "./workspace-dock.js";
 import { buildProductMap } from "./product-map.js";
 
-function projectedHistory(
-  labels: readonly { readonly label: string }[],
-  idBase: number,
-  revisionBase: number,
-) {
-  return labels.map((entry, index) => ({
-    after: [],
-    afterRevision: revisionBase + index + 1,
-    afterSelectedNodeId: null,
-    before: [],
-    beforeRevision: revisionBase + index,
-    beforeSelectedNodeId: null,
-    id: idBase + index,
-    label: entry.label,
-  }));
-}
-
 export function useCanvasWorkbenchSessionState(
   props: CanvasWorkbenchProps,
 ) {
   const {
     agentDefaults,
     agentPatch,
-    authorityProject,
     initialWorkspaceSession,
-    onSceneChange,
     onWorkspaceSessionChange,
-    persistence,
     project,
     runtimePort,
+    v3Session,
   } = props;
-  const persistenceProject = authorityProject ?? project;
-  const [recovery] = useState(() =>
-    persistence?.load(persistenceProject) ?? null,
+  if (v3Session === undefined) {
+    throw new Error("CanvasWorkbench requires a durable V3 session.");
+  }
+  const persistenceProject = project;
+  const [v3Controller] = useState(() => new V3WorkbenchSessionController({
+    persistence: v3Session.persistence,
+    ...(v3Session.persistencePolicy === undefined ? {} : { persistencePolicy: v3Session.persistencePolicy }),
+    source: { kind: "seed", document: v3Session.document },
+    workspace: initialWorkspaceSession ?? createWorkspaceSessionDraft({
+      projectId: v3Session.document.projectId,
+      documentId: v3Session.document.id,
+      documentRevision: v3Session.document.revision,
+      sourceRevision: null,
+    }),
+  }));
+  const v3Snapshot = useSyncExternalStore(
+    v3Controller.subscribe,
+    v3Controller.getSnapshot,
+    v3Controller.getSnapshot,
   );
-  const [canonicalAuthority] = useState(() => {
-    const authority = createCanonicalWorkbenchAuthority({
-      documentId: project.document.id,
-      projectId: project.id,
-      scene:
-        recovery?.scene ?? {
-          future: [],
-          nextHistoryId: 1,
-          nodes: structuredClone(project.document.nodes),
-          past: [],
-          revision: project.document.revision,
-          selectedNodeId: project.selectedNodeId,
-        },
-    });
-    if (initialWorkspaceSession !== undefined) {
-      const knownIds = new Set(
-        (recovery?.scene.nodes ?? project.document.nodes).map(
-          ({ id }) => id,
-        ),
-      );
-      const restoredIds =
-        initialWorkspaceSession.selection.selectedIds.filter((id) =>
-          knownIds.has(id),
-        );
-      const restoredId = (id: string | null) =>
-        id !== null && restoredIds.includes(id) ? id : null;
-      authority.setSelection(
-        createSelectionState(restoredIds, {
-          anchorId: restoredId(
-            initialWorkspaceSession.selection.anchorId,
-          ),
-          editingId: restoredId(
-            initialWorkspaceSession.selection.editingNodeId,
-          ),
-          focusedId: restoredId(
-            initialWorkspaceSession.selection.focusedNodeId,
-          ),
-        }),
-      );
+  const disposeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (disposeTimer.current !== null) {
+      clearTimeout(disposeTimer.current);
+      disposeTimer.current = null;
     }
-    return authority;
-  });
-  const canonicalSnapshot = useSyncExternalStore(
-    canonicalAuthority.subscribe,
-    canonicalAuthority.getSnapshot,
-    canonicalAuthority.getSnapshot,
-  );
+    void v3Controller.open().catch(() => undefined);
+    return () => {
+      // StrictMode re-runs effects; defer disposal so the second setup retains
+      // this state-held controller while real unmount still releases it.
+      disposeTimer.current = setTimeout(() => v3Controller.dispose(), 0);
+    };
+  }, [v3Controller]);
+  const rendererSnapshot = v3Snapshot.status === "ready"
+    ? v3Controller.getRendererSnapshot(v3Session.activePageId)
+    : { canRedo: false, canUndo: false, nodes: [], revision: v3Session.document.revision, selection: createSelectionState([]) };
+  const canonicalAuthority = v3Snapshot.status === "ready" ? v3Snapshot.authority : null;
+  const canonicalSnapshot = {
+    document: { revision: rendererSnapshot.revision },
+    nodes: rendererSnapshot.nodes,
+    revision: rendererSnapshot.revision,
+    selection: rendererSnapshot.selection,
+  };
   const [previewNodes, setPreviewNodes] =
     useState<readonly WorkbenchNode[] | null>(null);
-  const scene = useMemo(() => {
-    const historyIdBase = recovery?.scene.nextHistoryId ?? 1;
-    const historyRevisionBase =
-      recovery?.scene.revision ?? project.document.revision;
-    const projectedPast = projectedHistory(
-      canonicalSnapshot.history.past,
-      historyIdBase,
-      historyRevisionBase,
-    );
-    const projectedFuture = projectedHistory(
-      canonicalSnapshot.history.future,
-      historyIdBase + projectedPast.length,
-      canonicalSnapshot.revision,
-    );
-    return {
-      future: projectedFuture,
-      nextHistoryId:
-        historyIdBase + projectedPast.length + projectedFuture.length,
-      nodes: previewNodes ?? canonicalSnapshot.nodes,
-      // Archived full-array history initializes the canonical authority only.
-      // Compatibility persistence receives semantic projected receipts.
-      past: projectedPast,
-      revision: canonicalSnapshot.revision,
-      selectedNodeId: canonicalSnapshot.selection.anchorId,
-    };
-  }, [
-    canonicalSnapshot,
-    previewNodes,
-    project.document.revision,
-    recovery,
-  ]);
-  const displayHistory = useMemo(
-    () => [
-      ...(recovery?.scene.past ?? []).map((entry) => ({
-        ...entry,
-        after: [],
-        before: [],
-      })),
-      ...scene.past,
-    ],
-    [recovery, scene.past],
-  );
+  const scene = {
+    future: [], nextHistoryId: 1, nodes: previewNodes ?? rendererSnapshot.nodes,
+    past: [], revision: rendererSnapshot.revision,
+    selectedNodeId: rendererSnapshot.selection.anchorId,
+  };
+  const displayHistory: readonly never[] = [];
   const [tool, setTool] =
     useState<ProfessionalCanvasTool>("select");
-  const selection = canonicalSnapshot.selection;
+  const selection = rendererSnapshot.selection;
   const selectedNodeIds = selection.selectedIds;
   const [camera, setCamera] = useState<CanvasCamera>(() =>
     initialWorkspaceSession === undefined
@@ -275,7 +213,7 @@ export function useCanvasWorkbenchSessionState(
     });
   const [trace, setTrace] =
     useState<readonly CollaborationTraceItem[]>(
-      () => recovery?.trace ?? structuredClone(project.trace),
+      () => structuredClone(project.trace),
     );
   const [commandTrace, setCommandTrace] =
     useState<readonly CollaborationTraceItem[]>([]);
@@ -298,7 +236,7 @@ export function useCanvasWorkbenchSessionState(
   } | null>(null);
   const gesture = useRef<PointerGesture | null>(null);
   const traceSequence = useRef(
-    nextTraceSequence(recovery?.trace ?? project.trace),
+    nextTraceSequence(project.trace),
   );
   const viewportElement = useRef<HTMLDivElement | null>(null);
   const spacePressed = useRef(false);
@@ -399,24 +337,6 @@ export function useCanvasWorkbenchSessionState(
       observer.disconnect();
     };
   }, []);
-
-  useEffect(() => {
-    persistence?.save(persistenceProject, scene, [
-      ...trace,
-      ...commandTrace,
-    ]);
-  }, [
-    persistence,
-    persistenceProject,
-    scene.revision,
-    scene.selectedNodeId,
-    trace,
-    commandTrace,
-  ]);
-
-  useEffect(() => {
-    onSceneChange?.(scene);
-  }, [onSceneChange, scene]);
 
   useEffect(() => {
     if (onWorkspaceSessionChange === undefined) {
@@ -550,7 +470,7 @@ export function useCanvasWorkbenchSessionState(
       return;
     }
     const validIds = selectedNodeIds.filter((id) => knownIds.has(id));
-    canonicalAuthority.setSelection(createSelectionState(validIds));
+    canonicalAuthority?.setSelection(createSelectionState(validIds));
   }, [
     canonicalAuthority,
     scene.nodes,
@@ -617,6 +537,8 @@ export function useCanvasWorkbenchSessionState(
     viewportElement,
     viewportPointer,
     viewportSize,
+    v3SessionError: v3Snapshot.status === "error" ? v3Snapshot.error : null,
+    v3SessionStatus: v3Snapshot.status,
     workspaceCollapsed,
     workspacePanels: {
       inspectorWidth:
