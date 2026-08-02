@@ -43,13 +43,18 @@ function journalFromSnapshot(
   snapshot: CanvasDocumentSnapshotV3,
   operations: CanvasDocumentJournalV3["operations"] = [],
 ): CanvasDocumentJournalV3 {
+  const encoder = new TextEncoder();
   return {
     schemaVersion: 1,
     kind: "canvas-document-v3-journal",
     identity: snapshot.identity,
     snapshot,
     operations,
-    operationBytes: new TextEncoder().encode(JSON.stringify(operations)).byteLength,
+    operationBytes: operations.reduce(
+      (total, operation) =>
+        total + encoder.encode(JSON.stringify(operation)).byteLength,
+      0,
+    ),
   };
 }
 

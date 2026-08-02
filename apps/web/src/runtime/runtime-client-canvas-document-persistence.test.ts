@@ -98,18 +98,19 @@ describe("RuntimeClient CanvasDocumentV3 persistence adapter", () => {
   it("keeps the browser fallback V3-only and in memory", async () => {
     const initial = snapshot();
     const port = createEphemeralCanvasDocumentPersistence();
+    const operation = {
+      id: "opn_01J00000000000000000000000",
+      documentId: initial.document.id,
+      expectedRevision: 0,
+      expectedHash: initial.document.stateHash,
+      resultingHash:
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    };
     const append = {
       schemaVersion: 1 as const,
       kind: "canvas-document-v3-append" as const,
       identity: initial.identity,
-      operation: {
-        id: "opn_01J00000000000000000000000",
-        documentId: initial.document.id,
-        expectedRevision: 0,
-        expectedHash: initial.document.stateHash,
-        resultingHash:
-          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      },
+      operation,
     } as never;
 
     expect(await port.load(initial.identity)).toBeNull();
@@ -119,7 +120,8 @@ describe("RuntimeClient CanvasDocumentV3 persistence adapter", () => {
       revision: 1,
     });
     await port.checkpoint(initial);
-    expect(await port.load(initial.identity)).toMatchObject({
+    const journal = await port.load(initial.identity);
+    expect(journal).toMatchObject({
       snapshot: initial,
       operations: [
         expect.objectContaining({
@@ -127,5 +129,8 @@ describe("RuntimeClient CanvasDocumentV3 persistence adapter", () => {
         }),
       ],
     });
+    expect(journal?.operationBytes).toBe(
+      new TextEncoder().encode(JSON.stringify(operation)).byteLength,
+    );
   });
 });

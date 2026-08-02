@@ -64,8 +64,6 @@ import {
 import type { RepositoryImporter } from "./imports/repository/repository-import.js";
 import {
   createCapturedRepositoryCanvasProject,
-  createStreamingRepositoryCanvasProject,
-  type CaptureArtifactReference,
 } from "./imports/repository/repository-capture-workbench.js";
 import {
   repositoryProjectFromCommittedImport,
@@ -83,6 +81,9 @@ import {
 import type {
   RepositoryReconstructionArtifactLoader,
 } from "./imports/repository/repository-reconstruction-rehydration.js";
+import {
+  persistCommittedImportCanvasDocumentV3,
+} from "./imports/repository/committed-import-v3-hydration.js";
 import {
   acceptsImportJobSnapshot,
   selectLatestImportJob,
@@ -399,17 +400,18 @@ export function MemiApp({
             manifest: repositoryRecord.manifest,
             projectId: project.id,
           });
+          await persistCommittedImportCanvasDocumentV3({
+            canvasProject,
+            job,
+            ...(reconstructionArtifactLoader === undefined
+              ? {}
+              : { loader: reconstructionArtifactLoader }),
+            record: repositoryRecord,
+            runtimeClient,
+          });
           const repositoryPersistence =
             createRepositoryProjectPersistence(durableStorage);
           if (!repositoryPersistence.save(project.id, repositoryRecord)) {
-            continue;
-          }
-          if (!createCanvasAutosave(durableStorage).save(
-              canvasProject,
-              createSceneState(canvasProject),
-              canvasProject.trace,
-            )) {
-            repositoryPersistence.remove(project.id);
             continue;
           }
           hydratedImportKeysRef.current.add(hydrationKey);
@@ -439,6 +441,7 @@ export function MemiApp({
   }, [
     boundary.storage,
     libraryStartup.ready,
+    reconstructionArtifactLoader,
     runtimeClient,
   ]);
 
@@ -702,10 +705,13 @@ export function MemiApp({
                   "No placeholder project was created.",
               );
             }
+            if (runtimeClient === undefined) {
+              throw new Error(
+                "Verified imports require the authenticated Canvas V3 runtime.",
+              );
+            }
             let projectId: string | undefined;
             let projectRegistered = false;
-            const artifactReferences =
-              new Map<string, CaptureArtifactReference>();
             const registerProject = (runtimeProjectId: string) => {
               if (projectId !== undefined && projectId !== runtimeProjectId) {
                 throw new Error(
@@ -760,34 +766,6 @@ export function MemiApp({
                 onMaterialize: (update) => {
                   if (!publishRepositoryImportJob(update.job)) return;
                   registerProject(update.projectId);
-                  update.addedArtifacts.forEach(({ artifact, reference }) => {
-                    artifactReferences.set(artifact.id, reference);
-                  });
-                  const streamingProject =
-                    createStreamingRepositoryCanvasProject({
-                      artifactReference: (artifact) => {
-                        const reference = artifactReferences.get(artifact.id);
-                        if (reference === undefined) {
-                          throw new Error(
-                            `Missing runtime evidence for ${artifact.id}.`,
-                          );
-                        }
-                        return reference;
-                      },
-                      harnessId: "deterministic-import",
-                      job: update.job,
-                      manifest,
-                      projectId: update.projectId,
-                    });
-                  if (!createCanvasAutosave(homeStorage).save(
-                      streamingProject,
-                      createSceneState(streamingProject),
-                      streamingProject.trace,
-                    )) {
-                    throw new Error(
-                      "The incremental import could not be saved safely.",
-                    );
-                  }
                   dispatch(
                     projectLibraryActions.setProjectLifecycle(
                       update.projectId,
@@ -824,30 +802,26 @@ export function MemiApp({
               );
               const repositoryPersistence =
                 createRepositoryProjectPersistence(homeStorage);
-              const canvasAutosave = createCanvasAutosave(homeStorage);
-              if (!repositoryPersistence.save(
-                  projectId,
-                  {
-                    capture: {
-                      artifactReferences: committedArtifactReferences,
-                      job: result.job,
-                    },
-                    harnessId: "deterministic-import",
-                    manifest,
-                  },
-                )) {
+              const repositoryRecord = {
+                capture: {
+                  artifactReferences: committedArtifactReferences,
+                  job: result.job,
+                },
+                harnessId: "deterministic-import" as const,
+                manifest,
+              };
+              await persistCommittedImportCanvasDocumentV3({
+                canvasProject,
+                job: result.job,
+                ...(reconstructionArtifactLoader === undefined
+                  ? {}
+                  : { loader: reconstructionArtifactLoader }),
+                record: repositoryRecord,
+                runtimeClient,
+              });
+              if (!repositoryPersistence.save(projectId, repositoryRecord)) {
                 throw new Error(
                   "The verified import could not be saved safely.",
-                );
-              }
-              if (!canvasAutosave.save(
-                  canvasProject,
-                  createSceneState(canvasProject),
-                  canvasProject.trace,
-                )) {
-                repositoryPersistence.remove(projectId);
-                throw new Error(
-                  "The captured canvas could not be saved safely.",
                 );
               }
               dispatch(

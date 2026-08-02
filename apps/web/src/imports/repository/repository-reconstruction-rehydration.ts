@@ -55,8 +55,8 @@ function assertReconstructionAuthority(
         )));
   const captureScale = capture.binding.viewport.scale ?? 1;
   if (
-    artifact.dimensions.width !== scenario.viewport.width ||
-    artifact.dimensions.height !== scenario.viewport.height ||
+    artifact.dimensions.width !== scenario.viewport.width * scenario.viewport.scale ||
+    artifact.dimensions.height !== scenario.viewport.height * scenario.viewport.scale ||
     artifact.dimensions.scale !== scenario.viewport.scale ||
     capture.binding.viewport.width !== scenario.viewport.width ||
     capture.binding.viewport.height !== scenario.viewport.height ||

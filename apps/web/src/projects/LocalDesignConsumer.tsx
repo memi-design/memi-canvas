@@ -18,16 +18,10 @@ import {
   type CanvasStorage,
 } from "../canvas/persistence.js";
 import {
-  createLegacyWorkbenchProjection,
-} from "../canvas/legacy-workbench-projection.js";
-import {
-  migrateLegacyWorkbenchProjectionToV3,
-} from "../canvas/canonical-workbench-authority-v3.js";
-import { hashCanvasDocumentV3 } from "@memi/canvas-document";
-import {
   WorkspaceSessionController,
   createCanvasWorkspaceSessionDraft,
   createRuntimeClientWorkspaceSessionPort,
+  workspaceSessionFromCanvasDocumentV3,
   type WorkspaceSessionControllerSnapshot,
   type WorkspaceRuntimeProjectId,
 } from "../canvas/workspace-session-controller.js";
@@ -61,6 +55,7 @@ import {
   createLandingPageDemoProject,
   isLandingPageDemo,
 } from "./landing-page-demo.js";
+import { createLocalDesignCanvasDocumentV3 } from "./local-design-canvas-v3.js";
 
 const AGENT_PREFERENCE_KEY_PREFIX = "memi.canvas.agent-preference.v1:";
 
@@ -268,25 +263,11 @@ export function LocalDesignConsumer({
     [runtimeClient, runtimeProjectId],
   );
   const v3Session = useMemo(() => {
-    const migration = migrateLegacyWorkbenchProjectionToV3(
-      createLegacyWorkbenchProjection({
-        nodes: canvasProject.document.nodes,
-        revision: canvasProject.document.revision,
-        selectedNodeId: canvasProject.selectedNodeId,
-      }),
-      {
-        legacyDocumentId: canvasProject.document.id,
-        legacyProjectId: canvasProject.id,
-      },
+    const document = createLocalDesignCanvasDocumentV3(
+      canvasProject,
+      runtimeProjectId,
+      project.source.kind === "repository" ? "imported" : "design",
     );
-    const rebasedDocument = {
-      ...migration.document,
-      projectId: runtimeProjectId ?? migration.document.projectId,
-    };
-    const document = Object.freeze({
-      ...rebasedDocument,
-      stateHash: hashCanvasDocumentV3(rebasedDocument),
-    });
     const activePageId = document.pageIds[0];
     if (activePageId === undefined) {
       throw new Error("Canvas V3 migration produced no active page.");
@@ -299,21 +280,50 @@ export function LocalDesignConsumer({
           ? ephemeralPersistence
           : createRuntimeClientCanvasDocumentPersistence(runtimeClient),
     });
-  }, [canvasProject, ephemeralPersistence, runtimeClient, runtimeProjectId]);
+  }, [
+    canvasProject,
+    ephemeralPersistence,
+    project.source.kind,
+    runtimeClient,
+    runtimeProjectId,
+  ]);
   const sessionController = useMemo(
-    () =>
-      workspaceRuntime === undefined
-        ? undefined
-        : new WorkspaceSessionController(
-            createCanvasWorkspaceSessionDraft(
-              canvasProject,
-              runtimeProjectId,
-            ),
-            workspaceRuntime,
-          ),
+    () => {
+      if (workspaceRuntime === undefined) return undefined;
+      const draft = createCanvasWorkspaceSessionDraft(
+        canvasProject,
+        runtimeProjectId,
+      );
+      const identityAlignedDraft = Object.freeze({
+        ...draft,
+        documentId: v3Session.document.id,
+        documentRevision: v3Session.document.revision,
+        projectId: v3Session.document.projectId,
+        selection: {
+          selectedIds: [],
+          anchorId: null,
+          focusedNodeId: null,
+          editingNodeId: null,
+        },
+      });
+      return new WorkspaceSessionController(
+        workspaceSessionFromCanvasDocumentV3(
+          identityAlignedDraft,
+          v3Session.document,
+          {
+            selectedIds: [],
+            anchorId: null,
+            focusedId: null,
+            editingId: null,
+          },
+        ),
+        workspaceRuntime,
+      );
+    },
     [
       canvasProject,
       runtimeProjectId,
+      v3Session.document,
       workspaceRuntime,
     ],
   );
