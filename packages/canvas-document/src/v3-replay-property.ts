@@ -113,13 +113,13 @@ function actionFor(
   document: CanvasDocumentV3,
   index: number,
 ): CanvasActionIntentV3 {
-  if (index % 6 === 0) {
+  if (index % 7 === 0) {
     return transformAction(document, ids.left, 1);
   }
-  if (index % 6 === 1) {
+  if (index % 7 === 1) {
     return geometryAction(document, ids.right);
   }
-  if (index % 6 === 2) {
+  if (index % 7 === 2) {
     const current = document.nodesById[ids.left]!;
     return {
       type: "node.style",
@@ -132,7 +132,17 @@ function actionFor(
       },
     };
   }
-  if (index % 6 === 3) {
+  if (index % 7 === 3) {
+    const current = document.nodesById[ids.right]!;
+    return {
+      type: "node.name",
+      payload: {
+        nodeId: ids.right,
+        next: current.name === "Replay right" ? "Replay right renamed" : "Replay right",
+      },
+    };
+  }
+  if (index % 7 === 4) {
     return {
       type: "atomic.batch",
       payload: {
@@ -143,7 +153,7 @@ function actionFor(
       },
     };
   }
-  if (index % 6 === 4) {
+  if (index % 7 === 5) {
     return {
       type: "node.reorder",
       payload: {

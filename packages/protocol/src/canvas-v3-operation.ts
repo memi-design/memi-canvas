@@ -40,6 +40,7 @@ import {
 
 const indexSchema = z.number().int().nonnegative();
 const safeKey = z.string().trim().min(1).max(160);
+const nodeNameSchema = z.string().trim().min(1).max(512);
 
 function priorNext<Value extends z.ZodType>(value: Value) {
   return z.strictObject({ prior: value, next: value });
@@ -82,6 +83,7 @@ const NodeTransformActionV3Schema = nodeValueAction(
   "node.transform",
   CanvasTransformV2Schema,
 );
+const NodeNameActionV3Schema = nodeValueAction("node.name", nodeNameSchema);
 const NodeGeometryActionV3Schema = nodeValueAction(
   "node.geometry",
   CanvasGeometryV2Schema,
@@ -202,6 +204,7 @@ const singleActions = [
   NodeCreateActionV3Schema,
   NodeDeleteActionV3Schema,
   NodeTransformActionV3Schema,
+  NodeNameActionV3Schema,
   NodeGeometryActionV3Schema,
   NodeStyleActionV3Schema,
   NodeTextActionV3Schema,
@@ -244,6 +247,7 @@ export const CanvasActionTypeV3Schema = z.enum([
   "node.create",
   "node.delete",
   "node.transform",
+  "node.name",
   "node.geometry",
   "node.style",
   "node.text",
@@ -355,6 +359,7 @@ export type CanvasOperationV3 = z.infer<typeof CanvasOperationV3Schema>;
 type NodeValueIntentV3<
   Type extends
     | "node.transform"
+    | "node.name"
     | "node.geometry"
     | "node.style"
     | "node.text"
@@ -386,6 +391,7 @@ export type CanvasSingleActionIntentV3 =
       readonly payload: { readonly nodeId: string };
     }
   | NodeValueIntentV3<"node.transform", z.infer<typeof CanvasTransformV2Schema>>
+  | NodeValueIntentV3<"node.name", z.infer<typeof nodeNameSchema>>
   | NodeValueIntentV3<"node.geometry", z.infer<typeof CanvasGeometryV2Schema>>
   | NodeValueIntentV3<"node.style", z.infer<typeof CanvasStyleV2Schema>>
   | NodeValueIntentV3<"node.text", z.infer<typeof CanvasTextV2Schema>>

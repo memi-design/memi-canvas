@@ -209,6 +209,7 @@ function applySingleAction(
   }
   if (
     action.type === "node.transform" ||
+    action.type === "node.name" ||
     action.type === "node.geometry" ||
     action.type === "node.style" ||
     action.type === "node.text" ||
@@ -217,6 +218,7 @@ function applySingleAction(
     const node = nodeFor(document, action.payload.nodeId);
     const field = action.type.split(".")[1] as
       | "transform"
+      | "name"
       | "geometry"
       | "style"
       | "text"
@@ -478,6 +480,7 @@ function prepareSingleAction(
   }
   if (
     intent.type === "node.transform" ||
+    intent.type === "node.name" ||
     intent.type === "node.geometry" ||
     intent.type === "node.style" ||
     intent.type === "node.text" ||
@@ -486,6 +489,7 @@ function prepareSingleAction(
     const node = nodeFor(document, intent.payload.nodeId);
     const field = intent.type.split(".")[1] as
       | "transform"
+      | "name"
       | "geometry"
       | "style"
       | "text"

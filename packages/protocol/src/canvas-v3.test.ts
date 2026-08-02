@@ -4,6 +4,7 @@ import {
   CanvasDocumentV3Schema,
   CanvasNodeV3Schema,
   CanvasOperationV3Schema,
+  CanvasSingleActionV3Schema,
   EditableReconstructionV1Schema,
   InteractionSessionStateSchema,
   RuntimeEvidenceV1Schema,
@@ -357,5 +358,24 @@ describe("Canvas V3 protocol", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("normalizes bounded node rename values", () => {
+    const action = CanvasSingleActionV3Schema.parse({
+      type: "node.name",
+      payload: { nodeId: ids.node, prior: "Landing page", next: "  Home  " },
+    });
+
+    expect(action.type).toBe("node.name");
+    if (action.type !== "node.name") {
+      throw new Error("Expected node.name action.");
+    }
+    expect(action.payload.next).toBe("Home");
+    expect(() =>
+      CanvasSingleActionV3Schema.parse({
+        ...action,
+        payload: { ...action.payload, next: " ".repeat(513) },
+      }),
+    ).toThrow();
   });
 });
