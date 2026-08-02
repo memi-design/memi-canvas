@@ -2,7 +2,7 @@ import { type CSSProperties, type MouseEvent } from "react";
 import type { CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
 import { createEditorCommands } from "./commands.js";
 import { canvasGridMetrics, canvasPointFromViewport, pointFromEvent } from "./canvas-camera.js";
-import { resolveComponentInstance, replaceNode, type WorkbenchNode } from "./model.js";
+import { resolveComponentInstance, type WorkbenchNode } from "./model.js";
 import { Inspector } from "./parts.js";
 import { canvasSourceFingerprint } from "./persistence.js";
 import { canReadCanvasSystemClipboard, hasCanvasSessionClipboard, isCanvasNodeDeletable } from "./canvas-clipboard.js";
@@ -18,6 +18,7 @@ import { createWorkbenchAgentPromptActions } from "./workbench-agent-prompt-acti
 import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-actions.js";
 import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
 import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
+import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -150,6 +151,11 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           inspectorSelectedNode,
           canonicalSnapshot.nodes,
         );
+  const inspectorV3Actions = createWorkbenchInspectorV3Actions({
+    commitIntentReceipt,
+    projectNodes: canonicalSnapshot.nodes,
+    setPreview: setPreviewNodes,
+  });
   const selectedHarness =
     project.harness.options.find((option) => option.id === harnessId) ??
     project.harness.options[0];
@@ -158,7 +164,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     appendTrace,
     commitPreview,
     commitScene,
-    commitSelectionTransaction,
     createRootNode,
     redoScene,
     selectNode,
@@ -168,7 +173,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     appendTrace: (action: string, targetNodeId: string) => setTrace((current) => [...current, { id: `workbench-trace-${traceSequence.current++}`, action, targetNodeId }]),
     commitPreview: unavailableMutation,
     commitScene: unavailableMutation,
-    commitSelectionTransaction: unavailableMutation,
     createRootNode: unavailableMutation,
     redoScene: redoV3,
     selectNode: (nodeId: string, additive: boolean) => v3History?.selectNodeIds(additive ? [...selectedNodeIds, nodeId] : [nodeId]),
@@ -205,37 +209,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     setWorkspaceCollapsed,
     setWorkspaceTab,
   });
-  const commitNodeChange = (
-    label: string,
-    update: (node: WorkbenchNode) => WorkbenchNode,
-  ) => {
-    if (selectedNode === undefined) {
-      return;
-    }
-    commitScene(
-      label,
-      replaceNode(scene.nodes, selectedNode.id, update),
-      { targetIds: [selectedNode.id] },
-    );
-  };
-  const previewNodeChange = (
-    update: (node: WorkbenchNode) => WorkbenchNode,
-  ) => {
-    if (inspectorSelectedNode === undefined) {
-      return;
-    }
-    setPreviewNodes(
-      replaceNode(
-        canonicalSnapshot.nodes,
-        inspectorSelectedNode.id,
-        update,
-      ),
-    );
-  };
-  const previewSelectionTransaction = (_transaction: unknown) => {
-    throw new Error("Canvas V2 selection preview is unavailable in the V3 workbench.");
-  };
-
   const {
     handleViewportClick,
     handleViewportKeyDown,
@@ -697,14 +670,15 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           <>
             <Inspector
               node={resolvedSelectedNode}
-              onChange={commitNodeChange}
-              onChangeSelection={commitSelectionTransaction}
+              onChange={unavailableMutation}
+              onChangeSelection={unavailableMutation}
               onDelete={deleteSelection}
               onDetach={detachSelection}
               onDuplicate={duplicateSelection}
-              onPreview={previewNodeChange}
-              onPreviewSelection={previewSelectionTransaction}
+              onPreview={unavailableMutation}
+              onPreviewSelection={unavailableMutation}
               selectedNodes={inspectorSelectedNodes}
+              v3Actions={inspectorV3Actions}
               {...(onOpenSourceInCode === undefined
                 ? {}
                 : { onOpenSource: onOpenSourceInCode })}

@@ -72,6 +72,166 @@ function applyReceipt(
 }
 
 describe("workbench V3 semantic intent receipts", () => {
+  it("compiles a compact node.name receipt against the current active-page node", () => {
+    const card = rectangle("card", null, 20, 30);
+    const current = applyReceipt(document(), {
+      kind: "create",
+      nodes: [card],
+    }).document;
+    const nodeId = Object.values(current.nodesById)[0]!.id;
+    const receipt = {
+      kind: "node.name" as const,
+      next: "Renamed card",
+      nodeId: card.id,
+    };
+
+    const action = compileWorkbenchIntentReceiptV3({
+      document: current,
+      pageId,
+      receipt,
+    });
+
+    expect(action).toEqual({
+      type: "node.name",
+      payload: { next: "Renamed card", nodeId },
+    });
+    expect(Object.isFrozen(action)).toBe(true);
+    expect(Object.isFrozen(action.payload)).toBe(true);
+    expect(applyReceipt(current, receipt).document.nodesById[nodeId]?.name).toBe(
+      "Renamed card",
+    );
+    expect(() =>
+      compileWorkbenchIntentReceiptV3({
+        document: current,
+        pageId,
+        receipt: { ...receipt, next: `  ${card.name}  ` },
+      }),
+    ).toThrow("current value");
+    expect(() =>
+      compileWorkbenchIntentReceiptV3({
+        document: current,
+        pageId,
+        receipt: { ...receipt, next: "   " },
+      }),
+    ).toThrow("between 1 and 512");
+  });
+
+  it("compiles exact inspector property receipts without freezing caller data", () => {
+    const textNode: WorkbenchNode = {
+      ...rectangle("title", null, 24, 36),
+      kind: "Text",
+      text: "Before",
+    };
+    const current = applyReceipt(document(), {
+      kind: "create",
+      nodes: [textNode],
+    }).document;
+    const nodeId = Object.values(current.nodesById).find(
+      (node) => node.name === "title",
+    )!.id;
+    const node = current.nodesById[nodeId]!;
+    const receipts = [
+      {
+        kind: "node.transform" as const,
+        next: { ...node.transform, rotation: 18, x: 80, y: 96 },
+        nodeId: textNode.id,
+      },
+      {
+        kind: "node.geometry" as const,
+        next: { height: 72, width: 260 },
+        nodeId: textNode.id,
+      },
+      {
+        kind: "node.style" as const,
+        next: { ...node.style, opacity: 0.72, visible: false },
+        nodeId: textNode.id,
+      },
+      {
+        kind: "node.text" as const,
+        next: { ...node.text!, characters: "After" },
+        nodeId: textNode.id,
+      },
+      {
+        kind: "node.layout" as const,
+        next: { ...node.layout, gap: 24 },
+        nodeId: textNode.id,
+      },
+    ];
+
+    const actions = receipts.map((receipt) =>
+      compileWorkbenchIntentReceiptV3({ document: current, pageId, receipt }),
+    );
+
+    expect(actions.map(({ type }) => type)).toEqual([
+      "node.transform",
+      "node.geometry",
+      "node.style",
+      "node.text",
+      "node.layout",
+    ]);
+    expect(actions.map((action) => action.payload)).toEqual(
+      receipts.map(({ next }) => ({ next, nodeId })),
+    );
+    for (const [index, action] of actions.entries()) {
+      expect(Object.isFrozen(action)).toBe(true);
+      expect(Object.isFrozen(action.payload)).toBe(true);
+      expect(Object.isFrozen(receipts[index]!.next)).toBe(false);
+    }
+    const updated = receipts.reduce(
+      (candidate, receipt) => applyReceipt(candidate, receipt).document,
+      current,
+    );
+    const updatedNode = updated.nodesById[nodeId]!;
+    expect(updatedNode.transform).toEqual(receipts[0]!.next);
+    expect(updatedNode.geometry).toEqual(receipts[1]!.next);
+    expect(updatedNode.style).toEqual(receipts[2]!.next);
+    expect(updatedNode.text).toEqual(receipts[3]!.next);
+    expect(updatedNode.layout).toEqual(receipts[4]!.next);
+  });
+
+  it("uses the current document to reject missing targets, non-text targets, and no-op values", () => {
+    const card = rectangle("card", null, 20, 30);
+    const current = applyReceipt(document(), {
+      kind: "create",
+      nodes: [card],
+    }).document;
+    const node = Object.values(current.nodesById)[0]!;
+
+    expect(() =>
+      compileWorkbenchIntentReceiptV3({
+        document: current,
+        pageId,
+        receipt: {
+          kind: "node.geometry",
+          next: node.geometry,
+          nodeId: card.id,
+        },
+      }),
+    ).toThrow("current value");
+    expect(() =>
+      compileWorkbenchIntentReceiptV3({
+        document: current,
+        pageId,
+        receipt: {
+          kind: "node.text",
+          next: { autoResize: "width-height", characters: "Nope" },
+          nodeId: card.id,
+        },
+      }),
+    ).toThrow("text node");
+    expect(() =>
+      compileWorkbenchIntentReceiptV3({
+        document: current,
+        pageId,
+        receipt: {
+          kind: "node.transform",
+          next: node.transform,
+          nodeId: "missing",
+        },
+      }),
+    ).toThrow("existing node");
+  });
+
   it("creates and pastes parent-first without accepting a whole scene", () => {
     const frame: WorkbenchNode = {
       ...rectangle("frame", null, 20, 30),

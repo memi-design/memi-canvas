@@ -3,9 +3,14 @@ import {
   CanvasNodeV3Schema,
   type CanvasActionIntentV3,
   type CanvasDocumentV3,
+  type CanvasGeometryV2,
+  type CanvasLayoutV2,
   type CanvasNodeV3,
   type CanvasPageId,
   type CanvasSingleActionIntentV3,
+  type CanvasStyleV2,
+  type CanvasTextV2,
+  type CanvasTransformV2,
 } from "@memi/protocol";
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
 
@@ -14,6 +19,12 @@ import { DEFAULT_WORKBENCH_LAYOUT, type WorkbenchNode } from "./model.js";
 /** A compact, user-action receipt. It deliberately never accepts scene arrays. */
 export type WorkbenchIntentReceiptV3 =
   | { readonly kind: "batch"; readonly receipts: readonly Exclude<WorkbenchIntentReceiptV3, { readonly kind: "batch" }>[] }
+  | { readonly kind: "node.name"; readonly nodeId: string; readonly next: string }
+  | { readonly kind: "node.transform"; readonly nodeId: string; readonly next: CanvasTransformV2 }
+  | { readonly kind: "node.geometry"; readonly nodeId: string; readonly next: CanvasGeometryV2 }
+  | { readonly kind: "node.style"; readonly nodeId: string; readonly next: CanvasStyleV2 }
+  | { readonly kind: "node.text"; readonly nodeId: string; readonly next: CanvasTextV2 }
+  | { readonly kind: "node.layout"; readonly nodeId: string; readonly next: CanvasLayoutV2 }
   | { readonly kind: "create" | "paste"; readonly nodes: readonly WorkbenchNode[] }
   | { readonly kind: "move" | "resize" | "style"; readonly nodes: readonly WorkbenchNode[] }
   | { readonly kind: "delete"; readonly nodeIds: readonly string[] }
@@ -160,9 +171,64 @@ function asIntent(actions: readonly CanvasSingleActionIntentV3[]): CanvasActionI
 }
 
 function existing(document: CanvasDocumentV3, pageId: CanvasPageId, node: WorkbenchNode): CanvasNodeV3 {
-  const current = document.nodesById[canvasId(document, pageId, node.id)];
-  if (current === undefined) throw new Error(`Canvas V3 workbench intent requires existing node ${node.id}.`);
+  return existingById(document, pageId, node.id);
+}
+
+function existingById(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  workbenchId: string,
+): CanvasNodeV3 {
+  const current = document.nodesById[canvasId(document, pageId, workbenchId)];
+  if (current === undefined || current.pageId !== pageId) {
+    throw new Error(`Canvas V3 workbench intent requires an existing node on the active page: ${workbenchId}.`);
+  }
   return current;
+}
+
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function exactPropertyIntent(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  receipt: Extract<
+    WorkbenchIntentReceiptV3,
+    { readonly kind: "node.transform" | "node.geometry" | "node.style" | "node.text" | "node.layout" }
+  >,
+): CanvasSingleActionIntentV3 {
+  const current = existingById(document, pageId, receipt.nodeId);
+  if (receipt.kind === "node.text" && current.text === null) {
+    throw new Error("Canvas V3 node.text receipt requires a text node.");
+  }
+  const field = receipt.kind.slice("node.".length) as
+    | "transform"
+    | "geometry"
+    | "style"
+    | "text"
+    | "layout";
+  if (sameValue(current[field], receipt.next)) {
+    throw new Error(`Canvas V3 ${receipt.kind} receipt must change the current value.`);
+  }
+  if (receipt.kind === "node.transform") {
+    const next = structuredClone(receipt.next);
+    return { type: receipt.kind, payload: { nodeId: current.id, next } };
+  }
+  if (receipt.kind === "node.geometry") {
+    const next = structuredClone(receipt.next);
+    return { type: receipt.kind, payload: { nodeId: current.id, next } };
+  }
+  if (receipt.kind === "node.style") {
+    const next = structuredClone(receipt.next);
+    return { type: receipt.kind, payload: { nodeId: current.id, next } };
+  }
+  if (receipt.kind === "node.text") {
+    const next = structuredClone(receipt.next);
+    return { type: receipt.kind, payload: { nodeId: current.id, next } };
+  }
+  const next = structuredClone(receipt.next);
+  return { type: receipt.kind, payload: { nodeId: current.id, next } };
 }
 
 function transformAction(current: CanvasNodeV3, node: WorkbenchNode): CanvasSingleActionIntentV3 | null {
@@ -180,6 +246,29 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
       return action.type === "atomic.batch" ? action.payload.actions : [action];
     });
     return freeze(asIntent(actions));
+  }
+  if (receipt.kind === "node.name") {
+    const current = existingById(document, pageId, receipt.nodeId);
+    const next = structuredClone(receipt.next.trim());
+    if (next.length === 0 || next.length > 512) {
+      throw new Error("Canvas V3 node.name receipt requires a name between 1 and 512 characters.");
+    }
+    if (current.name === next) {
+      throw new Error("Canvas V3 node.name receipt must change the current value.");
+    }
+    return freeze({
+      type: "node.name",
+      payload: { nodeId: current.id, next },
+    });
+  }
+  if (
+    receipt.kind === "node.transform" ||
+    receipt.kind === "node.geometry" ||
+    receipt.kind === "node.style" ||
+    receipt.kind === "node.text" ||
+    receipt.kind === "node.layout"
+  ) {
+    return freeze(exactPropertyIntent(document, pageId, receipt));
   }
   if (receipt.kind === "replace") throw new Error("Unsupported node.replace fallback: emit explicit semantic receipt actions.");
   if (receipt.kind === "create" || receipt.kind === "paste") return freeze(asIntent(createActions(document, pageId, receipt.nodes)));

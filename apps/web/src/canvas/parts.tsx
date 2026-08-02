@@ -16,6 +16,7 @@ import {
 import { descendantNodeIds } from "./layer-hierarchy.js";
 import { nodeAuthority, type WorkbenchNode } from "./model.js";
 import { isSafeReferenceSourceUrl } from "./reference-security.js";
+import type { WorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 
 function frameRoute(node: WorkbenchNode): string {
   return node.frameContent?.split("\n")[0] ?? node.source?.routeId ?? "/";
@@ -464,6 +465,7 @@ export function Inspector({
   onPreview,
   onPreviewSelection,
   selectedNodes,
+  v3Actions,
 }: {
   readonly node: WorkbenchNode | undefined;
   readonly onChange: (
@@ -485,6 +487,7 @@ export function Inspector({
     transaction: AuthoringSelectionTransaction,
   ) => void;
   readonly selectedNodes?: readonly WorkbenchNode[];
+  readonly v3Actions?: WorkbenchInspectorV3Actions;
 }) {
   if (node === undefined) {
     return (
@@ -534,6 +537,13 @@ export function Inspector({
     node.component?.source?.sourceAnchor ?? node.source?.sourceAnchor;
   const sectionName =
     node.component === undefined ? "Layer" : "Component";
+  const commit = (label: string, update: (current: WorkbenchNode) => WorkbenchNode) => {
+    if (v3Actions !== undefined) {
+      v3Actions.commit({ label, targetIds: (selectedNodes ?? [node]).map(({ id }) => id), update });
+      return;
+    }
+    onChange(label, update);
+  };
 
   return (
     <section aria-label="Inspector" className="canvas-panel inspector-panel">
@@ -554,7 +564,7 @@ export function Inspector({
         <AuthoringTextField
           label="Name"
           onCommit={(value) =>
-            onChange("Rename node", (current) => ({ ...current, name: value }))
+            commit("Rename node", (current) => ({ ...current, name: value }))
           }
           value={node.name}
         />
@@ -562,7 +572,7 @@ export function Inspector({
           <AuthoringTextField
             label="Text content"
             onCommit={(value) =>
-              onChange(`Edit ${node.name} text`, (current) => ({
+              commit(`Edit ${node.name} text`, (current) => ({
                 ...current,
                 text: value,
               }))
@@ -570,20 +580,26 @@ export function Inspector({
             value={node.text ?? ""}
           />
         ) : null}
-        {node.component !== undefined ? (
-          <ComponentInspectorFields node={node} onChange={onChange} />
+        {node.component !== undefined && v3Actions === undefined ? (
+          <ComponentInspectorFields node={node} onChange={commit} />
         ) : null}
-        {node.kind === "DraftFrame" ? (
+        {node.component !== undefined && v3Actions !== undefined ? (
+          <p role="status">Component edits require a source proposal.</p>
+        ) : null}
+        {node.kind === "DraftFrame" && v3Actions === undefined ? (
           <AuthoringTextField
             label="Frame content"
             onCommit={(value) =>
-              onChange(`Edit ${node.name} content`, (current) => ({
+              commit(`Edit ${node.name} content`, (current) => ({
                 ...current,
                 frameContent: value,
               }))
             }
             value={node.frameContent ?? ""}
           />
+        ) : null}
+        {node.kind === "DraftFrame" && v3Actions !== undefined ? (
+          <p role="status">Frame-content edits require a source proposal.</p>
         ) : null}
       </fieldset>
 
@@ -644,6 +660,7 @@ export function Inspector({
           ? {}
           : { onPreviewSelection })}
         {...(selectedNodes === undefined ? {} : { selectedNodes })}
+        {...(v3Actions === undefined ? {} : { v3Actions })}
       />
 
       <div aria-label="Selection actions" className="canvas-icon-actions">
