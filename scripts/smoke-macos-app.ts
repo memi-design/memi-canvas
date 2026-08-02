@@ -17,7 +17,10 @@ const RUNTIME_SIDECAR_PATH = resolve(
 );
 const MAX_ATTEMPTS = 80;
 const RPC_PROBE_TIMEOUT_MS = 5_000;
-const SOCKET_RELATIVE_PATH = join("runtime", "runtime-v1.sock");
+// Must match the native bridge's bounded Unix-domain transport path. The full
+// path has a strict length limit on macOS, so storage remains descriptive while
+// the private socket address stays compact.
+const SOCKET_RELATIVE_PATH = join("r", "s");
 const WINDOW_PROBE = `
 import CoreGraphics
 let windows = CGWindowListCopyWindowInfo(

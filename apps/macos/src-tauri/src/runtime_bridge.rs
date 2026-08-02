@@ -4,7 +4,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::{BufReader, Read, Write},
-    os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{FileTypeExt, OpenOptionsExt, PermissionsExt},
+    },
     os::unix::{net::UnixStream, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -18,7 +21,11 @@ use tauri::{AppHandle, Manager, State};
 
 const MAX_RUNTIME_RPC_BYTES: usize = 262_144;
 const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
-const RUNTIME_SOCKET_NAME: &str = "runtime/runtime-v1.sock";
+const MAX_DARWIN_SOCKET_PATH_BYTES: usize = 103;
+// macOS limits Unix-domain socket addresses to roughly 104 bytes. Keep the
+// transport name deliberately short because the app-data root may already be
+// long (especially in isolated smoke-test and managed-user environments).
+const RUNTIME_SOCKET_NAME: &str = "r/s";
 const PLAN_INTEGRITY_FILE: &str = "runtime/plan-integrity-v1.key";
 const PACKAGED_RUNTIME_EXECUTABLE: &str = "memi-canvas-runtime";
 const RUNTIME_RPC_METHODS: &[&str] = &[
@@ -493,6 +500,14 @@ fn runtime_health_envelope() -> Value {
     })
 }
 
+fn runtime_socket_path(app_data: &Path) -> Result<PathBuf, String> {
+    let socket_path = app_data.join(RUNTIME_SOCKET_NAME);
+    if socket_path.as_os_str().as_bytes().len() > MAX_DARWIN_SOCKET_PATH_BYTES {
+        return Err("Memi storage path is too long for the private runtime transport".to_owned());
+    }
+    Ok(socket_path)
+}
+
 pub(crate) fn start_runtime_bridge(
     app: &AppHandle,
     app_data: &Path,
@@ -506,7 +521,7 @@ pub(crate) fn start_runtime_bridge(
     ensure_private_directory(&worktree_root)?;
     let runtime_root = app_data.join("runtime");
     ensure_private_directory(&runtime_root)?;
-    let socket_path = app_data.join(RUNTIME_SOCKET_NAME);
+    let socket_path = runtime_socket_path(app_data)?;
     if socket_path.exists() {
         let metadata = fs::symlink_metadata(&socket_path)
             .map_err(|_| "Stale runtime socket could not be inspected".to_owned())?;
@@ -869,7 +884,7 @@ mod tests {
         exchange_runtime_rpc_with_lifecycle, import_log_path_for_job, is_secret_key,
         managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
         runtime_diagnostics_enabled, runtime_health_envelope, runtime_socket_is_ready,
-        validate_runtime_envelope, RuntimeLifecycle,
+        runtime_socket_path, validate_runtime_envelope, RuntimeLifecycle,
     };
     use serde_json::json;
     use std::{
@@ -900,6 +915,28 @@ mod tests {
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
+    }
+
+    #[test]
+    fn runtime_socket_path_stays_private_and_within_the_darwin_address_limit() {
+        let root = Path::new(
+            "/private/var/folders/g3/pffjr_y96bq06blnkf72x_hw0000gn/T/memi-canvas-app-smoke-IL7naT",
+        );
+        let socket_path = runtime_socket_path(root).expect("bounded smoke path should resolve");
+
+        assert_eq!(socket_path, root.join("r/s"));
+        assert!(socket_path.starts_with(root));
+        assert!(socket_path.as_os_str().as_encoded_bytes().len() <= 103);
+    }
+
+    #[test]
+    fn runtime_socket_path_rejects_an_overlong_storage_root() {
+        let root = Path::new("/tmp").join("x".repeat(100));
+
+        assert_eq!(
+            runtime_socket_path(&root),
+            Err("Memi storage path is too long for the private runtime transport".to_owned())
+        );
     }
 
     #[test]
