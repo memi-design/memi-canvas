@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { OperationIdSchema, type OperationId } from "@memi/protocol";
 
 import type { CanvasWorkbenchV3Session } from "./CanvasWorkbench.types.js";
 import type { CanonicalWorkbenchAuthorityV3 } from "./canonical-workbench-authority-v3.js";
@@ -9,6 +10,52 @@ import {
   compileWorkbenchIntentReceiptV3,
   type WorkbenchIntentReceiptV3,
 } from "./workbench-v3-intents.js";
+
+const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const MAX_SORTABLE_TIMESTAMP = 0xffff_ffff_ffff;
+
+export interface CreateCanvasOperationIdOptions {
+  readonly now?: number;
+  readonly randomBytes?: () => Uint8Array;
+}
+
+function encodeCrockford(value: bigint, length: number): string {
+  return Array.from({ length }, (_, index) => {
+    const shift = BigInt((length - index - 1) * 5);
+    return CROCKFORD_BASE32[Number((value >> shift) & 31n)]!;
+  }).join("");
+}
+
+function secureRandomBytes(): Uint8Array {
+  const bytes = new Uint8Array(10);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+/** Create one protocol-valid, time-sortable ULID-shaped operation identity. */
+export function createCanvasOperationId(
+  options: CreateCanvasOperationIdOptions = {},
+): OperationId {
+  const now = options.now ?? Date.now();
+  if (
+    !Number.isSafeInteger(now) ||
+    now < 0 ||
+    now > MAX_SORTABLE_TIMESTAMP
+  ) {
+    throw new Error("Canvas operation time is outside the sortable ID range.");
+  }
+  const randomBytes = (options.randomBytes ?? secureRandomBytes)();
+  if (randomBytes.byteLength !== 10) {
+    throw new Error("Canvas operation entropy must contain exactly 10 bytes.");
+  }
+  const randomValue = Array.from(randomBytes).reduce(
+    (value, byte) => (value << 8n) | BigInt(byte),
+    0n,
+  );
+  return OperationIdSchema.parse(
+    `opn_${encodeCrockford(BigInt(now), 10)}${encodeCrockford(randomValue, 16)}`,
+  );
+}
 
 export function createRecoveredSerialQueue(onFailure: (message: string) => void) {
   let pending = Promise.resolve();
@@ -41,8 +88,7 @@ export function useWorkbenchV3SessionBridge(input: {
     : createV3WorkbenchHistoryActions({
         authority: input.authority,
         actorId: "local-user",
-        createOperationId: () =>
-          `opn_${globalThis.crypto.randomUUID().replaceAll("-", "")}`,
+        createOperationId: createCanvasOperationId,
         now: () => new Date().toISOString(),
       });
 
@@ -59,8 +105,7 @@ export function useWorkbenchV3SessionBridge(input: {
       const currentHistory = createV3WorkbenchHistoryActions({
         authority: current.authority,
         actorId: "local-user",
-        createOperationId: () =>
-          `opn_${globalThis.crypto.randomUUID().replaceAll("-", "")}`,
+        createOperationId: createCanvasOperationId,
         now: () => new Date().toISOString(),
       });
       const action = compileWorkbenchIntentReceiptV3({
@@ -96,8 +141,7 @@ export function useWorkbenchV3SessionBridge(input: {
       const currentHistory = createV3WorkbenchHistoryActions({
         authority: current.authority,
         actorId: "local-user",
-        createOperationId: () =>
-          `opn_${globalThis.crypto.randomUUID().replaceAll("-", "")}`,
+        createOperationId: createCanvasOperationId,
         now: () => new Date().toISOString(),
       });
       if (kind === "undo") await currentHistory.undoScene();

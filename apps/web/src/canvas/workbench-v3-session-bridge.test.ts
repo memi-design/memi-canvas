@@ -1,8 +1,36 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createRecoveredSerialQueue } from "./workbench-v3-session-bridge.js";
+import { OperationIdSchema } from "@memi/protocol";
+
+import {
+  createCanvasOperationId,
+  createRecoveredSerialQueue,
+} from "./workbench-v3-session-bridge.js";
 
 describe("V3 workbench session bridge queue", () => {
+  it("creates protocol-valid sortable operation identities", () => {
+    const earlier = createCanvasOperationId({
+      now: 1_786_000_000_000,
+      randomBytes: () => new Uint8Array(10),
+    });
+    const later = createCanvasOperationId({
+      now: 1_786_000_000_001,
+      randomBytes: () => new Uint8Array(10),
+    });
+
+    expect(OperationIdSchema.parse(earlier)).toBe(earlier);
+    expect(OperationIdSchema.parse(later)).toBe(later);
+    expect(earlier < later).toBe(true);
+  });
+
+  it("does not reuse operation identities within one timestamp", () => {
+    const ids = Array.from({ length: 128 }, () =>
+      createCanvasOperationId({ now: 1_786_000_000_000 }),
+    );
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("runs rapid receipts in order and recovers after a rejected operation", async () => {
     const failures = vi.fn();
     const enqueue = createRecoveredSerialQueue(failures);
