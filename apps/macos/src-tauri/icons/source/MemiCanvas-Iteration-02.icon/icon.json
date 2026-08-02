@@ -1,0 +1,87 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.82000,0.00000,0.28000,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "extended-srgb:0.28000,0.00000,0.08000,1.00000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "hidden" : false,
+          "image-name" : "20-liquid-glass-body.png",
+          "name" : "Liquid Glass Body",
+          "position" : {
+            "scale" : 1.25,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "image-name" : "11-white-heart-caustic.png",
+          "name" : "White Heart Caustic",
+          "position" : {
+            "scale" : 1.25,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "blend-mode-specializations" : [
+            {
+              "value" : "overlay"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "hard-light"
+            }
+          ],
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "10-frosted-white-heart.png",
+          "name" : "Frosted White Heart",
+          "position" : {
+            "scale" : 1.25,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "00-oklch-ruby-field.png",
+          "name" : "OKLCH Ruby Field"
+        }
+      ],
+      "name" : "Memi Canvas — Iteration 02 Single Heart",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.32
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.22
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

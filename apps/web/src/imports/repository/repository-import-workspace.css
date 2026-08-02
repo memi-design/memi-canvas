@@ -1,0 +1,796 @@
+.repository-import-dialog--workspace {
+  background: var(--studio-surface-panel);
+  max-block-size: min(760px, calc(100vh - 48px));
+  max-inline-size: 820px;
+}
+
+.figma-import-dialog:not(.repository-import-dialog--workspace) {
+  max-block-size: min(760px, calc(100vh - 48px));
+  max-inline-size: 640px;
+}
+
+.figma-import-dialog:not(.repository-import-dialog--workspace) .figma-import-dialog__body {
+  max-block-size: calc(100vh - 172px);
+  overflow: auto;
+}
+
+.repository-import-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.repository-import-runtime {
+  align-items: center;
+  color: var(--studio-ink-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 7px;
+  width: fit-content;
+}
+
+.repository-import-runtime input {
+  accent-color: var(--studio-accent);
+  block-size: 14px;
+  inline-size: 14px;
+  margin: 0;
+}
+
+.repository-import-summary__overview {
+  align-items: end;
+  background: var(--studio-surface-canvas);
+  border: 1px solid var(--studio-border-subtle);
+  border-radius: var(--studio-radius-md);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+}
+
+.repository-import-summary__overview > div {
+  display: grid;
+  gap: 3px;
+  min-inline-size: 0;
+}
+
+.repository-import-summary__overview > div > span,
+.repository-import-recipes__heading span,
+.repository-import-recipes__facts span {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.repository-import-summary__overview strong {
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-summary__overview small {
+  color: var(--studio-ink-tertiary);
+  font-size: 10px;
+}
+
+.repository-import-summary__overview p {
+  color: var(--studio-ink-secondary);
+  flex: none;
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0;
+  text-align: end;
+}
+
+.repository-import-recipes {
+  background: var(--studio-surface-canvas);
+  border: 1px solid var(--studio-border-subtle);
+  border-radius: var(--studio-radius-md);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.repository-import-recipes__heading {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repository-import-recipes__heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.repository-import-recipes__heading strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.repository-import-recipes__heading small {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+}
+
+.repository-import-recipes__status {
+  background: color-mix(
+    in oklch,
+    var(--studio-accent-soft) 74%,
+    var(--studio-surface-canvas)
+  );
+  border-radius: 999px;
+  color: var(--studio-accent) !important;
+  flex: none;
+  font-size: 10px !important;
+  letter-spacing: 0.01em;
+  padding: 4px 8px;
+}
+
+.repository-import-recipes__facts {
+  border-block: 1px solid var(--studio-border-subtle);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-block: 10px;
+}
+
+.repository-import-recipes__facts > div {
+  display: grid;
+  gap: 3px;
+  min-inline-size: 0;
+}
+
+.repository-import-recipes__facts small {
+  color: var(--studio-ink-primary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.repository-import-scope {
+  align-items: center;
+  border-block-end: 1px solid var(--studio-border-subtle);
+  border-block-start: 1px solid var(--studio-border-subtle);
+  display: flex;
+  gap: 12px;
+  padding-block: 9px;
+}
+
+.repository-import-scope label {
+  align-items: center;
+  color: var(--studio-ink-secondary);
+  cursor: pointer;
+  display: flex;
+  gap: 7px;
+  min-inline-size: 0;
+}
+
+.repository-import-scope input {
+  accent-color: var(--studio-accent);
+  block-size: 14px;
+  flex: none;
+  inline-size: 14px;
+  margin: 0;
+}
+
+.repository-import-scope label > span {
+  align-items: baseline;
+  display: flex;
+  gap: 5px;
+  min-inline-size: 0;
+}
+
+.repository-import-scope strong {
+  color: var(--studio-ink-primary);
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-scope small {
+  color: var(--studio-ink-tertiary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.repository-import-scope__selected {
+  margin-inline-start: auto;
+}
+
+.repository-import-recipes__toggle {
+  background: transparent;
+  border: 0;
+  color: var(--studio-ink-secondary);
+  font: inherit;
+  font-size: 12px;
+  justify-self: start;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-decoration-color: var(--studio-border-strong);
+  text-underline-offset: 3px;
+}
+
+.repository-import-recipes__toggle:hover,
+.repository-import-recipes__toggle:focus-visible {
+  color: var(--studio-ink-primary);
+  outline: none;
+  text-decoration-color: var(--studio-accent);
+}
+
+.repository-import-recipes__details {
+  border-block-start: 1px solid var(--studio-border-subtle);
+  display: grid;
+  gap: 6px;
+  padding-block-start: 10px;
+}
+
+.repository-import-recipes__details article {
+  background: var(--studio-surface-raised);
+  border: 1px solid var(--studio-border-subtle);
+  border-radius: var(--studio-radius-sm);
+  display: grid;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.repository-import-command {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-inline-size: 0;
+  padding: 0;
+  text-align: start;
+  width: 100%;
+}
+
+.repository-import-command span {
+  color: var(--studio-ink-primary);
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.repository-import-command strong {
+  font-size: 11px;
+  font-weight: 500;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-recipes__details small {
+  color: var(--studio-ink-tertiary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.repository-import-command small {
+  flex: 1;
+  overflow: hidden;
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-command strong,
+.repository-import-command small,
+.repository-import-summary__overview strong,
+.repository-import-progress__heading strong,
+.repository-import-current strong {
+  font-kerning: normal;
+}
+
+.repository-import-summary__overview p,
+.repository-import-recipes__heading small,
+.repository-import-failures p,
+.repository-import-failures li > span {
+  text-wrap: pretty;
+  text-align: end;
+}
+
+.repository-import-recipes__details code {
+  color: var(--studio-ink-secondary);
+  font-family: var(--studio-font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.repository-import-recipes__approval {
+  align-items: start;
+  border-block-start: 1px solid var(--studio-border-subtle);
+  display: flex !important;
+  gap: 9px !important;
+  padding-block-start: 12px;
+}
+
+.repository-import-recipes__approval input {
+  accent-color: var(--studio-accent);
+  block-size: 15px;
+  flex: none;
+  inline-size: 15px;
+  margin: 1px 0 0;
+}
+
+.repository-import-recipes__approval > span {
+  display: grid;
+  gap: 2px;
+}
+
+.repository-import-recipes__approval strong {
+  color: var(--studio-ink-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.repository-import-recipes__approval small {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.repository-import-summary__footer {
+  align-items: end;
+  border-block-start: 1px solid var(--studio-border-subtle);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-block-start: 16px;
+}
+
+.repository-import-summary__footer > label {
+  min-inline-size: 0;
+}
+
+.repository-import-summary__footer .figma-import-dialog__primary {
+  justify-self: stretch;
+}
+
+.repository-import-dialog--workspace > header {
+  border-block-end: 1px solid var(--studio-border-subtle);
+  padding: 18px 22px 16px;
+}
+
+.repository-import-workspace {
+  display: grid;
+  gap: 14px;
+  max-block-size: min(650px, calc(100vh - 132px));
+  overflow: auto;
+  padding: 16px 22px 20px;
+}
+
+.repository-import-stages {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(10, minmax(52px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repository-import-stages li {
+  color: var(--studio-ink-tertiary);
+  display: grid;
+  font-size: 9px;
+  font-weight: 400;
+  gap: 7px;
+  line-height: 1.3;
+  min-inline-size: 0;
+}
+
+.repository-import-stages li > span {
+  background: var(--studio-surface-strong);
+  block-size: 2px;
+  border-radius: var(--studio-radius-sm);
+  inline-size: 100%;
+}
+
+.repository-import-stages li[data-state="complete"] {
+  color: var(--studio-ink-secondary);
+}
+
+.repository-import-stages li[data-state="complete"] > span {
+  background: color-mix(
+    in oklch,
+    var(--studio-accent) 42%,
+    var(--studio-surface-strong)
+  );
+}
+
+.repository-import-stages li[data-state="current"] {
+  color: var(--studio-ink-primary);
+  font-weight: 500;
+}
+
+.repository-import-stages li[data-state="current"] > span {
+  background: var(--studio-accent);
+}
+
+.repository-import-progress,
+.repository-import-current,
+.repository-import-failures {
+  background: var(--studio-surface-canvas);
+  border: 1px solid var(--studio-border-subtle);
+  border-radius: var(--studio-radius-md);
+}
+
+.repository-import-progress {
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+}
+
+.repository-import-progress__heading {
+  align-items: start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.repository-import-progress__heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.repository-import-progress__heading span,
+.repository-import-current span {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.repository-import-progress__heading strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.repository-import-progress__heading time {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+}
+
+.repository-import-progress__track {
+  background: var(--studio-surface-strong);
+  block-size: 3px;
+  border-radius: var(--studio-radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+
+.repository-import-progress__track > span {
+  background: var(--studio-accent);
+  block-size: 100%;
+  border-radius: inherit;
+  display: block;
+}
+
+.repository-import-progress__value {
+  transition: inline-size var(--studio-motion-standard) ease-out;
+}
+
+.repository-import-progress__indeterminate {
+  animation: repository-import-travel
+    calc(var(--studio-motion-slow) * 8) ease-in-out infinite;
+  inline-size: 28%;
+  inset-inline-start: -28%;
+  position: absolute;
+}
+
+@keyframes repository-import-travel {
+  to {
+    transform: translateX(460%);
+  }
+}
+
+.repository-import-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.repository-import-counts span {
+  align-items: center;
+  background: color-mix(
+    in oklch,
+    var(--studio-surface-raised) 78%,
+    var(--studio-surface-canvas)
+  );
+  border: 1px solid var(--studio-border-subtle);
+  border-radius: 999px;
+  color: var(--studio-ink-secondary);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.repository-import-counts strong {
+  color: var(--studio-ink-primary);
+  font-weight: 500;
+}
+
+.repository-import-counts [data-tone="danger"],
+.repository-import-counts [data-tone="danger"] strong {
+  color: var(--studio-danger);
+}
+
+.repository-import-current {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px;
+}
+
+.repository-import-current > div {
+  display: grid;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.repository-import-current strong {
+  font-size: 12px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-current p {
+  align-items: center;
+  border-block-start: 1px solid var(--studio-border-subtle);
+  color: var(--studio-ink-secondary);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  margin: 0;
+  padding-block-start: 12px;
+}
+
+.repository-import-current p > span {
+  background: var(--studio-accent);
+  block-size: 5px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--studio-accent-soft);
+  flex: none;
+  inline-size: 5px;
+}
+
+.repository-import-failures {
+  overflow: hidden;
+}
+
+.repository-import-section-heading {
+  align-items: center;
+  border-block-end: 1px solid var(--studio-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  padding: 11px 14px;
+}
+
+.repository-import-section-heading h3 {
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.repository-import-section-heading > span {
+  color: var(--studio-danger);
+  font-size: 11px;
+}
+
+.repository-import-failures ul {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repository-import-failures li {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.repository-import-failures li + li {
+  border-block-start: 1px solid var(--studio-border-subtle);
+}
+
+.repository-import-failure__heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repository-import-failure__heading h4 {
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-import-failure__heading code,
+.repository-import-failure__source {
+  color: var(--studio-danger);
+  font-family: var(--studio-font-mono);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.repository-import-failure__source {
+  color: var(--studio-ink-tertiary);
+}
+
+.repository-import-failures p {
+  color: var(--studio-ink-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repository-import-failures li > p:not(.repository-import-failure__remediation) {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  display: -webkit-box;
+}
+
+.repository-import-failures .repository-import-failure__remediation {
+  color: var(--studio-ink-primary);
+}
+
+.repository-import-failures li > span {
+  color: var(--studio-ink-tertiary);
+  font-size: 10px;
+}
+
+.repository-import-failures__overflow {
+  border-block-start: 1px solid var(--studio-border-subtle);
+  color: var(--studio-ink-tertiary) !important;
+  font-size: 11px !important;
+  padding: 10px 14px;
+}
+
+.repository-import-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repository-import-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.repository-import-actions button {
+  background: var(--studio-surface-raised);
+  border: 1px solid var(--studio-border-strong);
+  border-radius: 7px;
+  color: var(--studio-ink-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  min-block-size: 32px;
+  padding: 0 11px;
+}
+
+.repository-import-actions button:hover:not(:disabled),
+.repository-import-actions button:focus-visible {
+  background: var(--studio-surface-hover);
+}
+
+.repository-import-actions button:focus-visible {
+  border-color: var(--studio-accent);
+  outline: 2px solid var(--studio-accent-soft);
+  outline-offset: 1px;
+}
+
+.repository-import-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.repository-import-actions .repository-import-actions__cancel {
+  color: var(--studio-danger);
+}
+
+@media (max-width: 760px) {
+  .repository-import-stages {
+    grid-template-columns: repeat(5, minmax(52px, 1fr));
+    row-gap: 12px;
+  }
+
+  .repository-import-current {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .repository-import-current p {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 520px) {
+  .figma-import-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .figma-import-dialog:not(.repository-import-dialog--workspace) {
+    border-end-end-radius: 0;
+    border-end-start-radius: 0;
+    max-block-size: min(780px, calc(100vh - 16px));
+  }
+
+  .repository-import-summary__overview,
+  .repository-import-recipes__heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .repository-import-summary__overview p {
+    text-align: start;
+  }
+
+  .repository-import-recipes__facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .repository-import-command {
+    align-items: start;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+  }
+
+  .repository-import-command small {
+    flex-basis: 100%;
+    text-align: start;
+  }
+
+  .repository-import-summary__footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .repository-import-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .repository-import-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .repository-import-actions > div,
+  .repository-import-actions button {
+    inline-size: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repository-import-progress__value {
+    transition: none;
+  }
+
+  .repository-import-progress__indeterminate {
+    animation: none;
+    inset-inline-start: 0;
+    opacity: 0.72;
+  }
+}

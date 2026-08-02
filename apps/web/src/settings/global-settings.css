@@ -1,0 +1,452 @@
+@import "../theme/studio-tokens.css";
+
+.global-settings {
+  --settings-bg: var(--studio-surface-canvas);
+  --settings-panel: var(--studio-surface-panel);
+  --settings-raised: var(--studio-surface-raised);
+  --settings-hover: var(--studio-surface-hover);
+  --settings-border: var(--studio-border-subtle);
+  --settings-border-strong: var(--studio-border-strong);
+  --settings-ink: var(--studio-ink-primary);
+  --settings-muted: var(--studio-ink-secondary);
+  --settings-subtle: var(--studio-ink-tertiary);
+  --settings-accent: var(--studio-accent);
+  --settings-accent-soft: var(--studio-accent-soft);
+  width: 100%;
+  min-height: 100vh;
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 5.5rem;
+  color: var(--settings-ink);
+  background: var(--settings-bg);
+  font-family: var(--studio-font-sans);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.global-settings button,
+.global-settings select,
+.global-settings input {
+  font: inherit;
+}
+
+.global-settings button {
+  color: inherit;
+}
+
+.global-settings button:focus-visible,
+.global-settings select:focus-visible,
+.global-settings input:focus-visible {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+
+.global-settings-header {
+  display: flex;
+  align-items: flex-start;
+  width: min(100%, 64rem);
+  margin: 0 auto;
+  gap: 0.9rem;
+}
+
+.global-settings-header > button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: 0.15rem;
+  padding: 0;
+  place-items: center;
+  color: var(--settings-muted);
+  background: var(--settings-panel);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--studio-motion-fast),
+    background-color var(--studio-motion-fast),
+    border-color var(--studio-motion-fast);
+}
+
+.global-settings-header > button:hover {
+  color: var(--settings-ink);
+  background: var(--settings-hover);
+}
+
+.global-settings-header > div {
+  min-width: 0;
+}
+
+.global-settings-header span,
+.global-settings-card > header span,
+.global-settings-aside header span,
+.global-settings-runtime header span {
+  color: var(--settings-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.global-settings-header h1 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(20px, 3vw, 24px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.global-settings-header p {
+  margin: 0.35rem 0 0;
+  color: var(--settings-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.global-settings-alert {
+  display: grid;
+  width: min(100%, 64rem);
+  margin: 1.25rem auto 0;
+  padding: 0.75rem 0.85rem;
+  color: var(--studio-warning);
+  background: color-mix(in oklch,
+    var(--studio-warning) 10%,
+    var(--settings-panel)
+  );
+  border: 1px solid
+    color-mix(in oklch, var(--studio-warning) 30%, var(--settings-border));
+  border-radius: var(--studio-radius-sm);
+}
+
+.global-settings-alert strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.global-settings-alert span {
+  margin-top: 0.18rem;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.global-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  width: min(100%, 64rem);
+  margin: 1.5rem auto 0;
+  gap: 1rem;
+}
+
+.global-settings-card,
+.global-settings-aside > section {
+  background: var(--settings-panel);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-md);
+}
+
+.global-settings-card {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.global-settings-card > header,
+.global-settings-aside header,
+.global-settings-runtime header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.global-settings-card > header strong,
+.global-settings-aside header strong,
+.global-settings-runtime header strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.global-settings-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.global-settings-field-grid > label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.global-settings-field-grid > label > span,
+.global-settings-permissions legend {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.global-settings-field-grid select {
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0 0.55rem;
+  color: var(--settings-ink);
+  background: var(--settings-raised);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    background-color var(--studio-motion-fast),
+    border-color var(--studio-motion-fast);
+}
+
+.global-settings-field-grid small {
+  color: var(--settings-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.global-settings-runtime {
+  margin-top: 1.1rem;
+  padding: 0.8rem;
+  background: var(--settings-raised);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-sm);
+}
+
+.global-settings-runtime__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.global-settings-badge {
+  display: inline-flex;
+  min-height: 1.45rem;
+  padding: 0 0.45rem;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.global-settings-badge--declared {
+  color: var(--settings-muted);
+  background: var(--settings-hover);
+}
+
+.global-settings-badge--offline {
+  color: var(--settings-muted);
+  background: var(--settings-hover);
+}
+
+.global-settings-badge--connected {
+  color: var(--studio-success);
+  background: color-mix(in oklch,
+    var(--studio-success) 12%,
+    var(--settings-raised)
+  );
+}
+
+.global-settings-runtime p {
+  margin: 0.65rem 0 0;
+  color: var(--settings-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.global-settings-permissions {
+  margin: 1.1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.global-settings-permissions > p {
+  margin: 0.25rem 0 0;
+  color: var(--settings-muted);
+  font-size: 12px;
+}
+
+.global-settings-permissions > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.global-settings-permissions label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 5.2rem;
+  padding: 0.7rem;
+  background: var(--settings-raised);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--studio-motion-fast),
+    border-color var(--studio-motion-fast);
+}
+
+.global-settings-permissions label:has(input:checked) {
+  background: var(--settings-accent-soft);
+  border-color: var(--settings-accent);
+}
+
+.global-settings-permissions input {
+  margin: 0.1rem 0 0;
+  accent-color: var(--settings-accent);
+}
+
+.global-settings-permissions label span {
+  display: grid;
+  align-content: start;
+  gap: 0.22rem;
+}
+
+.global-settings-permissions strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.global-settings-permissions small {
+  color: var(--settings-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.global-settings-aside {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+}
+
+.global-settings-aside > section {
+  padding: 0.85rem;
+}
+
+.global-settings-browser-mark {
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  margin-top: 0.9rem;
+  place-items: center;
+  color: var(--settings-panel);
+  background: var(--settings-accent);
+  border-radius: var(--studio-radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.global-settings-aside p {
+  margin: 0.75rem 0 0;
+  color: var(--settings-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.global-settings-aside ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0 0 1rem;
+  color: var(--settings-muted);
+  border-top: 1px solid var(--settings-border);
+  font-size: 12px;
+}
+
+.global-settings-aside dl {
+  display: grid;
+  gap: 0;
+  margin: 0.75rem 0 0;
+}
+
+.global-settings-aside dl div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--settings-border);
+  font-size: 12px;
+}
+
+.global-settings-aside dt {
+  color: var(--settings-muted);
+}
+
+.global-settings-aside dd {
+  margin: 0;
+  text-align: right;
+}
+
+.global-settings-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  padding: 0.75rem max(1rem, calc((100vw - 64rem) / 2));
+  background: color-mix(in oklch,
+    var(--settings-bg) 88%,
+    transparent
+  );
+  border-top: 1px solid var(--settings-border);
+  backdrop-filter: blur(14px);
+}
+
+.global-settings-footer button {
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
+  background: var(--settings-raised);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--studio-radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color var(--studio-motion-fast),
+    border-color var(--studio-motion-fast);
+}
+
+.global-settings-footer button:hover {
+  background: var(--settings-hover);
+  border-color: var(--settings-border-strong);
+}
+
+.global-settings-footer .global-settings-save {
+  color: var(--settings-panel);
+  background: var(--settings-accent);
+  border-color: var(--settings-accent);
+  font-weight: 500;
+}
+
+.global-settings-footer .global-settings-save:hover {
+  background: var(--studio-accent-hover);
+  border-color: var(--studio-accent-hover);
+}
+
+@media (max-width: 48rem) {
+  .global-settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .global-settings-field-grid,
+  .global-settings-permissions > div {
+    grid-template-columns: 1fr;
+  }
+
+  .global-settings-permissions label {
+    min-height: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-settings *,
+  .global-settings *::before,
+  .global-settings *::after {
+    scroll-behavior: auto;
+    transition-duration: var(--studio-motion-reduced);
+    animation-duration: var(--studio-motion-reduced);
+  }
+}

@@ -1,0 +1,410 @@
+{
+  "schemaVersion": "memibench.trace-authority.v1",
+  "authority": "docs/adr/0011-trace-commit-authority.md",
+  "status": "red-contract-only",
+  "deterministicSeeds": [1296387401, 49374, 3735928559, 3237998081, 12648430],
+  "releaseConcurrency": {
+    "kind": "os-process",
+    "minimumDistinctWorkerPids": 2,
+    "independentSQLiteConnections": true,
+    "independentTraceRepositoryHandles": true,
+    "synchronizedExternalBarrier": true,
+    "workerThreadsSatisfyReleaseEvidence": false,
+    "promiseConcurrencySatisfiesReleaseEvidence": false
+  },
+  "faultInjection": {
+    "processTerminationUsesDistinctPid": true,
+    "recoveryUsesFreshProcess": true,
+    "diskFullInjectionRequired": true,
+    "shortWriteInjectionRequired": true,
+    "realFilesystemSyncRequired": true
+  },
+  "replayScale": {
+    "eventCount": 10000,
+    "sources": ["sqlite", "projected-jsonl"],
+    "externalEffectCallsAllowed": 0
+  },
+  "cases": [
+    {
+      "id": "trace-trust-001",
+      "family": "trust-and-binding",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["caller-chosen-event-id"],
+      "expected": {
+        "callerChosenTraceIdsAccepted": 0,
+        "newTraceEvents": 0,
+        "sqliteMutations": 0
+      },
+      "evidence": ["closed-request", "trace-repository-call-count", "sqlite-before-after"]
+    },
+    {
+      "id": "trace-trust-002",
+      "family": "trust-and-binding",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["caller-observed-target-hash"],
+      "expected": {
+        "callerObservationsAcceptedAsTrusted": 0,
+        "trustedVerificationReads": 1,
+        "bindingSource": "authoritative-records"
+      },
+      "evidence": ["caller-values", "trusted-verification-record", "committed-event-body"]
+    },
+    {
+      "id": "trace-trust-003",
+      "family": "trust-and-binding",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": [
+        "command",
+        "outbox",
+        "target-receipt",
+        "resulting-hash",
+        "fence",
+        "verification-evidence"
+      ],
+      "expected": {
+        "outboxState": "effect-applied",
+        "newTraceEvents": 0,
+        "newEffectBindings": 0,
+        "newProjectionRows": 0
+      },
+      "evidence": ["variant", "binding-before", "binding-at-commit", "sqlite-before-after"]
+    },
+    {
+      "id": "trace-trust-004",
+      "family": "trust-and-binding",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["unknown-family-or-extra-field"],
+      "expected": {
+        "outcome": "closed-schema-rejection",
+        "newTraceEvents": 0,
+        "sqliteMutations": 0
+      },
+      "evidence": ["rejected-request", "schema-error", "sqlite-before-after"]
+    },
+    {
+      "id": "trace-crash-001",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-verification-before-sqlite-begin"],
+      "expected": {
+        "outboxState": "effect-applied",
+        "newTraceEvents": 0,
+        "orphanTraceRows": 0,
+        "orphanOutboxReferences": 0
+      },
+      "evidence": ["terminated-pid", "restart-pid", "crash-marker", "sqlite-state-after-restart"]
+    },
+    {
+      "id": "trace-crash-002",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-claim-recheck-before-event-insert"],
+      "expected": {
+        "transactionRolledBack": true,
+        "newTraceEvents": 0,
+        "orphanTraceRows": 0,
+        "orphanOutboxReferences": 0
+      },
+      "evidence": ["terminated-pid", "restart-pid", "transaction-log", "all-trace-table-counts"]
+    },
+    {
+      "id": "trace-crash-003",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-event-insert-before-head-update"],
+      "expected": {
+        "transactionRolledBack": true,
+        "newTraceEvents": 0,
+        "traceHeadChanges": 0,
+        "orphanTraceRows": 0
+      },
+      "evidence": ["terminated-pid", "restart-pid", "trace-events", "trace-heads"]
+    },
+    {
+      "id": "trace-crash-004",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-head-update-before-effect-binding"],
+      "expected": {
+        "transactionRolledBack": true,
+        "newTraceEvents": 0,
+        "traceHeadChanges": 0,
+        "orphanTraceRows": 0
+      },
+      "evidence": ["terminated-pid", "restart-pid", "trace-events", "trace-heads", "effect-bindings"]
+    },
+    {
+      "id": "trace-crash-005",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-effect-binding-before-outbox-commit"],
+      "expected": {
+        "transactionRolledBack": true,
+        "newTraceEvents": 0,
+        "newEffectBindings": 0,
+        "newProjectionRows": 0,
+        "newEffectReceipts": 0,
+        "orphanTraceRows": 0,
+        "orphanOutboxReferences": 0
+      },
+      "evidence": ["terminated-pid", "restart-pid", "all-trace-table-counts", "outbox-state"]
+    },
+    {
+      "id": "trace-crash-006",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-sqlite-commit-before-response"],
+      "expected": {
+        "newTraceEvents": 1,
+        "newEffectBindings": 1,
+        "newProjectionRows": 1,
+        "newEventsOnRetry": 0,
+        "distinctCommitReceiptHashes": 1
+      },
+      "evidence": ["terminated-pid", "restart-pid", "committed-rows", "retry-response", "receipt-hashes"]
+    },
+    {
+      "id": "trace-crash-007",
+      "family": "sqlite-crash-window",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["authoritative-row-corrupt", "authoritative-row-removed"],
+      "expected": {
+        "startupState": "blocked",
+        "jsonlPromotions": 0,
+        "databasePreservedForEvidence": true
+      },
+      "evidence": ["terminated-pid", "restart-pid", "corruption-variant", "integrity-result", "preserved-database-hash"]
+    },
+    {
+      "id": "trace-concurrency-001",
+      "family": "allocation-and-concurrency",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["same-effect-commit"],
+      "expected": {
+        "newTraceEvents": 1,
+        "newSequences": 1,
+        "newEffectBindings": 1,
+        "newProjectionRows": 1,
+        "duplicateCommittedEffects": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "sqlite-connections", "trace-tables"]
+    },
+    {
+      "id": "trace-concurrency-002",
+      "family": "allocation-and-concurrency",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["different-commands-one-project"],
+      "expected": {
+        "duplicateSequences": 0,
+        "noncontiguousSequences": 0,
+        "previousHashBreaks": 0,
+        "committedCommandsMissingEvents": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "project-trace-head", "ordered-trace-events"]
+    },
+    {
+      "id": "trace-concurrency-003",
+      "family": "allocation-and-concurrency",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["different-projects"],
+      "expected": {
+        "crossProjectRows": 0,
+        "projectsWithIndependentHeads": 2,
+        "noncontiguousSequences": 0,
+        "previousHashBreaks": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "project-trace-heads", "ordered-trace-events"]
+    },
+    {
+      "id": "trace-concurrency-004",
+      "family": "allocation-and-concurrency",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["stale-commit-claim"],
+      "expected": {
+        "staleWorkerEventAllocations": 0,
+        "staleWorkerCommits": 0,
+        "newTraceEvents": 1
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "claim-epochs", "trace-tables"]
+    },
+    {
+      "id": "trace-concurrency-005",
+      "family": "allocation-and-concurrency",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["changed-binding-digest"],
+      "expected": {
+        "outcome": "idempotency-conflict",
+        "originalEventMutations": 0,
+        "traceHeadChanges": 0,
+        "newProjectionRows": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "binding-digests", "trace-before-after"]
+    },
+    {
+      "id": "trace-project-001",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-sqlite-commit-before-projection"],
+      "expected": {
+        "effectState": "committed",
+        "projectionPhaseAfterRestart": "projected",
+        "projectionLines": 1
+      },
+      "evidence": ["terminated-pid", "restart-pid", "sqlite-state", "projection-bytes"]
+    },
+    {
+      "id": "trace-project-002",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["after-complete-line-before-projected-mark"],
+      "expected": {
+        "duplicateProjectionLines": 0,
+        "projectionLines": 1,
+        "projectionPhaseAfterRestart": "projected"
+      },
+      "evidence": ["terminated-pid", "restart-pid", "projection-before-after", "projection-row"]
+    },
+    {
+      "id": "trace-project-003",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["short-write-mid-line"],
+      "expected": {
+        "derivedFileQuarantined": true,
+        "replacementMatchesSqlite": true,
+        "duplicateProjectionLines": 0,
+        "noncontiguousSequences": 0
+      },
+      "evidence": ["short-write-injection", "terminated-pid", "restart-pid", "quarantine-hash", "replacement-bytes"]
+    },
+    {
+      "id": "trace-project-004",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["truncate", "reorder", "alter", "duplicate", "unknown-line"],
+      "expected": {
+        "derivedFileQuarantined": true,
+        "replacementMatchesSqlite": true,
+        "sqliteTraceMutations": 0,
+        "duplicateProjectionLines": 0,
+        "noncontiguousSequences": 0
+      },
+      "evidence": ["projection-mutation", "restart-pid", "quarantine-hash", "replacement-bytes", "sqlite-before-after"]
+    },
+    {
+      "id": "trace-project-005",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["jsonl-deleted"],
+      "expected": {
+        "replacementMatchesSqlite": true,
+        "byteIdenticalToBaseline": true,
+        "sqliteTraceMutations": 0
+      },
+      "evidence": ["baseline-projection-hash", "restart-pid", "replacement-hash", "sqlite-before-after"]
+    },
+    {
+      "id": "trace-project-006",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["sqlite-corrupt-jsonl-valid"],
+      "expected": {
+        "startupState": "blocked",
+        "jsonlPromotions": 0,
+        "jsonlPreservedForEvidence": true
+      },
+      "evidence": ["sqlite-corruption-injection", "restart-pid", "integrity-result", "jsonl-hash"]
+    },
+    {
+      "id": "trace-project-007",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": true,
+      "requiresRestart": false,
+      "variants": ["competing-projectors"],
+      "expected": {
+        "duplicateProjectionLines": 0,
+        "noncontiguousSequences": 0,
+        "projectionHashMismatches": 0,
+        "acceptedStaleProjectorClaims": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "projector-claim-epochs", "projection-bytes"]
+    },
+    {
+      "id": "trace-project-008",
+      "family": "jsonl-projection",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": true,
+      "variants": ["file-fsync-disk-full", "directory-fsync-disk-full"],
+      "expected": {
+        "projectionClaimedDurable": false,
+        "allowedProjectionPhases": ["pending", "failed"],
+        "effectState": "committed",
+        "duplicateProjectionLines": 0
+      },
+      "evidence": ["disk-full-injection", "sync-call-ledger", "restart-pid", "projection-row", "projection-bytes"]
+    },
+    {
+      "id": "trace-replay-001",
+      "family": "replay-and-scale",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["10000-events"],
+      "expected": {
+        "eventCountPerSource": 10000,
+        "sqliteAndJsonlStateHashEqual": true,
+        "externalEffectCalls": 0,
+        "noncontiguousSequences": 0,
+        "previousHashBreaks": 0
+      },
+      "evidence": ["sqlite-replay-hash", "jsonl-replay-hash", "effect-call-ledger", "integrity-report"]
+    },
+    {
+      "id": "trace-replay-002",
+      "family": "replay-and-scale",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["target-adapter", "process", "git", "network", "harness", "projection-write"],
+      "expected": {
+        "strictSchemaRejections": 6,
+        "externalEffectCalls": 0,
+        "currentStateMutations": 0
+      },
+      "evidence": ["payload-variant", "schema-result", "effect-call-ledger", "state-before-after"]
+    },
+    {
+      "id": "trace-replay-003",
+      "family": "replay-and-scale",
+      "requiresOsProcessConcurrency": false,
+      "requiresRestart": false,
+      "variants": ["repeated-projection-rebuild"],
+      "expected": {
+        "distinctProjectionByteHashes": 1,
+        "distinctFinalIntegrityHashes": 1,
+        "sqliteTraceMutations": 0
+      },
+      "evidence": ["rebuild-count", "projection-hashes", "integrity-hashes", "sqlite-before-after"]
+    }
+  ]
+}

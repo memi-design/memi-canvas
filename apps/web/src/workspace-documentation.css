@@ -1,0 +1,236 @@
+.documentation-main {
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.documentation-view,
+.evidence-card,
+.collaboration-strip,
+.load-state {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-panel);
+}
+
+.documentation-view h2,
+.documentation-view h3,
+.evidence-card h2,
+.collaboration-strip h2,
+.load-state h1,
+.load-state p {
+  margin: 0;
+}
+
+.documentation-screen-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+  gap: 1rem;
+}
+
+.documentation-cell {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 8.8rem;
+  padding: 0.75rem;
+  color: var(--ink-primary);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-medium);
+  cursor: pointer;
+  text-align: left;
+}
+
+.documentation-cell:hover {
+  border-color: var(--border-strong);
+}
+
+.documentation-cell[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.15rem var(--accent-soft);
+}
+
+.documentation-cell--blocked {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.documentation-cell > span,
+.documentation-cell > small,
+.documentation-cell__empty {
+  color: var(--ink-secondary);
+  font-size: 0.72rem;
+}
+
+.documentation-cell > small {
+  overflow-wrap: anywhere;
+}
+
+.documentation-cell__empty {
+  display: block;
+  padding: 0.75rem;
+}
+
+.evidence-card > code,
+.documentation-card code {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.evidence-card > p:not(.eyebrow) {
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
+}
+
+.documentation-card-grid,
+.design-system-grid,
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.documentation-card {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-medium);
+}
+
+.documentation-card__truth {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.documentation-card ol {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.documentation-card ol li {
+  padding-left: 0.3rem;
+}
+
+.documentation-card ol strong,
+.documentation-card ol span {
+  display: block;
+}
+
+.documentation-card ol span,
+.documentation-card > p {
+  color: var(--ink-secondary);
+  font-size: 0.78rem;
+}
+
+.token-list,
+.canonical-trace {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.token-list li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+  background: var(--surface-panel);
+  border-radius: var(--radius-small);
+}
+
+.token-list span {
+  color: var(--ink-secondary);
+  font-size: 0.7rem;
+}
+
+.canonical-trace button {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.65rem;
+  color: var(--ink-primary);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  text-align: left;
+}
+
+.canonical-trace button:hover {
+  border-color: var(--border-strong);
+}
+
+.canonical-trace span {
+  overflow: hidden;
+  color: var(--ink-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+}
+
+.collaboration-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(15rem, 0.5fr);
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.collaboration-strip dl {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+}
+
+.collaboration-strip dl div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.collaboration-strip dt,
+.collaboration-strip > p {
+  color: var(--ink-secondary);
+  font-size: 0.72rem;
+}
+
+.collaboration-strip dd {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.load-state {
+  width: min(34rem, calc(100% - 2rem));
+  margin: 10vh auto;
+}
+
+.load-state p {
+  margin-top: 0.5rem;
+  color: var(--ink-secondary);
+}
+
+.load-state--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+@media (max-width: 68rem) {
+  .documentation-screen-layout,
+  .documentation-card-grid,
+  .design-system-grid,
+  .evidence-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collaboration-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

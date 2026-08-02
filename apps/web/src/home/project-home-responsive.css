@@ -1,0 +1,119 @@
+@media (max-width: 74rem) {
+  .project-quick-start__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 56rem) {
+  .project-home {
+    grid-template-columns: 196px minmax(0, 1fr);
+  }
+
+  .project-home-sidebar {
+    width: 196px;
+  }
+
+  .project-home-main {
+    padding: 24px;
+  }
+
+  .project-home-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 340px));
+  }
+}
+
+@media (max-width: 44rem) {
+  .project-home {
+    display: block;
+  }
+
+  .project-home-sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    padding-bottom: 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--home-border);
+  }
+
+  .project-home-search {
+    margin-block: 10px 8px;
+  }
+
+  .project-home-sidebar nav {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .project-home-sidebar nav button {
+    width: auto;
+    min-width: max-content;
+  }
+
+  .project-home-workspace,
+  .project-home-sidebar__footer {
+    display: none;
+  }
+
+  .project-home-main {
+    padding: 20px 16px 40px;
+  }
+
+  .project-home-topbar {
+    min-height: 36px;
+  }
+
+  .project-quick-start {
+    margin-top: 18px;
+  }
+
+  .project-list > header {
+    align-items: flex-start;
+  }
+
+  .project-list > header p {
+    display: none;
+  }
+
+  .project-home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-home-grid > li {
+    max-inline-size: none;
+  }
+
+  .project-home-grid--list .project-home-card {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .project-home-card__preview {
+    height: 180px;
+  }
+
+  .project-home-grid--list .project-home-card__preview {
+    height: 104px;
+  }
+}
+
+@media (max-width: 31rem) {
+  .project-quick-start__actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-list > header {
+    display: grid;
+  }
+
+  .project-list__controls {
+    justify-self: stretch;
+  }
+
+  .project-list__controls label {
+    flex: 1;
+  }
+
+  .project-list__controls select {
+    width: 100%;
+  }
+}

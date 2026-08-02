@@ -1,0 +1,795 @@
+import {
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
+
+import type { CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
+import { createEditorCommands } from "./commands.js";
+import {
+  canvasGridMetrics,
+  canvasPointFromViewport,
+  pointFromEvent,
+} from "./canvas-camera.js";
+import { resolveComponentInstance, replaceNode, type WorkbenchNode } from "./model.js";
+import { Inspector } from "./parts.js";
+import { canvasSourceFingerprint } from "./persistence.js";
+import {
+  canReadCanvasSystemClipboard,
+  hasCanvasSessionClipboard,
+  isCanvasNodeDeletable,
+} from "./canvas-clipboard.js";
+import { projectVisibleItems } from "./canvas-performance.js";
+import { createWorkbenchHistoryActions } from "./workbench-history-actions.js";
+import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
+import { createWorkbenchPointerActions } from "./workbench-pointer-actions.js";
+import { createWorkbenchCameraActions } from "./workbench-camera-actions.js";
+import { CanvasWorkbenchView } from "./CanvasWorkbenchView.js";
+import { useCanvasWorkbenchSessionState } from "./useCanvasWorkbenchSessionState.js";
+import type { WorkspaceDockTab } from "./workspace-dock.js";
+import { createWorkbenchAgentPromptActions } from "./workbench-agent-prompt-actions.js";
+import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-actions.js";
+import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
+import {
+  EMPTY_RECONSTRUCTION_REVIEWS,
+  useReconstructionReviewWorkspace,
+} from "./reconstruction-review-workspace.js";
+import "./workbench.css";
+import "./canvas-grid.css";
+import "./workspace-shell.css";
+import "./interactions.css";
+export type { AgentSelectionContext, CanvasAgentDefaults, CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
+// Atomic Design: organism — the complete canvas workbench collaboration surface.
+function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
+  const {
+    agentDefaults,
+    initialNavigatorMode = "layers",
+    onExit,
+    onHarnessChange,
+    onNavigatorModeChange,
+    onOpenInHelium,
+    onOpenSourceInCode,
+    onOpenSourceInCursor,
+    onSendAgentContext,
+    pageNavigation,
+    project,
+    reconstructionReviews = EMPTY_RECONSTRUCTION_REVIEWS,
+    runtimePort,
+    workspaceWarning,
+  } = props;
+  const {
+    agentPatchReview,
+    alignmentGuides,
+    camera,
+    cameraScheduler,
+    canonicalAuthority,
+    canonicalSnapshot,
+    commandPaletteOpen,
+    commandSequence,
+    commandTrace,
+    contextMenu,
+    dispatchPreview,
+    displayHistory,
+    gesture,
+    harnessId,
+    modelId,
+    permissionPolicy,
+    persistenceProject,
+    previewSession,
+    prompt,
+    promptMode,
+    productMap,
+    reasoningEffort,
+    restorePreview,
+    runtimeSnapshot,
+    runtimeUnsubscribe,
+    scene,
+    selection,
+    selectionMarquee,
+    selectedNodeIds,
+    setAgentPatchReview,
+    setAlignmentGuides,
+    setCamera,
+    setCommandPaletteOpen,
+    setCommandTrace,
+    setContextMenu,
+    setHarnessId,
+    setModelId,
+    setPermissionPolicy,
+    setPreviewNodes,
+    setPrompt,
+    setPromptMode,
+    setReasoningEffort,
+    setRestorePreview,
+    setRuntimeSnapshot,
+    setSelectionMarquee,
+    setTool,
+    setTrace,
+    setWorkspaceCollapsed, setWorkspaceSplitRatio, setWorkspaceTab,
+    spacePressed,
+    suppressCanvasClick,
+    tool,
+    trace,
+    traceSequence,
+    viewportElement,
+    viewportPointer,
+    viewportSize,
+    workspaceCollapsed, workspacePanels, workspaceSplitRatio, workspaceTab,
+  } = useCanvasWorkbenchSessionState(props);
+  const selectedNodeId = selectedNodeIds.at(-1) ?? null;
+  const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
+    scene.nodes.filter(({ id }) => id === nodeId),
+  );
+  const selectedNode = selectedNodes.at(-1);
+  const {
+    inspectorReview,
+    navigableNodes: navigableSceneNodes,
+    navigation,
+    projectedNodes: projectedSceneNodes,
+    workspaceFiles,
+  } = useReconstructionReviewWorkspace({
+    nodes: scene.nodes,
+    pageNavigation,
+    project,
+    reviews: reconstructionReviews,
+    selectedNodeId,
+    selectedNodeIds,
+  });
+  const inspectorSelectedNodes = selectedNodeIds.flatMap((nodeId) =>
+    canonicalSnapshot.nodes.filter(({ id }) => id === nodeId),
+  );
+  const inspectorSelectedNode = inspectorSelectedNodes.at(-1);
+  const resolvedSelectedNode =
+    inspectorSelectedNode === undefined
+      ? undefined
+      : resolveComponentInstance(
+          inspectorSelectedNode,
+          canonicalSnapshot.nodes,
+        );
+  const selectedHarness =
+    project.harness.options.find((option) => option.id === harnessId) ??
+    project.harness.options[0];
+
+  const {
+    appendTrace,
+    commitPreview,
+    commitScene,
+    commitSelectionTransaction,
+    createRootNode,
+    redoScene,
+    selectNode,
+    selectNodeIds,
+    undoScene,
+  } = createWorkbenchHistoryActions({
+    authority: canonicalAuthority,
+    commandSequence,
+    nodes: scene.nodes,
+    selection,
+    selectedNodeIds,
+    setCommandTrace,
+    setPreviewNodes,
+    setTrace,
+    traceSequence,
+  });
+  const {
+    applyApprovedAgentPatch,
+    approveAgentPatch,
+    confirmRuntimeCheckpointRestore,
+    rejectPendingAgentPatch,
+    requestAgentChanges,
+    restoreRuntimeCheckpoint,
+    rollbackAppliedAgentPatch,
+    verifyAppliedAgentPatch,
+  } = createWorkbenchAgentReviewActions({
+    agentPatchReview,
+    appendTrace,
+    canonicalDocumentRevision:
+      canonicalSnapshot.document.revision,
+    commitScene,
+    documentNodes: scene.nodes,
+    documentRevision: scene.revision,
+    persistenceProjectId: persistenceProject.id,
+    previewSession,
+    restorePreview,
+    runtimePort,
+    runtimeSnapshot,
+    selectedNodeId,
+    selectedNodeIds,
+    setAgentPatchReview,
+    setRestorePreview,
+    setRuntimeSnapshot,
+    setWorkspaceCollapsed,
+    setWorkspaceTab,
+  });
+  const commitNodeChange = (
+    label: string,
+    update: (node: WorkbenchNode) => WorkbenchNode,
+  ) => {
+    if (selectedNode === undefined) {
+      return;
+    }
+    commitScene(
+      label,
+      replaceNode(scene.nodes, selectedNode.id, update),
+      { targetIds: [selectedNode.id] },
+    );
+  };
+  const previewNodeChange = (
+    update: (node: WorkbenchNode) => WorkbenchNode,
+  ) => {
+    if (inspectorSelectedNode === undefined) {
+      return;
+    }
+    setPreviewNodes(
+      replaceNode(
+        canonicalSnapshot.nodes,
+        inspectorSelectedNode.id,
+        update,
+      ),
+    );
+  };
+  const previewSelectionTransaction = (
+    transaction: Parameters<typeof commitSelectionTransaction>[0],
+  ) => {
+    const targetIds = new Set(transaction.targetIds);
+    setPreviewNodes(
+      canonicalSnapshot.nodes.map((current) =>
+        targetIds.has(current.id) ? transaction.update(current) : current,
+      ),
+    );
+  };
+
+  const {
+    handleViewportClick,
+    handleViewportKeyDown,
+    handleViewportPointerCancel,
+    handleViewportPointerMove,
+    handleViewportPointerUp,
+    startCreate,
+    startMove,
+    startResize,
+  } = createWorkbenchPointerActions({
+    alignmentGuides,
+    appendTrace,
+    camera,
+    cameraScheduler,
+    commitPreview,
+    commitScene,
+    createRootNode,
+    gesture,
+    nodes: scene.nodes,
+    selectNode,
+    selectNodeIds,
+    selectedNodeIds,
+    setAlignmentGuides,
+    setCamera,
+    setContextMenu,
+    setPreviewNodes,
+    setSelectionMarquee,
+    setTool,
+    spacePressed,
+    suppressCanvasClick,
+    tool,
+    viewportElement,
+    viewportPointer,
+  });
+
+  const {
+    copySelection,
+    createComponentFromSelection,
+    cutSelection,
+    deleteSelection,
+    detachSelection,
+    duplicateSelection,
+    frameSelection,
+    groupSelection,
+    orderSelection,
+    pasteImage,
+    pasteSelection,
+    toggleSelectionProperty,
+    ungroupSelection,
+  } = createWorkbenchDocumentActions({
+    appendTrace,
+    commitScene,
+    documentId: project.document.id,
+    getPastePoint: () =>
+      viewportPointer.current === null
+        ? null
+        : canvasPointFromViewport(camera, viewportPointer.current),
+    nodes: scene.nodes,
+    selectedNode,
+    selectedNodeId,
+    selectedNodeIds,
+  });
+
+  const { sendAgentContext, switchHarness } =
+    createWorkbenchAgentPromptActions({
+      appendTrace,
+      camera,
+      documentNodes: scene.nodes,
+      documentRevision: scene.revision,
+      harnessId,
+      modelId,
+      onHarnessChange,
+      onSendAgentContext,
+      permissionPolicy,
+      project,
+      prompt,
+      promptMode,
+      reasoningEffort,
+      runtimePort,
+      runtimeUnsubscribe,
+      selectedHarnessLabel: selectedHarness?.label ?? harnessId,
+      selectedNode,
+      selectedNodeIds,
+      setHarnessId,
+      setPrompt,
+      setRuntimeSnapshot,
+      setWorkspaceCollapsed,
+      setWorkspaceTab,
+      viewportSize,
+    });
+  const {
+    fitAll,
+    fitSelection,
+    handleWheel,
+    selectAndRevealNode,
+    zoomBy,
+  } = createWorkbenchCameraActions({
+    cameraScheduler,
+    gesture,
+    nodes: scene.nodes,
+    selectNodeIds,
+    selectedNodeIds,
+    viewportElement,
+    viewportSize,
+  });
+
+  const openWorkspaceTab = (tab: WorkspaceDockTab) => {
+    setWorkspaceCollapsed(false);
+    setWorkspaceTab(tab);
+  };
+
+  const openNodeContextMenu = (
+    node: WorkbenchNode,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selectedNodeIds.includes(node.id)) {
+      selectNodeIds([node.id]);
+    }
+    setContextMenu({
+      nodeId: node.id,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const canDeleteSelection = selectedNodeIds.some((id) => {
+      const node = scene.nodes.find((candidate) => candidate.id === id);
+      return node !== undefined && isCanvasNodeDeletable(node);
+    });
+
+  const activeNodeIds =
+    gesture.current?.type === "move"
+      ? gesture.current.nodeIds
+      : gesture.current?.type === "resize"
+        ? [gesture.current.nodeId]
+        : [];
+  const visibleNodes = projectVisibleItems(
+    projectedSceneNodes,
+    (node) => ({
+      height: node.size.height,
+      width: node.size.width,
+      x: node.position.x,
+      y: node.position.y,
+    }),
+    {
+      height: viewportSize.height,
+      translationX: camera.x,
+      translationY: camera.y,
+      width: viewportSize.width,
+      zoom: camera.zoom,
+    },
+    {
+      overscan: 128,
+      pinnedIds: [
+        ...selectedNodeIds,
+        ...activeNodeIds,
+        ...(selection.editingId === null ? [] : [selection.editingId]),
+        ...(contextMenu === null ? [] : [contextMenu.nodeId]),
+      ],
+    },
+  );
+  const grid = canvasGridMetrics(camera);
+  const viewportGridStyle = {
+    "--canvas-grid-major": `${grid.majorPixels}px`,
+    "--canvas-grid-major-x": `${grid.majorX}px`,
+    "--canvas-grid-major-y": `${grid.majorY}px`,
+    "--canvas-grid-minor": `${grid.minorPixels}px`,
+    "--canvas-grid-minor-x": `${grid.minorX}px`,
+    "--canvas-grid-minor-y": `${grid.minorY}px`,
+  } as CSSProperties;
+
+  const commands = createEditorCommands(
+    {
+      onCopySelection: copySelection,
+      onCreateComponent: createComponentFromSelection,
+      onCutSelection: cutSelection,
+      onDeleteSelection: deleteSelection,
+      onDuplicateSelection: duplicateSelection,
+      onFitCanvas: fitAll,
+      onFitSelection: fitSelection,
+      onFrameSelection: frameSelection,
+      onGroupSelection: groupSelection,
+      onNewCanvas: navigation.onCreatePage,
+      onOpenBrowser: () => openWorkspaceTab("browser"),
+      onOpenPalette: () => setCommandPaletteOpen(true),
+      onOpenRuns: () => openWorkspaceTab("runs"),
+      onOpenSettings: () => openWorkspaceTab("settings"),
+      onOrderSelection: orderSelection,
+      onPasteSelection: pasteSelection,
+      onRedo: redoScene,
+      onResetZoom: () => {
+        cameraScheduler.current?.schedule((current) => ({
+          ...current,
+          zoom: 1,
+        }));
+      },
+      onSelectAll: () => {
+        const selectableIds = scene.nodes
+          .filter((node) => !node.hidden)
+          .map((node) => node.id);
+        selectNodeIds(
+          selectableIds,
+          `Selected all ${selectableIds.length} visible layers`,
+        );
+      },
+      onSelectProfessionalTool: setTool,
+      onSelectTool: (nextTool) => setTool(nextTool),
+      onToggleLock: () => toggleSelectionProperty("locked"),
+      onToggleVisibility: () => toggleSelectionProperty("hidden"),
+      onUngroupSelection: ungroupSelection,
+      onUndo: undoScene,
+      onZoomIn: () => zoomBy(1.1),
+      onZoomOut: () => zoomBy(1 / 1.1),
+    },
+    {
+      canDeleteSelection,
+      canDuplicateSelection: selectedNode !== undefined,
+      canRedo: scene.future.length > 0,
+      canUndo: scene.past.length > 0,
+    },
+  );
+
+  useWorkbenchGlobalInput({
+    cameraScheduler,
+    commands,
+    gesture,
+    pasteImage,
+    pasteSelection,
+    selectNodeIds,
+    setCamera,
+    setContextMenu,
+    setPreviewNodes,
+    setSelectionMarquee,
+    spacePressed,
+  });
+
+  const contextNode =
+    contextMenu === null
+      ? undefined
+      : scene.nodes.find((node) => node.id === contextMenu.nodeId);
+  const contextMenuProps =
+    contextMenu === null || contextNode === undefined
+      ? null
+      : {
+          canCut: canDeleteSelection,
+          canDelete: isCanvasNodeDeletable(contextNode),
+          canDetach:
+            (contextNode.kind === "CodeFrame" ||
+              contextNode.kind === "RoutePlaceholder") &&
+            contextNode.source !== undefined,
+          canGroup: selectedNodeIds.length > 1,
+          canPaste:
+            hasCanvasSessionClipboard() || canReadCanvasSystemClipboard(),
+          canUngroup: selectedNodeIds.some(
+            (id) =>
+              scene.nodes.find((node) => node.id === id)?.kind ===
+              ("Group" as never),
+          ),
+          node: contextNode,
+          onClose: () => setContextMenu(null),
+          onCopy: copySelection,
+          onCut: cutSelection,
+          onDelete: deleteSelection,
+          onDetach: detachSelection,
+          onDuplicate: duplicateSelection,
+          onCreateComponent: createComponentFromSelection,
+          onFrame: frameSelection,
+          onGroup: groupSelection,
+          onAskAgent: () => {
+            setPrompt(`Review and improve ${contextNode.name}`);
+          },
+          ...(() => {
+            const sourcePath =
+              contextNode.component?.source?.sourceAnchor ??
+              contextNode.source?.sourceAnchor;
+            return sourcePath === undefined ||
+              onOpenSourceInCode === undefined
+              ? {}
+              : {
+                  onOpenSource: () => onOpenSourceInCode(sourcePath),
+                };
+          })(),
+          onOrder: orderSelection,
+          onPaste: pasteSelection,
+          onToggleLock: () => toggleSelectionProperty("locked"),
+          onToggleVisibility: () =>
+            toggleSelectionProperty("hidden"),
+          onUngroup: ungroupSelection,
+          x: contextMenu.x,
+          y: contextMenu.y,
+        };
+
+  return (
+    <CanvasWorkbenchView
+      ariaLabel={`${project.title} canvas workbench`}
+      commandPalette={{
+        commands,
+        installGlobalShortcuts: false,
+        onOpenChange: setCommandPaletteOpen,
+        open: commandPaletteOpen,
+      }}
+      contextMenu={contextMenuProps}
+      layersWidth={workspacePanels.layersWidth}
+      sidebar={{
+        initialMode: initialNavigatorMode,
+        navigation,
+        nodes: navigableSceneNodes,
+        ...(onNavigatorModeChange === undefined
+          ? {}
+          : { onModeChange: onNavigatorModeChange }),
+        onSelectNode: selectAndRevealNode,
+        productMap,
+        selectedNodeId,
+      }}
+      topbar={{
+        activeTool: tool,
+        activityOpen:
+          workspaceTab === "runs" && !workspaceCollapsed,
+        canRedo: scene.future.length > 0,
+        canUndo: scene.past.length > 0,
+        onActivityToggle: () => openWorkspaceTab("runs"),
+        onFitAll: fitAll,
+        onMenuToggle:
+          onExit ?? (() => setCommandPaletteOpen(true)),
+        onRedo: redoScene,
+        onSettingsToggle: () => openWorkspaceTab("settings"),
+        onSourceToggle: () => openWorkspaceTab("files"),
+        onToolSelect: setTool,
+        onUndo: undoScene,
+        settingsOpen:
+          workspaceTab === "settings" && !workspaceCollapsed,
+        title: project.title,
+        ...(onExit === undefined ? {} : { showBackAction: true }),
+      }}
+      viewport={{
+        alignmentGuides,
+        camera,
+        gridStyle: viewportGridStyle,
+        nodes: projectedSceneNodes,
+        nodeView: {
+          onContextMenu: openNodeContextMenu,
+          onPointerDown: startMove,
+          onResizePointerDown: startResize,
+          onSelect: selectNode,
+        },
+        onClick: handleViewportClick,
+        onEmptyExit: onExit,
+        onKeyDown: handleViewportKeyDown,
+        onOpenBrowser: () => openWorkspaceTab("browser"),
+        onPointerCancel: handleViewportPointerCancel,
+        onPointerDown: (event) => {
+          startCreate(event);
+          if (
+            tool === "pan" ||
+            event.button === 1 ||
+            spacePressed.current
+          ) {
+            setContextMenu(null);
+            event.preventDefault();
+            gesture.current = {
+              type: "pan",
+              pointerId: event.pointerId,
+              origin: pointFromEvent(event),
+              camera,
+            };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            return;
+          }
+          if (event.target !== event.currentTarget) {
+            return;
+          }
+          setContextMenu(null);
+          if (
+            (tool === "select" || tool === "Scale") &&
+            event.button === 0
+          ) {
+            const bounds =
+              event.currentTarget.getBoundingClientRect();
+            const origin = {
+              x: event.clientX - bounds.left,
+              y: event.clientY - bounds.top,
+            };
+            gesture.current = {
+              type: "marquee",
+              pointerId: event.pointerId,
+              origin,
+              current: origin,
+              additive: event.shiftKey,
+              initialSelectedIds: selectedNodeIds,
+              camera,
+            };
+            setSelectionMarquee({
+              active: true,
+              height: 0,
+              width: 0,
+              x: origin.x,
+              y: origin.y,
+            });
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
+        },
+        onPointerMove: handleViewportPointerMove,
+        onPointerUp: handleViewportPointerUp,
+        onSelectTool: setTool,
+        onWheel: handleWheel,
+        promptDock: {
+          documentRevision: scene.revision,
+          harnessId,
+          harnessOptions: project.harness.options,
+          modelId,
+          ...(agentDefaults === undefined
+            ? {}
+            : { modelOptions: agentDefaults.modelOptions }),
+          onHarnessChange: switchHarness,
+          onModelChange: setModelId,
+          onPromptChange: setPrompt,
+          onPromptModeChange: setPromptMode,
+          onSettingsToggle: () => openWorkspaceTab("settings"),
+          onSubmit: sendAgentContext,
+          prompt,
+          promptMode,
+          permissionPolicy,
+          runtimeConnected: runtimePort !== undefined,
+          selectedNode,
+          settingsOpen:
+            workspaceTab === "settings" && !workspaceCollapsed,
+        },
+        proposalTargetIds:
+          runtimeSnapshot?.proposal?.targetIds ?? [],
+        ref: viewportElement,
+        selectedNodeIds,
+        selectionMarquee,
+        tool,
+        visibleNodes,
+      }}
+      workspace={{
+        activeTab: workspaceTab,
+        agentPatchReview,
+        browserAddress: previewSession.address,
+        browserDocumentRevision: previewSession.documentRevision,
+        browserLastGood: previewSession.lastGood,
+        browserProjectId: previewSession.projectId,
+        browserReason: previewSession.reason,
+        browserRevision: previewSession.navigationRevision,
+        browserSessionId: previewSession.sessionId,
+        browserStatus: previewSession.status,
+        browserUrl: previewSession.url,
+        collapsed: workspaceCollapsed,
+        connected:
+          runtimePort !== undefined ||
+          onSendAgentContext !== undefined,
+        files: workspaceFiles,
+        harnessId,
+        harnessOptions: project.harness.options,
+        history: displayHistory,
+        inspectorWidth: workspacePanels.inspectorWidth,
+        inspector: (
+          <>
+            <Inspector
+              node={resolvedSelectedNode}
+              onChange={commitNodeChange}
+              onChangeSelection={commitSelectionTransaction}
+              onDelete={deleteSelection}
+              onDetach={detachSelection}
+              onDuplicate={duplicateSelection}
+              onPreview={previewNodeChange}
+              onPreviewSelection={previewSelectionTransaction}
+              selectedNodes={inspectorSelectedNodes}
+              {...(onOpenSourceInCode === undefined
+                ? {}
+                : { onOpenSource: onOpenSourceInCode })}
+              {...(onOpenSourceInCursor === undefined
+                ? {}
+                : { onOpenSourceInCursor })}
+            />
+            {inspectorReview}
+          </>
+        ),
+        onActiveTabChange: setWorkspaceTab,
+        onApplyAgentPatch: applyApprovedAgentPatch,
+        onApproveAgentPatch: approveAgentPatch,
+        onBrowserAddressChange: (address) => {
+          dispatchPreview({ type: "edit-address", address });
+        },
+        onBrowserError: (reason, sessionId) => {
+          dispatchPreview({ type: "error", reason, sessionId });
+        },
+        onBrowserNavigate: (url) => {
+          dispatchPreview({
+            type: "navigate",
+            sessionId: `preview-session-${globalThis.crypto.randomUUID()}`,
+            url,
+          });
+        },
+        onBrowserReady: (evidence) => {
+          dispatchPreview({ type: "ready", ...evidence });
+        },
+        onBrowserReload: () => {
+          dispatchPreview({
+            type: "reload",
+            sessionId: `preview-session-${globalThis.crypto.randomUUID()}`,
+          });
+        },
+        onBrowserStop: () => {
+          dispatchPreview({ type: "stop" });
+        },
+        ...(onOpenInHelium === undefined ? {} : { onOpenInHelium }),
+        ...(runtimePort === undefined || runtimeSnapshot === null
+          ? {}
+          : {
+              onCancelRuntime: () => {
+                void runtimePort.cancel(runtimeSnapshot.runId);
+              },
+            }),
+        onRejectAgentPatch: rejectPendingAgentPatch,
+        onRequestAgentChanges: requestAgentChanges,
+        onRestoreCheckpoint: restoreRuntimeCheckpoint,
+        onCancelRestore: () => setRestorePreview(null),
+        onConfirmRestore: () => {
+          void confirmRuntimeCheckpointRestore();
+        },
+        onRollbackAgentPatch: rollbackAppliedAgentPatch,
+        onVerifyAgentPatch: verifyAppliedAgentPatch,
+        onCollapsedChange: setWorkspaceCollapsed, onSplitRatioChange: setWorkspaceSplitRatio,
+        modelId,
+        ...(agentDefaults === undefined
+          ? {}
+          : { modelOptions: agentDefaults.modelOptions }),
+        onHarnessChange: switchHarness,
+        onModelChange: setModelId,
+        onPermissionChange: setPermissionPolicy,
+        onReasoningChange: setReasoningEffort,
+        permission: permissionPolicy,
+        reasoning: reasoningEffort,
+        restorePreview,
+        runtimeSnapshot,
+        splitRatio: workspaceSplitRatio,
+        trace: [...trace, ...commandTrace],
+      }}
+      {...(workspaceWarning === undefined ? {} : { workspaceWarning })}
+    />
+  );
+}
+
+// Keyed template boundary: changing documents or imported source remounts the
+// editing session so one document can never autosave another document's scene.
+export function CanvasWorkbench(props: CanvasWorkbenchProps) {
+  const authorityProject = props.authorityProject ?? props.project;
+  const sessionKey = `${props.project.document.id}:${canvasSourceFingerprint(
+    authorityProject,
+  )}`;
+  return <CanvasWorkbenchSession key={sessionKey} {...props} />;
+}

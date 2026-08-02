@@ -1,0 +1,21 @@
+[package]
+name = "memi-canvas-macos"
+version = "0.0.0"
+description = "Thin macOS shell for the shared Memi Canvas web client"
+authors = ["Memi"]
+edition = "2021"
+
+[lib]
+name = "memi_canvas_macos_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+url = "2"

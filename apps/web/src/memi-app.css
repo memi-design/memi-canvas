@@ -1,0 +1,105 @@
+.memi-board-workspace {
+  background: var(--studio-surface-canvas);
+  color: var(--studio-ink-primary);
+  font-family: var(--studio-font-sans);
+  min-height: 100vh;
+}
+
+.memi-workspace-header {
+  align-items: center;
+  background: var(--studio-surface-panel);
+  border-bottom: 1px solid var(--studio-border-subtle);
+  color: var(--studio-ink-primary);
+  display: flex;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 12px;
+}
+
+.memi-workspace-header button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--studio-ink-secondary);
+  cursor: pointer;
+  font-size: 20px;
+  height: 32px;
+  width: 32px;
+}
+
+.memi-workspace-header button:hover {
+  background: var(--studio-accent-soft);
+  color: var(--studio-accent);
+}
+
+.memi-workspace-header span {
+  display: grid;
+  gap: 1px;
+}
+
+.memi-workspace-header strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.memi-workspace-header small {
+  color: var(--studio-ink-secondary);
+  font-size: 10px;
+}
+
+.memi-storage-blocked {
+  background: var(--studio-surface-canvas);
+  color: var(--studio-ink-primary);
+  display: grid;
+  gap: 16px;
+  min-height: 100vh;
+  place-content: center;
+  text-align: center;
+}
+.memi-recovery-blocked {
+  align-items: center;
+  background: var(--studio-surface-canvas);
+  color: var(--studio-ink-primary);
+  display: flex;
+  gap: 16px;
+  inline-size: 100%;
+  justify-content: center;
+  min-block-size: 100vh;
+  padding: 32px;
+}
+
+.memi-recovery-blocked > div {
+  max-inline-size: 440px;
+}
+
+.memi-recovery-blocked h1,
+.memi-recovery-blocked p {
+  margin: 0;
+}
+
+.memi-recovery-blocked h1 {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.memi-recovery-blocked p {
+  color: var(--studio-ink-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-block-start: 6px;
+}
+
+.memi-recovery-blocked__mark {
+  align-items: center;
+  background: var(--studio-accent-soft);
+  border: 1px solid var(--studio-accent);
+  border-radius: 50%;
+  color: var(--studio-accent);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 500;
+  block-size: 28px;
+  inline-size: 28px;
+  justify-content: center;
+}

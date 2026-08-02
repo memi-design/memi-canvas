@@ -1,0 +1,14 @@
+{
+  "name": "@memi/integration-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@memi/canvas-document": "0.0.0",
+    "@memi/harnesses": "0.0.0",
+    "@memi/import-compiler": "0.0.0",
+    "@memi/protocol": "0.0.0",
+    "@memi/runtime": "0.0.0",
+    "@memi/trace": "0.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+:root {
+  --color-canvas: rgb(247 247 248);
+  --color-surface: rgb(255 255 255);
+  --color-foreground: rgb(24 24 27);
+  --font-body: "Inter", sans-serif;
+  --space-panel: 16px;
+  --radius-control: 8px;
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memi deterministic preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        background: Canvas;
+        color: CanvasText;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+        background:
+          linear-gradient(ButtonBorder 1px, transparent 1px),
+          linear-gradient(90deg, ButtonBorder 1px, transparent 1px),
+          Canvas;
+        background-size: 24px 24px;
+      }
+
+      main {
+        width: min(420px, calc(100% - 32px));
+        padding: 20px;
+        border: 1px solid ButtonBorder;
+        border-radius: 10px;
+        background: Canvas;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      p,
+      output {
+        color: GrayText;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      output {
+        display: block;
+        padding: 10px;
+        border: 1px solid ButtonBorder;
+        border-radius: 6px;
+        background: ButtonFace;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        overflow-wrap: anywhere;
+      }
+
+      .status {
+        color: AccentColor;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Deterministic local preview</h1>
+        <span class="status">Ready</span>
+      </header>
+      <p>
+        This isolated fixture proves the browser handshake. It does not run a
+        provider, shell command, repository write, or network tool.
+      </p>
+      <output id="evidence"></output>
+    </main>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("sessionId");
+      const projectId = params.get("projectId");
+      const documentRevision = Number(params.get("documentRevision"));
+      const evidence = {
+        type: "memi:preview-ready",
+        sessionId,
+        projectId,
+        documentRevision,
+        verifiedAt: new Date().toISOString(),
+      };
+      document.querySelector("#evidence").textContent =
+        `${projectId} · revision ${documentRevision} · ${sessionId}`;
+      if (
+        sessionId &&
+        projectId &&
+        Number.isInteger(documentRevision) &&
+        window.parent !== window
+      ) {
+        window.parent.postMessage(evidence, window.location.origin);
+      }
+    </script>
+  </body>
+</html>

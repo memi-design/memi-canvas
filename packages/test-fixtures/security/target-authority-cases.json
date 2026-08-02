@@ -1,0 +1,331 @@
+{
+  "schemaVersion": "memibench.target-authority.v1",
+  "authority": "docs/adr/0010-target-effect-authority.md",
+  "deterministicSeeds": [1296387401, 49374, 3735928559, 3237998081, 12648430],
+  "releaseConcurrency": {
+    "kind": "os-process",
+    "minimumDistinctWorkerPids": 2,
+    "independentTargetAuthorityHandles": true,
+    "independentSQLiteConnections": true,
+    "synchronizedStartBarrier": true,
+    "workerThreadsSatisfyReleaseEvidence": false,
+    "promiseConcurrencySatisfiesReleaseEvidence": false
+  },
+  "cases": [
+    {
+      "id": "target-cas-001",
+      "family": "compare-and-apply",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "stale-target",
+        "newTargetOperations": 0,
+        "targetHashChanges": 0
+      },
+      "evidence": ["approved-before-hash", "authoritative-current-hash", "target-operation-ledger"]
+    },
+    {
+      "id": "target-cas-002",
+      "family": "compare-and-apply",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "appliedOutcomes": 1,
+        "staleTargetOutcomes": 1,
+        "newTargetOperations": 1,
+        "duplicateCommittedEffects": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "before-after-hashes", "target-operation-ledger"]
+    },
+    {
+      "id": "target-idem-001",
+      "family": "idempotency",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "newTargetOperations": 1,
+        "idempotencyLedgerRows": 1,
+        "distinctReceiptHashes": 1,
+        "duplicateCommittedEffects": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "action-digest", "idempotency-ledger", "receipt-hashes"]
+    },
+    {
+      "id": "target-idem-002",
+      "family": "idempotency",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "idempotency-digest-mismatch",
+        "newTargetOperations": 0,
+        "originalReceiptMutations": 0,
+        "targetHashChanges": 0
+      },
+      "evidence": ["idempotency-key", "original-action-digest", "conflicting-action-digest", "receipt-before-after"]
+    },
+    {
+      "id": "target-idem-003",
+      "family": "idempotency",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "retryOutcome": "replayed",
+        "newTargetOperations": 1,
+        "distinctReceiptHashes": 1,
+        "duplicateCommittedEffects": 0
+      },
+      "evidence": ["ack-loss-injection", "idempotency-ledger", "target-operation-ledger", "receipt-hashes"]
+    },
+    {
+      "id": "target-fence-001",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "acceptedStaleFenceCommits": 0,
+        "newTargetOperations": 1,
+        "highestFenceMonotonic": true
+      },
+      "evidence": ["worker-pids", "fence-activation-ledger", "apply-decisions", "target-operation-ledger"]
+    },
+    {
+      "id": "target-fence-002",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "pendingLeaseDispatches": 0,
+        "newTargetOperations": 0,
+        "leaseState": "pending"
+      },
+      "evidence": ["sqlite-lease-row", "target-highest-fence", "dispatch-ledger", "crash-point"]
+    },
+    {
+      "id": "target-fence-003",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "advanceFenceOutcome": "replayed",
+        "reusedOldEpochs": 0,
+        "activeFenceEqualsTargetFence": true
+      },
+      "evidence": ["crash-point", "fence-acknowledgement", "sqlite-lease-row", "target-highest-fence"]
+    },
+    {
+      "id": "target-fence-004",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "maximumActiveLeases": 1,
+        "highestFenceMonotonic": true,
+        "acceptedStaleFenceCommits": 0
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "fence-activation-ledger", "dispatch-ledger"]
+    },
+    {
+      "id": "target-claim-001",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "newTargetOperations": 1,
+        "duplicateCommittedEffects": 0,
+        "acceptedStaleClaimCommits": 0
+      },
+      "evidence": ["worker-pids", "claim-epochs", "target-operation-ledger", "outbox-state"]
+    },
+    {
+      "id": "target-claim-002",
+      "family": "lease-and-claim-fencing",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "acceptedStaleClaimVerifications": 0,
+        "acceptedStaleClaimTraceAppends": 0,
+        "acceptedStaleClaimCommits": 0
+      },
+      "evidence": ["worker-pids", "claim-epochs", "verification-ledger", "trace-ledger", "commit-ledger"]
+    },
+    {
+      "id": "target-outcome-001",
+      "family": "execution-outcome",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "initialRuntimeOutcome": "outcome-unknown",
+        "recoveryOutcome": "verified-applied",
+        "newTargetOperations": 1,
+        "recoveryApplyInvocations": 0
+      },
+      "evidence": ["target-commit", "ack-loss-injection", "trusted-lookup", "idempotency-ledger"]
+    },
+    {
+      "id": "target-outcome-002",
+      "family": "execution-outcome",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "not-applied",
+        "newTargetOperations": 0,
+        "authoritativeNonApplicationEvidence": true
+      },
+      "evidence": ["pre-transaction-failure", "authoritative-current-hash", "idempotency-ledger"]
+    },
+    {
+      "id": "target-outcome-003",
+      "family": "execution-outcome",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "outcome-unknown",
+        "automaticRetries": 0,
+        "recoveryState": "blocked"
+      },
+      "evidence": ["timeout-injection", "outbox-state", "recovery-decision", "dispatch-ledger"]
+    },
+    {
+      "id": "target-recovery-001",
+      "family": "recovery",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "trustedLookupOutcome": "verified-not-applied",
+        "fencedRetryCount": 1,
+        "newTargetOperations": 1
+      },
+      "evidence": ["crash-point", "trusted-lookup", "fence-epoch", "target-operation-ledger"]
+    },
+    {
+      "id": "target-recovery-002",
+      "family": "recovery",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "trustedLookupOutcome": "verified-applied",
+        "recoveryApplyInvocations": 0,
+        "newTargetOperations": 1
+      },
+      "evidence": ["crash-point", "idempotency-ledger", "trusted-lookup", "outbox-transition"]
+    },
+    {
+      "id": "target-recovery-003",
+      "family": "recovery",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "recoveryApplyInvocations": 0,
+        "verificationInvocations": 1,
+        "traceCommitCount": 1
+      },
+      "evidence": ["crash-point", "outbox-state", "verification-ledger", "trace-ledger"]
+    },
+    {
+      "id": "target-recovery-004",
+      "family": "recovery",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "duplicateCommittedEffects": 0,
+        "newTraceEventsOnRetry": 0,
+        "distinctCommitReceiptHashes": 1
+      },
+      "evidence": ["response-loss-injection", "commit-ledger", "trace-ledger", "receipt-hashes"]
+    },
+    {
+      "id": "target-recovery-005",
+      "family": "recovery",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "recoveryState": "quarantined",
+        "postCorruptionApplyInvocations": 0,
+        "postQuarantineVerificationInvocations": 0,
+        "postCorruptionCommitCount": 0
+      },
+      "evidence": ["receipt-corruption-injection", "integrity-result", "recovery-decision", "dispatch-ledger"]
+    },
+    {
+      "id": "target-verify-001",
+      "family": "trusted-verification",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "callerForgedVerificationAcceptances": 0,
+        "effectCommitCount": 0,
+        "outboxState": "uncommitted"
+      },
+      "evidence": ["caller-supplied-hashes", "trusted-computed-hashes", "verification-ledger", "outbox-state"]
+    },
+    {
+      "id": "target-verify-002",
+      "family": "trusted-verification",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "verificationOutcome": "mismatch",
+        "effectCommitCount": 0,
+        "targetMutationAfterApplyDetected": true
+      },
+      "evidence": ["applied-resulting-hash", "authoritative-current-hash", "verification-ledger", "commit-ledger"]
+    },
+    {
+      "id": "target-verify-003",
+      "family": "trusted-verification",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "verificationOutcome": "unavailable",
+        "effectCommitCount": 0,
+        "effectAppliedEvidencePreserved": true
+      },
+      "evidence": ["verifier-failure", "effect-applied-evidence", "recovery-decision", "outbox-state"]
+    },
+    {
+      "id": "target-trace-001",
+      "family": "trace-binding",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "callerChosenTraceIdsAccepted": 0,
+        "effectCommitCount": 0,
+        "newTraceEvents": 0
+      },
+      "evidence": ["caller-request", "trace-authority-decision", "trace-ledger", "commit-ledger"]
+    },
+    {
+      "id": "target-trace-002",
+      "family": "trace-binding",
+      "requiresOsProcessConcurrency": true,
+      "expected": {
+        "duplicateTraceSequences": 0,
+        "traceHashChainBreaks": 0,
+        "duplicateCommittedEffects": 0,
+        "traceReceiptBindingComplete": true
+      },
+      "evidence": ["worker-pids", "barrier-transcript", "trace-ledger", "commit-ledger", "receipt-hashes"]
+    },
+    {
+      "id": "target-trace-003",
+      "family": "trace-binding",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "newTraceEventsOnRetry": 0,
+        "newTargetOperationsOnRetry": 0,
+        "distinctCommitReceiptHashes": 1
+      },
+      "evidence": ["response-loss-injection", "trace-ledger", "target-operation-ledger", "receipt-hashes"]
+    },
+    {
+      "id": "target-block-001",
+      "family": "blocked-effect",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "unsupported-effect",
+        "adapterDispatches": 0,
+        "externalSideEffects": 0
+      },
+      "evidence": ["effect-kind", "routing-decision", "adapter-dispatch-ledger"]
+    },
+    {
+      "id": "target-block-002",
+      "family": "blocked-effect",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "unsupported-effect",
+        "adapterDispatches": 0,
+        "filesystemMutations": 0
+      },
+      "evidence": ["effect-kind", "target-kind", "routing-decision", "filesystem-before-after"]
+    },
+    {
+      "id": "target-block-003",
+      "family": "blocked-effect",
+      "requiresOsProcessConcurrency": false,
+      "expected": {
+        "outcome": "unsupported-effect",
+        "adapterDispatches": 0,
+        "externalSideEffects": 0
+      },
+      "evidence": ["effect-kind", "routing-decision", "adapter-dispatch-ledger", "external-call-ledger"]
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+.command-palette__backdrop {
+  align-items: flex-start;
+  background: var(--studio-overlay-command);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: min(18vh, 8rem) 1rem 1rem;
+  position: fixed;
+  z-index: 100;
+}
+
+.command-palette {
+  --command-palette-background: var(
+    --panel,
+    var(--surface-panel, Canvas)
+  );
+  --command-palette-background-raised: var(
+    --panel-raised,
+    var(--surface-elevated, Canvas)
+  );
+  --command-palette-border: var(
+    --line,
+    var(--border-subtle, ButtonBorder)
+  );
+  --command-palette-muted: var(
+    --muted,
+    var(--ink-secondary, GrayText)
+  );
+  --command-palette-text: var(
+    --text,
+    var(--ink-primary, CanvasText)
+  );
+  background: var(--command-palette-background);
+  border: 0.0625rem solid var(--command-palette-border);
+  border-radius: var(--radius-medium, 0.65rem);
+  box-shadow: var(--studio-shadow-menu);
+  color: var(--command-palette-text);
+  display: grid;
+  max-height: min(36rem, 72vh);
+  overflow: hidden;
+  width: min(38rem, 100%);
+}
+
+.command-palette__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.85rem 1rem 0.45rem;
+}
+
+.command-palette__header h2 {
+  font-size: 0.78rem;
+  letter-spacing: 0.045em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.command-palette kbd {
+  background: var(--command-palette-background-raised);
+  border: 0.0625rem solid var(--command-palette-border);
+  border-radius: var(--radius-small, 0.35rem);
+  color: var(--command-palette-muted);
+  font-family: inherit;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.38rem;
+  white-space: nowrap;
+}
+
+.command-palette__search {
+  border-bottom: 0.0625rem solid var(--command-palette-border);
+  display: block;
+  padding: 0.5rem 1rem 0.85rem;
+}
+
+.command-palette__search > span {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 0.0625rem;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 0.0625rem;
+}
+
+.command-palette__search input {
+  background: var(--command-palette-background-raised);
+  border: 0.0625rem solid var(--command-palette-border);
+  border-radius: var(--radius-small, 0.35rem);
+  box-sizing: border-box;
+  color: var(--command-palette-text);
+  font: inherit;
+  padding: 0.72rem 0.8rem;
+  width: 100%;
+}
+
+.command-palette__search input:focus-visible,
+.command-palette__list button:focus-visible {
+  outline: 0.125rem solid var(--accent, Highlight);
+  outline-offset: 0.125rem;
+}
+
+.command-palette__list {
+  display: grid;
+  gap: 0.2rem;
+  list-style: none;
+  margin: 0;
+  overflow: auto;
+  padding: 0.45rem;
+}
+
+.command-palette__list button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-small, 0.35rem);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  justify-content: space-between;
+  padding: 0.62rem 0.7rem;
+  text-align: left;
+  width: 100%;
+}
+
+.command-palette__list button:hover {
+  background: var(--command-palette-background-raised);
+}
+
+.command-palette__list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.command-palette__command-copy {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.command-palette__command-copy strong {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.command-palette__command-copy small {
+  color: var(--command-palette-muted);
+  font-size: 0.68rem;
+}
+
+.command-palette__empty {
+  color: var(--command-palette-muted);
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+}

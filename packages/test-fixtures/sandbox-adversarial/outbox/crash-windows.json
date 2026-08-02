@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "memibench.outbox-window.v1",
+  "message": {
+    "messageId": "msg-m0-001",
+    "idempotencyKey": "memibench-m0-idempotency-001",
+    "payload": {
+      "kind": "synthetic-change",
+      "value": "MEMI_PUBLIC_OUTBOX_SENTINEL_v1"
+    }
+  },
+  "windows": [
+    {
+      "id": "before-persist",
+      "crashAfter": "intent-created",
+      "expectedRecovery": "nothing-to-deliver",
+      "expectedCommittedEffects": 0
+    },
+    {
+      "id": "after-persist-before-send",
+      "crashAfter": "outbox-persisted",
+      "expectedRecovery": "deliver-with-original-idempotency-key",
+      "expectedCommittedEffects": 1
+    },
+    {
+      "id": "after-send-before-ack",
+      "crashAfter": "transport-accepted",
+      "expectedRecovery": "retry-with-original-idempotency-key",
+      "expectedCommittedEffects": 1
+    },
+    {
+      "id": "after-ack-before-cleanup",
+      "crashAfter": "delivery-ack-persisted",
+      "expectedRecovery": "mark-complete-without-redelivery",
+      "expectedCommittedEffects": 1
+    },
+    {
+      "id": "corrupt-entry",
+      "crashAfter": "outbox-checksum-corrupted",
+      "expectedRecovery": "quarantine-and-abstain",
+      "expectedCommittedEffects": 0
+    }
+  ]
+}

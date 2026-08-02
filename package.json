@@ -1,0 +1,54 @@
+{
+  "name": "memi-canvas",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && vite-node scripts/assert-production-runtime-boundary.ts",
+    "build:runtime-sidecar": "vite-node scripts/build-runtime-sidecar.ts",
+    "build:e2e": "tsc --noEmit && vite build",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "e2e:prepare": "vite-node tests/e2e/prepare-workspace-documentation.ts",
+    "e2e:stage": "vite-node tests/e2e/stage-workspace-documentation.ts",
+    "test:e2e": "playwright test",
+    "macos:dev": "npm --workspace @memi/macos run dev",
+    "macos:build": "npm --workspace @memi/macos run build",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm run test:coverage && npm run build",
+    "smoke:runtime-sidecar": "vite-node scripts/smoke-runtime-sidecar.ts",
+    "verify:macos": "npm --workspace @memi/macos run tauri -- build --debug --bundles app && npm run smoke:runtime-sidecar && vite-node scripts/smoke-macos-app.ts",
+    "verify:full": "npm run verify && npm run test:e2e && npm run verify:macos"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.4",
+    "@vitest/coverage-v8": "4.1.10",
+    "jsdom": "30.0.0",
+    "oxlint": "1.76.0",
+    "typescript": "~6.0.2",
+    "vite": "8.1.5",
+    "vite-node": "6.0.0",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memi preview error fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Preview unavailable</h1>
+      <p>The deterministic fixture intentionally reported a startup error.</p>
+    </main>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("sessionId");
+      const projectId = params.get("projectId");
+      const documentRevision = Number(params.get("documentRevision"));
+      if (
+        sessionId &&
+        projectId &&
+        Number.isInteger(documentRevision) &&
+        window.parent !== window
+      ) {
+        window.parent.postMessage(
+          {
+            type: "memi:preview-error",
+            sessionId,
+            projectId,
+            documentRevision,
+            reason: "Deterministic preview fixture failed its startup check.",
+          },
+          window.location.origin,
+        );
+      }
+    </script>
+  </body>
+</html>

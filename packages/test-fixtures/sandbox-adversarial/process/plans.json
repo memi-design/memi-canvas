@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "memibench.process-plan.v1",
+  "plans": [
+    {
+      "id": "normal-tree",
+      "rootLifetimeMs": 100,
+      "descendants": [
+        { "id": "child-a", "parent": "root", "lifetimeMs": 80 },
+        { "id": "grandchild-a", "parent": "child-a", "lifetimeMs": 50 }
+      ],
+      "stdoutBytes": 128,
+      "stderrBytes": 64,
+      "expectedExit": "normal"
+    },
+    {
+      "id": "timeout-tree",
+      "rootLifetimeMs": 60000,
+      "descendants": [
+        { "id": "child-a", "parent": "root", "lifetimeMs": 60000 },
+        { "id": "grandchild-a", "parent": "child-a", "lifetimeMs": 60000 }
+      ],
+      "stdoutBytes": 128,
+      "stderrBytes": 64,
+      "expectedExit": "timeout"
+    },
+    {
+      "id": "cancel-tree",
+      "rootLifetimeMs": 60000,
+      "descendants": [
+        { "id": "child-a", "parent": "root", "lifetimeMs": 60000 },
+        { "id": "child-b", "parent": "root", "lifetimeMs": 60000 }
+      ],
+      "stdoutBytes": 128,
+      "stderrBytes": 64,
+      "expectedExit": "cancelled"
+    },
+    {
+      "id": "output-flood",
+      "rootLifetimeMs": 1000,
+      "descendants": [],
+      "stdoutBytes": 8388608,
+      "stderrBytes": 8388608,
+      "chunkBytes": 65536,
+      "expectedExit": "output-limited"
+    }
+  ]
+}

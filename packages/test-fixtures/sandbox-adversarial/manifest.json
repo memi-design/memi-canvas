@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "memibench.security-corpus.v1",
+  "corpusId": "memibench-security-m0-public",
+  "deterministicSeeds": [1296387401, 49374, 3735928559, 3237998081, 12648430],
+  "defaults": {
+    "workspaceRoot": "filesystem/workspace",
+    "maxCaseWallTimeMs": 10000,
+    "maxTimeoutOvershootMs": 250,
+    "maxCleanupLatencyMs": 2000,
+    "maxRetainedOutputBytes": 1048576,
+    "maxTraceEventBytes": 65536,
+    "hostNetworkAllowed": false,
+    "modelTokenUsage": 0
+  },
+  "sentinels": {
+    "allowedFile": "MEMI_PUBLIC_WORKSPACE_SENTINEL_v1",
+    "forbiddenFile": "MEMI_SYNTHETIC_FILE_SECRET_DO_NOT_USE_7f93d9c4",
+    "forbiddenEnvironment": "MEMI_SYNTHETIC_ENV_SECRET_DO_NOT_USE_14ac76e2"
+  },
+  "cases": [
+    {
+      "id": "fs-001-relative-traversal-read",
+      "category": "filesystem_escape",
+      "stimulus": { "operation": "read", "target": "../outside-workspace/SYNTHETIC_SECRET.txt" },
+      "expected": { "decision": "deny", "reasonCode": "path-outside-workspace", "sideEffects": 0 },
+      "evidence": ["raw-path", "canonical-path", "workspace-root", "decision", "filesystem-hash"]
+    },
+    {
+      "id": "fs-002-absolute-outside-read",
+      "category": "filesystem_escape",
+      "stimulus": { "operation": "read", "targetKind": "absolute-outside-root" },
+      "expected": { "decision": "deny", "reasonCode": "path-outside-workspace", "sideEffects": 0 },
+      "evidence": ["canonical-path", "workspace-root", "decision"]
+    },
+    {
+      "id": "fs-003-symlink-escape-write",
+      "category": "filesystem_escape",
+      "setup": { "operation": "create-symlink", "inside": "filesystem/workspace/link", "target": "filesystem/outside-workspace" },
+      "stimulus": { "operation": "write", "target": "link/SYNTHETIC_SECRET.txt", "value": "OVERWRITE_ATTEMPT" },
+      "expected": { "decision": "deny", "reasonCode": "canonical-path-outside-workspace", "sideEffects": 0 },
+      "evidence": ["lstat-chain", "canonical-path", "decision", "before-after-hash"]
+    },
+    {
+      "id": "fs-004-authorized-workspace-read",
+      "category": "filesystem_escape",
+      "stimulus": { "operation": "read", "target": "allowed.txt" },
+      "expected": { "decision": "allow", "output": "MEMI_PUBLIC_WORKSPACE_SENTINEL_v1", "sideEffects": 0 },
+      "evidence": ["canonical-path", "decision", "output-hash"]
+    },
+    {
+      "id": "secret-001-forbidden-file-sentinel",
+      "category": "secret_access",
+      "stimulus": { "operation": "search-files", "pattern": "MEMI_SYNTHETIC_*", "scope": "workspace" },
+      "expected": { "decision": "allow", "forbiddenSentinelOccurrences": 0 },
+      "evidence": ["search-root", "matched-paths", "output-sentinel-scan"]
+    },
+    {
+      "id": "secret-002-environment-sentinel",
+      "category": "secret_access",
+      "setup": { "environmentFixture": "secrets/synthetic.env" },
+      "stimulus": { "operation": "inspect-environment" },
+      "expected": { "decision": "redact", "forbiddenSentinelOccurrences": 0 },
+      "evidence": ["environment-allowlist", "redaction-count", "output-sentinel-scan"]
+    },
+    {
+      "id": "secret-003-error-redaction",
+      "category": "secret_access",
+      "setup": { "syntheticErrorContainsForbiddenSentinels": true },
+      "stimulus": { "operation": "emit-diagnostic" },
+      "expected": { "decision": "redact", "forbiddenSentinelOccurrences": 0 },
+      "evidence": ["diagnostic-before-hash", "diagnostic-after", "output-sentinel-scan"]
+    },
+    {
+      "id": "net-001-loopback-v4",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "http://127.0.0.1:8765/private" },
+      "expected": { "decision": "deny", "connectAttempts": 0, "reasonCode": "forbidden-address-range" },
+      "evidence": ["parsed-url", "resolved-addresses", "policy-decision", "transport-transcript"]
+    },
+    {
+      "id": "net-002-loopback-v6",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "http://[::1]:8765/private" },
+      "expected": { "decision": "deny", "connectAttempts": 0, "reasonCode": "forbidden-address-range" },
+      "evidence": ["parsed-url", "resolved-addresses", "policy-decision", "transport-transcript"]
+    },
+    {
+      "id": "net-003-private-range",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "http://private.memi.invalid/private" },
+      "expected": { "decision": "deny", "connectAttempts": 0, "reasonCode": "forbidden-address-range" },
+      "evidence": ["dns-transcript", "policy-decision", "transport-transcript"]
+    },
+    {
+      "id": "net-004-link-local-metadata",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "http://169.254.169.254/latest/meta-data/" },
+      "expected": { "decision": "deny", "connectAttempts": 0, "reasonCode": "forbidden-address-range" },
+      "evidence": ["parsed-url", "policy-decision", "transport-transcript"]
+    },
+    {
+      "id": "net-005-redirect-to-loopback",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "https://allowed.memi.invalid/redirect-loopback" },
+      "expected": { "decision": "deny-after-redirect", "forbiddenConnectAttempts": 0 },
+      "evidence": ["redirect-chain", "per-hop-policy-decisions", "transport-transcript"]
+    },
+    {
+      "id": "net-006-dns-rebinding",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "https://rebind.memi.invalid/resource" },
+      "expected": { "decision": "deny", "forbiddenConnectAttempts": 0, "reasonCode": "dns-answer-changed" },
+      "evidence": ["dns-transcript", "connection-address", "policy-decision"]
+    },
+    {
+      "id": "net-007-authorized-mock",
+      "category": "network_ssrf",
+      "stimulus": { "operation": "fetch", "url": "https://allowed.memi.invalid/resource" },
+      "expected": { "decision": "allow-mock-only", "status": 200, "body": "MEMI_PUBLIC_NETWORK_SENTINEL_v1" },
+      "evidence": ["dns-transcript", "policy-decision", "mock-transport-transcript"]
+    },
+    {
+      "id": "proc-001-normal-tree-cleanup",
+      "category": "process_cleanup",
+      "stimulus": { "processPlanId": "normal-tree" },
+      "expected": { "exit": "normal", "remainingDescendants": 0 },
+      "evidence": ["process-tree-before", "exit-status", "process-tree-after"]
+    },
+    {
+      "id": "proc-002-timeout-tree-cleanup",
+      "category": "process_cleanup",
+      "stimulus": { "processPlanId": "timeout-tree", "timeoutMs": 100 },
+      "expected": { "exit": "timeout", "remainingDescendants": 0, "cleanupWithinMs": 2000 },
+      "evidence": ["process-tree-before", "signals", "process-tree-after", "monotonic-timestamps"]
+    },
+    {
+      "id": "proc-003-cancel-tree-cleanup",
+      "category": "process_cleanup",
+      "stimulus": { "processPlanId": "cancel-tree", "cancelAtMs": 100 },
+      "expected": { "exit": "cancelled", "remainingDescendants": 0, "cleanupWithinMs": 2000 },
+      "evidence": ["process-tree-before", "signals", "process-tree-after", "monotonic-timestamps"]
+    },
+    {
+      "id": "budget-001-output-flood",
+      "category": "output_time_budget",
+      "stimulus": { "processPlanId": "output-flood" },
+      "expected": { "exit": "output-limited", "retainedOutputAtMostBytes": 1048576, "truncationCounted": true },
+      "evidence": ["byte-counters", "retained-output-size", "termination-reason"]
+    },
+    {
+      "id": "budget-002-wall-time",
+      "category": "output_time_budget",
+      "stimulus": { "processPlanId": "timeout-tree", "timeoutMs": 100 },
+      "expected": { "exit": "timeout", "timeoutOvershootAtMostMs": 250 },
+      "evidence": ["monotonic-start", "monotonic-deadline", "monotonic-exit"]
+    },
+    {
+      "id": "lease-001-stale-holder",
+      "category": "lease_fencing",
+      "stimulus": { "scheduleId": "stale-holder-after-expiry" },
+      "expected": { "acceptedStaleWrites": 0, "committedValue": "actor-B" },
+      "evidence": ["schedule-trace", "issued-tokens", "write-decisions"]
+    },
+    {
+      "id": "lease-002-simultaneous-contenders",
+      "category": "lease_fencing",
+      "stimulus": { "scheduleId": "simultaneous-contenders" },
+      "expected": { "maximumConcurrentHolders": 1, "tokensStrictlyMonotonic": true },
+      "evidence": ["schedule-trace", "issued-tokens", "holder-snapshots"]
+    },
+    {
+      "id": "lease-003-delayed-stale-ack",
+      "category": "lease_fencing",
+      "stimulus": { "scheduleId": "delayed-stale-ack" },
+      "expected": { "acceptedStaleAcknowledgements": 0, "acceptedStaleWrites": 0 },
+      "evidence": ["schedule-trace", "issued-tokens", "ack-decisions"]
+    },
+    {
+      "id": "lease-004-renewal-takeover",
+      "category": "lease_fencing",
+      "stimulus": { "scheduleId": "renewal-versus-takeover" },
+      "expected": { "maximumConcurrentHolders": 1, "acceptedStaleWrites": 0 },
+      "evidence": ["schedule-trace", "issued-tokens", "holder-snapshots"]
+    },
+    {
+      "id": "outbox-001-crash-windows",
+      "category": "outbox_recovery",
+      "stimulus": { "allWindowsFrom": "outbox/crash-windows.json" },
+      "expected": { "duplicateCommittedEffects": 0, "lostDurableMessages": 0, "idempotencyKeyChanges": 0 },
+      "evidence": ["outbox-before", "crash-point", "recovery-trace", "effect-ledger"]
+    },
+    {
+      "id": "recovery-001-journal-corpus",
+      "category": "recovery_correctness",
+      "stimulus": { "allJournalsFrom": "recovery/journals.json" },
+      "expected": { "incorrectRecoveredStates": 0, "integrityFailuresAccepted": 0 },
+      "evidence": ["checkpoint-hash", "record-validation", "recovery-trace", "final-state-hash"]
+    }
+  ]
+}

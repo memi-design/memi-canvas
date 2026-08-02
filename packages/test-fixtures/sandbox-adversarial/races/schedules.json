@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "memibench.race-schedule.v1",
+  "clock": "logical",
+  "schedules": [
+    {
+      "id": "stale-holder-after-expiry",
+      "steps": [
+        { "at": 0, "actor": "A", "operation": "acquire", "expectToken": 1 },
+        { "at": 101, "actor": "B", "operation": "acquire", "expectToken": 2 },
+        { "at": 102, "actor": "A", "operation": "write", "token": 1, "expect": "fenced" },
+        { "at": 103, "actor": "B", "operation": "write", "token": 2, "expect": "accepted" }
+      ]
+    },
+    {
+      "id": "simultaneous-contenders",
+      "steps": [
+        { "at": 0, "actor": "A", "operation": "acquire", "barrier": "start" },
+        { "at": 0, "actor": "B", "operation": "acquire", "barrier": "start" },
+        { "at": 1, "operation": "assert-single-holder" },
+        { "at": 1, "operation": "assert-monotonic-token" }
+      ]
+    },
+    {
+      "id": "delayed-stale-ack",
+      "steps": [
+        { "at": 0, "actor": "A", "operation": "acquire", "expectToken": 8 },
+        { "at": 50, "actor": "A", "operation": "write", "token": 8, "delayAckUntil": 150 },
+        { "at": 101, "actor": "B", "operation": "acquire", "expectToken": 9 },
+        { "at": 151, "actor": "A", "operation": "receive-ack", "token": 8, "expect": "discarded" }
+      ]
+    },
+    {
+      "id": "renewal-versus-takeover",
+      "steps": [
+        { "at": 0, "actor": "A", "operation": "acquire", "expectToken": 20 },
+        { "at": 99, "actor": "A", "operation": "renew", "barrier": "expiry" },
+        { "at": 100, "actor": "B", "operation": "acquire", "barrier": "expiry" },
+        { "at": 101, "operation": "assert-single-holder" },
+        { "at": 101, "operation": "assert-no-stale-write" }
+      ]
+    }
+  ]
+}

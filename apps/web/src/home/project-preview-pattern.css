@@ -1,0 +1,49 @@
+.project-preview-pattern {
+  --project-preview-canvas-rgb: 8, 9, 10;
+  --project-preview-ruby-rgb: 255, 84, 112;
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      76% 110% at 18% 8%,
+      color-mix(in oklch, var(--studio-accent) 56%, transparent),
+      transparent 72%
+    ),
+    var(--studio-surface-canvas);
+  isolation: isolate;
+}
+
+[data-studio-theme="light"] .project-preview-pattern {
+  --project-preview-canvas-rgb: 247, 247, 248;
+  --project-preview-ruby-rgb: 232, 71, 100;
+}
+
+.project-preview-pattern__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.project-preview-pattern__grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in oklch, var(--studio-ink-primary) 16%, transparent) 0 0.45px,
+    transparent 0.55px
+  );
+  background-size: 3px 3px;
+  mix-blend-mode: soft-light;
+  opacity: 0.13;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-preview-pattern__canvas {
+    transform: none;
+  }
+}

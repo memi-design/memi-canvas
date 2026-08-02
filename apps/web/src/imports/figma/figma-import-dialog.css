@@ -1,0 +1,214 @@
+.figma-import-backdrop {
+  align-items: center;
+  background: color-mix(
+    in oklch,
+    var(--studio-surface-canvas) 68%,
+    transparent
+  );
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 100;
+}
+
+.figma-import-dialog {
+  --repository-import-font-sans:
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Helvetica Neue", sans-serif;
+  background: var(--studio-surface-panel);
+  border: 1px solid var(--studio-border-strong);
+  border-radius: var(--studio-radius-lg);
+  box-shadow: var(--studio-shadow-menu);
+  color: var(--studio-ink-primary);
+  font-family: var(--repository-import-font-sans);
+  font-kerning: normal;
+  font-synthesis: none;
+  max-width: 520px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.figma-import-dialog > header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+}
+
+.figma-import-dialog h2,
+.figma-import-dialog p {
+  margin: 0;
+}
+
+.figma-import-dialog h2 {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+}
+
+.figma-import-dialog header p,
+.figma-import-dialog__hint {
+  color: var(--studio-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.figma-import-dialog__close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--studio-ink-secondary);
+  display: flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.figma-import-dialog__close:hover,
+.figma-import-dialog__close:focus-visible {
+  background: var(--studio-surface-strong);
+  color: var(--studio-ink-primary);
+}
+
+.figma-import-dialog__close svg {
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.7;
+  width: 16px;
+}
+
+.figma-import-tabs {
+  border-bottom: 1px solid var(--studio-border-subtle);
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+}
+
+.figma-import-tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--studio-ink-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: -1px;
+  padding: 10px 8px;
+}
+
+.figma-import-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--studio-accent);
+  color: var(--studio-ink-primary);
+}
+
+.figma-import-dialog__body {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.figma-import-dialog__body label {
+  display: grid;
+  gap: 7px;
+}
+
+.figma-import-dialog__body label > span {
+  color: var(--studio-ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.repository-folder-field {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.repository-folder-field > button {
+  background: var(--studio-surface-raised);
+  border: 1px solid var(--studio-border-strong);
+  border-radius: 7px;
+  color: var(--studio-ink-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.repository-folder-field > button:hover {
+  background: var(--studio-surface-hover);
+}
+
+.figma-import-dialog input,
+.figma-import-dialog textarea {
+  background: var(--studio-surface-canvas);
+  border: 1px solid var(--studio-border-strong);
+  border-radius: 7px;
+  color: var(--studio-ink-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 9px 10px;
+}
+
+.figma-import-dialog textarea {
+  font-family: var(--studio-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.figma-import-dialog input:focus,
+.figma-import-dialog textarea:focus {
+  border-color: var(--studio-accent);
+  box-shadow: 0 0 0 2px var(--studio-accent-soft);
+}
+
+.figma-import-file input {
+  border-style: dashed;
+}
+
+.figma-import-dialog__primary {
+  background: var(--studio-accent);
+  border: 0;
+  border-radius: 7px;
+  color: var(--studio-surface-canvas);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  justify-self: end;
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.figma-import-dialog__primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.figma-import-dialog__message {
+  border-top: 1px solid var(--studio-border-subtle);
+  color: var(--studio-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px 20px;
+}
+
+.figma-import-dialog__message--error {
+  color: var(--studio-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .figma-import-dialog * {
+    scroll-behavior: auto;
+  }
+}

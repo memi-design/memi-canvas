@@ -1,0 +1,557 @@
+@import "../theme/studio-tokens.css";
+
+.whiteboard-shell {
+  --board-background: var(--studio-surface-canvas);
+  --board-grid: color-mix(in oklch,
+    var(--studio-ink-tertiary) 22%,
+    transparent
+  );
+  --board-border: var(--studio-border-subtle);
+  --board-border-strong: var(--studio-border-strong);
+  --board-ink: var(--studio-ink-primary);
+  --board-muted: var(--studio-ink-secondary);
+  --board-panel: var(--studio-surface-panel);
+  --board-raised: var(--studio-surface-raised);
+  --board-hover: var(--studio-surface-hover);
+  --board-accent: var(--studio-accent);
+  --board-accent-soft: var(--studio-accent-soft);
+  block-size: 100%;
+  color: var(--board-ink);
+  display: grid;
+  font-family: var(
+    --studio-font-sans,
+    "Inter Variable",
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    sans-serif
+  );
+  font-size: 13px;
+  font-weight: 400;
+  grid-template-rows: 40px minmax(0, 1fr);
+  min-block-size: 36rem;
+}
+
+.whiteboard-shell button,
+.whiteboard-shell input,
+.whiteboard-shell textarea {
+  font: inherit;
+}
+
+.whiteboard-toolbar {
+  align-items: center;
+  background: var(--board-panel);
+  border-block-end: 1px solid var(--board-border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(80px, 1fr);
+  min-block-size: 40px;
+  padding-inline: 12px;
+  position: relative;
+  z-index: 20;
+}
+
+.whiteboard-toolbar h1 {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whiteboard-revision {
+  color: var(--board-muted);
+  font-family: var(
+    --studio-font-mono,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+  font-size: 12px;
+  justify-self: end;
+}
+
+.whiteboard-tool-group {
+  align-items: center;
+  background: var(--board-raised);
+  border: 1px solid var(--board-border);
+  border-radius: var(--studio-radius-sm, 6px);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+}
+
+.whiteboard-tool-group button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--board-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background-color var(--studio-motion-fast) ease,
+    color var(--studio-motion-fast) ease;
+  width: 30px;
+}
+
+.whiteboard-tool-group button:hover:not(:disabled) {
+  background: var(--board-hover);
+  color: var(--board-ink);
+}
+
+.whiteboard-tool-group button:focus-visible {
+  background: var(--board-accent-soft);
+  color: var(--board-accent);
+  outline: 1px solid var(--board-accent);
+  outline-offset: -1px;
+}
+
+.whiteboard-tool-group button:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.whiteboard-tool-divider {
+  background: var(--board-border-strong);
+  block-size: 18px;
+  inline-size: 1px;
+  margin-inline: 2px;
+}
+
+.whiteboard-zoom {
+  color: var(--board-muted);
+  font-family: var(
+    --studio-font-mono,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+  font-size: 11px;
+  min-inline-size: 38px;
+  text-align: center;
+}
+
+.whiteboard-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-block-size: 0;
+}
+
+.whiteboard-board {
+  background-color: var(--board-background);
+  background-image: radial-gradient(
+    circle,
+    var(--board-grid) 1px,
+    transparent 1px
+  );
+  background-position: 0 0;
+  background-size: 16px 16px;
+  contain: strict;
+  min-block-size: 0;
+  outline: none;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.whiteboard-board:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--board-accent);
+}
+
+.whiteboard-scene {
+  block-size: 1px;
+  inline-size: 1px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform: translate(
+      var(--whiteboard-pan-x),
+      var(--whiteboard-pan-y)
+    )
+    scale(var(--whiteboard-zoom));
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.whiteboard-connections {
+  block-size: 200000px;
+  inline-size: 200000px;
+  left: -100000px;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  top: -100000px;
+}
+
+.whiteboard-connections line {
+  stroke: var(--board-muted);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.whiteboard-item {
+  border: 1px solid transparent;
+  color: var(--board-ink);
+  cursor: grab;
+  left: var(--whiteboard-x);
+  min-block-size: 2rem;
+  position: absolute;
+  top: var(--whiteboard-y);
+  user-select: none;
+  width: var(--whiteboard-width);
+  z-index: 2;
+}
+
+.whiteboard-item:active {
+  cursor: grabbing;
+}
+
+.whiteboard-item:focus-visible,
+.whiteboard-item[aria-selected="true"] {
+  border-color: var(--board-accent);
+  box-shadow:
+    0 0 0 1px var(--board-background),
+    0 0 0 3px var(--board-accent);
+  outline: none;
+}
+
+.whiteboard-item-sticky {
+  align-items: flex-start;
+  box-shadow: var(--studio-shadow-note);
+  color: var(--studio-document-sticky-ink);
+  display: flex;
+  font-size: 15px;
+  height: var(--whiteboard-height);
+  line-height: 1.4;
+  padding: 16px;
+}
+
+.whiteboard-sticky-yellow {
+  background: var(--studio-document-sticky-yellow);
+}
+
+.whiteboard-sticky-pink {
+  background: var(--studio-document-sticky-pink);
+}
+
+.whiteboard-sticky-blue {
+  background: var(--studio-document-sticky-blue);
+}
+
+.whiteboard-sticky-green {
+  background: var(--studio-document-sticky-green);
+}
+
+.whiteboard-item-copy {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.whiteboard-item-text {
+  align-items: center;
+  display: flex;
+  font-size: 20px;
+  font-weight: 500;
+  height: var(--whiteboard-height);
+  padding: 4px 6px;
+}
+
+.whiteboard-text-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whiteboard-item-section {
+  background: color-mix(in oklch,
+    var(--board-raised) 42%,
+    transparent
+  );
+  border-color: var(--board-border-strong);
+  border-radius: var(--studio-radius-md, 10px);
+  height: var(--whiteboard-height);
+  padding: 14px;
+  z-index: 0;
+}
+
+.whiteboard-item-section strong {
+  background: var(--board-panel);
+  border: 1px solid var(--board-border);
+  border-radius: 4px;
+  color: var(--board-muted);
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 6px;
+}
+
+.whiteboard-item-connector {
+  align-items: center;
+  background: var(--board-raised);
+  border-color: var(--board-border-strong);
+  border-radius: 999px;
+  color: var(--board-muted);
+  display: flex;
+  font-size: 11px;
+  font-weight: 400;
+  height: var(--whiteboard-height);
+  justify-content: center;
+  width: var(--whiteboard-width);
+  z-index: 1;
+}
+
+.whiteboard-connector-label {
+  display: block;
+}
+
+.whiteboard-aside {
+  background: var(--board-panel);
+  border-inline-start: 1px solid var(--board-border);
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.whiteboard-aside-heading {
+  align-items: center;
+  border-block-end: 1px solid var(--board-border);
+  display: flex;
+  font-size: 13px;
+  font-weight: 500;
+  justify-content: space-between;
+  padding-block-end: 10px;
+}
+
+.whiteboard-aside-heading span:last-child {
+  color: var(--board-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.whiteboard-inspector-empty {
+  align-items: center;
+  color: var(--board-muted);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.whiteboard-inspector-empty > span {
+  color: var(--board-accent);
+  font-size: 20px;
+}
+
+.whiteboard-inspector-empty p {
+  font-size: 13px;
+}
+
+.whiteboard-properties {
+  display: grid;
+  gap: 14px;
+  padding-block-start: 12px;
+}
+
+.whiteboard-properties label {
+  color: var(--board-muted);
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.whiteboard-properties input,
+.whiteboard-properties textarea {
+  background: var(--board-raised);
+  border: 1px solid var(--board-border);
+  border-radius: var(--studio-radius-sm, 6px);
+  color: var(--board-ink);
+  font-size: 13px;
+  font-weight: 400;
+  padding: 8px 9px;
+}
+
+.whiteboard-properties textarea {
+  min-block-size: 96px;
+  resize: vertical;
+}
+
+.whiteboard-properties input:focus,
+.whiteboard-properties textarea:focus {
+  border-color: var(--board-accent);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklch, var(--board-accent) 18%, transparent);
+  outline: none;
+}
+
+.whiteboard-coordinate-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.whiteboard-nudge-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.whiteboard-nudge-grid button {
+  background: var(--board-raised);
+  border: 1px solid var(--board-border);
+  border-radius: var(--studio-radius-sm, 6px);
+  color: var(--board-muted);
+  cursor: pointer;
+  min-block-size: 32px;
+}
+
+.whiteboard-nudge-grid button:hover,
+.whiteboard-nudge-grid button:focus-visible {
+  background: var(--board-accent-soft);
+  border-color: var(--board-accent);
+  color: var(--board-accent);
+  outline: none;
+}
+
+.whiteboard-connection-summary {
+  display: grid;
+  gap: 8px;
+  padding-block: 12px;
+}
+
+.whiteboard-connection-summary code {
+  background: var(--board-raised);
+  border: 1px solid var(--board-border);
+  border-radius: var(--studio-radius-sm, 6px);
+  font-family: var(
+    --studio-font-mono,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+  overflow: hidden;
+  padding: 7px;
+  text-overflow: ellipsis;
+}
+
+.whiteboard-help {
+  border-block-start: 1px solid var(--board-border);
+  color: var(--board-muted);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  margin-block-start: auto;
+  padding-block-start: 12px;
+}
+
+.whiteboard-help strong {
+  color: var(--board-ink);
+  font-weight: 500;
+  margin-block-end: 2px;
+}
+
+.whiteboard-context-menu {
+  background: var(--board-raised);
+  border: 1px solid var(--board-border-strong);
+  border-radius: var(--studio-radius-md, 10px);
+  box-shadow: var(--studio-shadow-menu);
+  display: grid;
+  gap: 2px;
+  left: var(--whiteboard-menu-x);
+  min-inline-size: 190px;
+  padding: 5px;
+  position: absolute;
+  top: var(--whiteboard-menu-y);
+  z-index: 50;
+}
+
+.whiteboard-context-menu button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--studio-radius-sm, 6px);
+  color: var(--board-ink);
+  cursor: pointer;
+  display: grid;
+  font-size: 13px;
+  font-weight: 400;
+  gap: 8px;
+  grid-template-columns: 18px 1fr auto;
+  min-block-size: 32px;
+  padding-inline: 8px;
+  text-align: start;
+}
+
+.whiteboard-context-menu button:hover,
+.whiteboard-context-menu button:focus-visible {
+  background: var(--board-accent-soft);
+  outline: none;
+}
+
+.whiteboard-context-menu kbd {
+  color: var(--board-muted);
+  font-family: var(
+    --studio-font-mono,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+  font-size: 11px;
+}
+
+.whiteboard-context-menu .whiteboard-menu-danger {
+  color: var(--studio-danger);
+}
+
+@media (max-width: 760px) {
+  .whiteboard-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .whiteboard-toolbar {
+    grid-template-columns: 1fr auto;
+    padding-block: 5px;
+  }
+
+  .whiteboard-toolbar h1 {
+    display: none;
+  }
+
+  .whiteboard-revision {
+    display: none;
+  }
+
+  .whiteboard-tool-group {
+    max-inline-size: calc(100vw - 24px);
+    overflow-x: auto;
+  }
+
+  .whiteboard-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(28rem, 1fr) auto;
+  }
+
+  .whiteboard-aside {
+    border-block-start: 1px solid var(--board-border);
+    border-inline-start: 0;
+    max-block-size: 18rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whiteboard-shell *,
+  .whiteboard-shell *::before,
+  .whiteboard-shell *::after {
+    scroll-behavior: auto;
+    transition-duration: var(--studio-motion-reduced) !important;
+  }
+}

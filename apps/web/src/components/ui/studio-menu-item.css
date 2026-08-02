@@ -1,0 +1,53 @@
+.studio-menu-item,
+.text-sm {
+  font-size: 13px;
+}
+
+.studio-menu-item,
+.text-foreground {
+  color: var(--studio-ink-primary);
+}
+
+.studio-menu-item[data-tone="danger"]:not(:disabled) {
+  color: var(--studio-danger);
+}
+
+.studio-menu-item,
+.px-3 {
+  padding-inline: 12px;
+}
+
+.studio-menu-item,
+.gap-2 {
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .sm\:px-3 {
+    padding-inline: 12px;
+  }
+
+  .sm\:py-2 {
+    padding-block: 8px;
+  }
+}
+
+@media (min-width: 768px) {
+  .md\:px-4 {
+    padding-inline: 16px;
+  }
+
+  .md\:py-2 {
+    padding-block: 8px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:px-4 {
+    padding-inline: 16px;
+  }
+
+  .lg\:py-2 {
+    padding-block: 8px;
+  }
+}

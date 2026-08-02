@@ -1,0 +1,17 @@
+{
+  "name": "@memi/capture-execution",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@memi/capture-import": "0.0.0",
+    "@memi/protocol": "0.0.0",
+    "playwright": "1.61.0"
+  }
+}

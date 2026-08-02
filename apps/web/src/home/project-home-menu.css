@@ -1,0 +1,41 @@
+.project-context-menu {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  width: 206px;
+  padding: 5px;
+  background: var(--home-panel-raised);
+  border: 1px solid var(--home-border-strong);
+  border-radius: var(--studio-radius-md);
+  box-shadow: var(--studio-shadow-menu);
+}
+
+.project-context-menu button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--studio-radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.project-context-menu button:hover:not(:disabled) {
+  background: var(--home-panel-hover);
+}
+
+.project-context-menu button:last-child {
+  color: var(--studio-danger);
+}
+
+.project-context-menu [role="separator"] {
+  height: 1px;
+  margin: 4px;
+  background: var(--home-border);
+}

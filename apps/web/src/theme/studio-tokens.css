@@ -1,0 +1,112 @@
+:root,
+[data-studio-theme="dark"] {
+  color-scheme: dark;
+  --studio-font-interface:
+    "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Helvetica Neue", sans-serif;
+  --studio-font-sans: var(--studio-font-interface);
+  --studio-font-mono:
+    "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Monaco, Consolas,
+    monospace;
+
+  /* Primitives: the only authored Memi Studio color values. */
+  --studio-color-surface-canvas: oklch(13.90% 0.0029 246.26);
+  --studio-color-surface-panel: oklch(17.23% 0.0026 247.98);
+  --studio-color-surface-raised: oklch(20.39% 0.0025 247.95);
+  --studio-color-surface-hover: oklch(23.80% 0.0049 248.03);
+  --studio-color-surface-strong: oklch(26.45% 0.0098 268.31);
+  --studio-color-border-subtle: oklch(26.45% 0.0098 268.31);
+  --studio-color-border-strong: oklch(35.10% 0.0081 255.55);
+  --studio-color-ink-primary: oklch(97.84% 0.0011 197.14);
+  --studio-color-ink-secondary: oklch(64.88% 0.0146 262.36);
+  --studio-color-ink-tertiary: oklch(50.92% 0.0121 261.77);
+  --studio-color-accent: oklch(68.61% 0.2061 14.99);
+  --studio-color-accent-hover: oklch(71.66% 0.1807 12.98);
+  --studio-color-accent-soft: oklch(23.42% 0.0336 0.61);
+  --studio-color-success: oklch(73.54% 0.1316 157.30);
+  --studio-color-warning: oklch(76.97% 0.1158 72.86);
+  --studio-color-danger: oklch(68.85% 0.1643 18.80);
+  --studio-color-pattern-ruby: oklch(68.61% 0.2061 14.99);
+  --studio-color-overlay-command: oklch(0% 0 0 / 58%);
+  --studio-color-overlay-context: oklch(0% 0 0 / 44%);
+  --studio-color-document-surface: oklch(98.42% 0.0034 247.86);
+  --studio-color-document-border: oklch(43.74% 0.0205 145.21);
+  --studio-color-document-ink: oklch(21.01% 0.0318 264.66);
+  --studio-color-document-shape: oklch(93.19% 0.0316 255.59);
+  --studio-color-document-sticky-ink: oklch(21.32% 0.0042 264.48);
+  --studio-color-document-sticky-yellow: oklch(95.63% 0.0972 100.43);
+  --studio-color-document-sticky-pink: oklch(91.51% 0.0457 4.51);
+  --studio-color-document-sticky-blue: oklch(93.20% 0.0399 231.80);
+  --studio-color-document-sticky-green: oklch(93.24% 0.0592 133.73);
+
+  /* Semantic aliases: application chrome consumes these names exclusively. */
+  --studio-surface-canvas: var(--studio-color-surface-canvas);
+  --studio-surface-panel: var(--studio-color-surface-panel);
+  --studio-surface-raised: var(--studio-color-surface-raised);
+  --studio-surface-hover: var(--studio-color-surface-hover);
+  --studio-surface-strong: var(--studio-color-surface-strong);
+  --studio-border-subtle: var(--studio-color-border-subtle);
+  --studio-border-strong: var(--studio-color-border-strong);
+  --studio-ink-primary: var(--studio-color-ink-primary);
+  --studio-ink-secondary: var(--studio-color-ink-secondary);
+  --studio-ink-tertiary: var(--studio-color-ink-tertiary);
+  --studio-accent: var(--studio-color-accent);
+  --studio-accent-hover: var(--studio-color-accent-hover);
+  --studio-accent-soft: var(--studio-color-accent-soft);
+  --studio-success: var(--studio-color-success);
+  --studio-warning: var(--studio-color-warning);
+  --studio-danger: var(--studio-color-danger);
+  --studio-overlay-command: var(--studio-color-overlay-command);
+  --studio-overlay-context: var(--studio-color-overlay-context);
+  --studio-document-surface: var(--studio-color-document-surface);
+  --studio-document-border: var(--studio-color-document-border);
+  --studio-document-ink: var(--studio-color-document-ink);
+  --studio-document-shape: var(--studio-color-document-shape);
+  --studio-document-sticky-ink: var(--studio-color-document-sticky-ink);
+  --studio-document-sticky-yellow: var(
+    --studio-color-document-sticky-yellow
+  );
+  --studio-document-sticky-pink: var(--studio-color-document-sticky-pink);
+  --studio-document-sticky-blue: var(--studio-color-document-sticky-blue);
+  --studio-document-sticky-green: var(--studio-color-document-sticky-green);
+
+  --studio-radius-sm: 6px;
+  --studio-radius-md: 10px;
+  --studio-radius-lg: 14px;
+  --studio-motion-fast: 80ms;
+  --studio-motion-standard: 120ms;
+  --studio-motion-slow: 180ms;
+  --studio-motion-reduced: 0.01ms;
+  --studio-shadow-card: 0 10px 26px oklch(0% 0 0 / 18%);
+  --studio-shadow-frame: 0 9px 22px oklch(0% 0 0 / 22%);
+  --studio-shadow-note: 0 6px 14px oklch(0% 0 0 / 16%);
+  --studio-shadow-menu: 0 18px 48px oklch(0% 0 0 / 36%);
+  --studio-shadow-popover: 0 16px 40px oklch(0% 0 0 / 32%);
+}
+
+[data-studio-theme="light"] {
+  color-scheme: light;
+  --studio-color-surface-canvas: oklch(97.64% 0.0013 286.38);
+  --studio-color-surface-panel: oklch(100% 0 89.88);
+  --studio-color-surface-raised: oklch(95.57% 0.0027 286.35);
+  --studio-color-surface-hover: oklch(93.19% 0.0040 286.32);
+  --studio-color-surface-strong: oklch(90.18% 0.0054 286.29);
+  --studio-color-border-subtle: oklch(90.18% 0.0054 286.29);
+  --studio-color-border-strong: oklch(81.79% 0.0070 277.14);
+  --studio-color-ink-primary: oklch(20.39% 0.0025 247.95);
+  --studio-color-ink-secondary: oklch(50.92% 0.0121 261.77);
+  --studio-color-ink-tertiary: oklch(64.88% 0.0146 262.36);
+  --studio-color-accent: oklch(68.61% 0.2061 14.99);
+  --studio-color-accent-hover: oklch(64.60% 0.2000 14.99);
+  --studio-color-accent-soft: oklch(94.20% 0.0420 9.00);
+  --studio-color-success: oklch(51.80% 0.1044 157.44);
+  --studio-color-warning: oklch(51.10% 0.0994 70.32);
+  --studio-color-danger: oklch(52.15% 0.1686 18.39);
+  --studio-color-overlay-command: oklch(18.40% 0.0081 285.58 / 34%);
+  --studio-color-overlay-context: oklch(18.40% 0.0081 285.58 / 24%);
+  --studio-shadow-card: 0 10px 26px oklch(18.40% 0.0081 285.58 / 10%);
+  --studio-shadow-frame: 0 9px 22px oklch(18.40% 0.0081 285.58 / 12%);
+  --studio-shadow-note: 0 6px 14px oklch(18.40% 0.0081 285.58 / 8%);
+  --studio-shadow-menu: 0 18px 48px oklch(18.40% 0.0081 285.58 / 14%);
+  --studio-shadow-popover: 0 16px 40px oklch(18.40% 0.0081 285.58 / 14%);
+}

@@ -1,0 +1,60 @@
+/*
+ * Adaptive spatial grid. Camera math supplies pixel intervals and normalized
+ * offsets, so zooming changes density without allowing the grid to drift.
+ */
+.canvas-viewport {
+  --canvas-grid-major: 40px;
+  --canvas-grid-major-x: 0px;
+  --canvas-grid-major-y: 0px;
+  --canvas-grid-minor: 10px;
+  --canvas-grid-minor-x: 0px;
+  --canvas-grid-minor-y: 0px;
+  --canvas-grid-line-opacity: 2.5%;
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklch,
+          var(--studio-ink-primary) var(--canvas-grid-line-opacity),
+          transparent
+        )
+        1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch,
+          var(--studio-ink-primary) var(--canvas-grid-line-opacity),
+          transparent
+        )
+        1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to right,
+      color-mix(in oklch,
+          var(--studio-ink-primary) var(--canvas-grid-line-opacity),
+          transparent
+        )
+        1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch,
+          var(--studio-ink-primary) var(--canvas-grid-line-opacity),
+          transparent
+        )
+        1px,
+      transparent 1px
+    );
+  background-position:
+    var(--canvas-grid-major-x) var(--canvas-grid-major-y),
+    var(--canvas-grid-major-x) var(--canvas-grid-major-y),
+    var(--canvas-grid-minor-x) var(--canvas-grid-minor-y),
+    var(--canvas-grid-minor-x) var(--canvas-grid-minor-y);
+  background-size:
+    var(--canvas-grid-major) var(--canvas-grid-major),
+    var(--canvas-grid-major) var(--canvas-grid-major),
+    var(--canvas-grid-minor) var(--canvas-grid-minor),
+    var(--canvas-grid-minor) var(--canvas-grid-minor);
+}

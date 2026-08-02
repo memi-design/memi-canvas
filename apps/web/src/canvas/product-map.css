@@ -1,0 +1,229 @@
+.product-map {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.product-map__header {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 1px;
+  min-height: 40px;
+  padding: 7px 8px;
+}
+
+.product-map__header > div {
+  align-items: baseline;
+  display: flex;
+  gap: 7px;
+}
+
+.product-map__header h2 {
+  font-size: 12px;
+  font-weight: 550;
+  margin: 0;
+}
+
+.product-map__header span,
+.product-map__header small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.product-map__search {
+  align-items: center;
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  height: 32px;
+  margin: 8px;
+  padding: 0 8px;
+}
+
+.product-map__search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.product-map__search input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  height: 30px;
+  min-width: 0;
+  outline: 0;
+  width: 100%;
+}
+
+.product-map__filters {
+  border: 0;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 0 8px 8px;
+}
+
+.product-map__filters legend,
+.product-map__filters label {
+  min-width: 0;
+}
+
+.product-map__filters legend,
+.product-map__filters label > span {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.product-map__filters select {
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 6px;
+  width: 100%;
+}
+
+.product-map__groups {
+  border-top: 1px solid var(--line);
+  min-height: 0;
+  overflow: auto;
+}
+
+.product-map__groups details {
+  border-bottom: 1px solid var(--line);
+}
+
+.product-map__groups summary {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 500;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.product-map__groups summary small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.product-map__groups ul {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 2px 4px 6px;
+}
+
+.product-map__groups button {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 14px minmax(0, 1fr) 10px;
+  min-height: 40px;
+  padding: 4px 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.product-map__groups button:hover,
+.product-map__groups button[aria-pressed="true"] {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+
+.product-map__groups button[aria-pressed="true"] {
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.product-map__item-label {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.product-map__item-label strong,
+.product-map__item-label small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-map__item-label strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.product-map__item-label small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+
+.product-map__badges {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.product-map__badges i {
+  background: var(--studio-ink-tertiary);
+  border-radius: 50%;
+  display: block;
+  height: 6px;
+  width: 6px;
+}
+
+.product-map__badges [data-authority="source-owned"],
+.product-map__badges [data-status="verified"] {
+  background: var(--accent);
+}
+
+.product-map__badges [data-status="stale"],
+.product-map__badges [data-status="blocked"] {
+  background: var(--warning);
+}
+
+.product-map__empty {
+  color: var(--muted);
+  display: grid;
+  gap: 5px;
+  padding: 28px 14px;
+  text-align: center;
+}
+
+.product-map__empty strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.product-map__empty p {
+  font-size: 10px;
+  line-height: 1.4;
+  margin: 0;
+}

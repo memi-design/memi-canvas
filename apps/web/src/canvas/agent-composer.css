@@ -1,0 +1,268 @@
+.canvas-prompt-dock {
+  transition: box-shadow var(--studio-motion-fast) ease;
+}
+
+.canvas-prompt-dock[data-expanded="false"] {
+  align-items: center;
+  gap: 4px;
+  grid-template-columns: minmax(88px, 1fr) auto;
+  max-width: 680px;
+  padding-block: 6px;
+}
+
+.canvas-prompt-dock[data-expanded="true"] {
+  max-width: 760px;
+}
+
+.canvas-prompt-expand {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  width: 28px;
+}
+
+.canvas-prompt-expand:hover {
+  background: var(--studio-surface-hover);
+  color: var(--text);
+}
+
+.canvas-prompt-dock[data-expanded="false"]
+  .canvas-context-row
+  > .canvas-context-chip:not(:first-child),
+.canvas-prompt-dock[data-expanded="false"] .canvas-context-preview {
+  display: none;
+}
+
+.canvas-prompt-dock[data-expanded="false"] .canvas-context-row {
+  flex-wrap: nowrap;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.canvas-context-chip--empty {
+  color: var(--studio-ink-tertiary);
+}
+
+.canvas-prompt-dock[data-expanded="false"] textarea {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 30px;
+  resize: none;
+}
+
+.canvas-prompt-dock[data-expanded="false"] .canvas-prompt-controls {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.canvas-prompt-dock[data-expanded="false"] .canvas-prompt-actions {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.canvas-prompt-dock[data-expanded="false"] .canvas-adapter-badge,
+.canvas-prompt-dock[data-expanded="false"] .canvas-prompt-cancel,
+.canvas-prompt-dock[data-expanded="false"] .canvas-prompt-foot {
+  display: none;
+}
+
+.canvas-prompt-dock[data-expanded="true"] textarea {
+  background: var(--studio-surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  min-height: 72px;
+  padding: 8px 9px;
+  resize: vertical;
+}
+
+.canvas-prompt-dock textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dark);
+  outline: 0;
+}
+
+.canvas-prompt-controls__configuration {
+  flex-wrap: nowrap;
+}
+
+.canvas-prompt-field {
+  display: inline-flex;
+  position: relative;
+}
+
+.canvas-prompt-field > span {
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.canvas-prompt-field::after,
+.canvas-prompt-controls button[data-tooltip]::after,
+.canvas-prompt-actions button[data-tooltip]::after,
+.canvas-prompt-expand[data-tooltip]::after {
+  background: var(--studio-surface-strong);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  bottom: calc(100% + 8px);
+  box-shadow: var(--studio-shadow-menu);
+  color: var(--text);
+  content: attr(data-help);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.35;
+  max-width: 260px;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateY(3px);
+  transition:
+    opacity var(--studio-motion-fast) ease,
+    transform var(--studio-motion-fast) ease;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 30;
+}
+
+.canvas-prompt-controls button[data-tooltip],
+.canvas-prompt-actions button[data-tooltip],
+.canvas-prompt-expand[data-tooltip] {
+  position: relative;
+}
+
+.canvas-prompt-controls button[data-tooltip]::after,
+.canvas-prompt-actions button[data-tooltip]::after,
+.canvas-prompt-expand[data-tooltip]::after {
+  content: attr(data-tooltip);
+  right: 0;
+}
+
+.canvas-prompt-field:hover::after,
+.canvas-prompt-field:focus-within::after,
+.canvas-prompt-controls button[data-tooltip]:hover::after,
+.canvas-prompt-controls button[data-tooltip]:focus-visible::after,
+.canvas-prompt-actions button[data-tooltip]:hover::after,
+.canvas-prompt-actions button[data-tooltip]:focus-visible::after,
+.canvas-prompt-expand[data-tooltip]:hover::after,
+.canvas-prompt-expand[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.canvas-prompt-actions .canvas-prompt-cancel {
+  color: var(--muted);
+  font-size: 10px;
+  padding-inline: 8px;
+  width: auto;
+}
+
+.canvas-prompt-actions .canvas-prompt-cancel:hover {
+  color: var(--text);
+}
+
+.canvas-prompt-actions .canvas-prompt-submit:not(:disabled):hover {
+  background: var(--studio-accent-hover);
+  border-color: var(--accent);
+}
+
+.canvas-prompt-actions .canvas-prompt-submit:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.canvas-prompt-controls select:hover {
+  background: var(--studio-surface-hover);
+  border-color: var(--line-strong);
+}
+
+.canvas-prompt-controls select:focus-visible,
+.canvas-prompt-controls button:focus-visible,
+.canvas-prompt-actions button:focus-visible,
+.canvas-prompt-expand:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dark);
+  outline: 0;
+}
+
+.canvas-adapter-badge[data-connected="true"] {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.canvas-prompt-foot {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.canvas-prompt-status,
+.canvas-prompt-shortcuts {
+  color: var(--studio-ink-tertiary);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.canvas-prompt-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-prompt-shortcuts {
+  flex: none;
+}
+
+@media (max-width: 720px) {
+  .canvas-prompt-dock[data-expanded="false"] {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-prompt-dock[data-expanded="false"] .canvas-context-row,
+  .canvas-prompt-dock[data-expanded="false"] textarea,
+  .canvas-prompt-dock[data-expanded="false"] .canvas-prompt-controls,
+  .canvas-prompt-dock[data-expanded="false"] .canvas-prompt-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .canvas-prompt-controls {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .canvas-prompt-actions {
+    justify-content: flex-end;
+  }
+
+  .canvas-prompt-controls__configuration {
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  .canvas-prompt-shortcuts {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-prompt-dock,
+  .canvas-prompt-field::after,
+  .canvas-prompt-controls button[data-tooltip]::after,
+  .canvas-prompt-actions button[data-tooltip]::after,
+  .canvas-prompt-expand[data-tooltip]::after {
+    transition: none;
+  }
+}

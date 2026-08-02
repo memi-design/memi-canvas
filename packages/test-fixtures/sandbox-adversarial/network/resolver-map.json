@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "memibench.mock-network.v1",
+  "hostNetworkAllowed": false,
+  "records": {
+    "allowed.memi.invalid": ["192.0.2.10"],
+    "loopback-v4.memi.invalid": ["127.0.0.1"],
+    "loopback-v6.memi.invalid": ["::1"],
+    "private.memi.invalid": ["10.20.30.40"],
+    "metadata.memi.invalid": ["169.254.169.254"]
+  },
+  "rebindSequence": {
+    "rebind.memi.invalid": [
+      ["192.0.2.20"],
+      ["127.0.0.1"]
+    ]
+  },
+  "redirects": {
+    "https://allowed.memi.invalid/redirect-loopback": "http://127.0.0.1:8765/private",
+    "https://allowed.memi.invalid/redirect-metadata": "http://169.254.169.254/latest/meta-data/"
+  },
+  "mockResponses": {
+    "https://allowed.memi.invalid/resource": {
+      "status": 200,
+      "body": "MEMI_PUBLIC_NETWORK_SENTINEL_v1"
+    }
+  }
+}

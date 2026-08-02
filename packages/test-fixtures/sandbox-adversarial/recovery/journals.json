@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "memibench.recovery-journal.v1",
+  "journals": [
+    {
+      "id": "valid-checkpoint-and-tail",
+      "checkpoint": { "sequence": 2, "state": { "value": 2 } },
+      "records": [
+        { "sequence": 1, "previous": "genesis", "operation": "set", "value": 1 },
+        { "sequence": 2, "previous": "record-1", "operation": "set", "value": 2 },
+        { "sequence": 3, "previous": "record-2", "operation": "set", "value": 3 }
+      ],
+      "expected": { "status": "recovered", "value": 3, "lastSequence": 3 }
+    },
+    {
+      "id": "truncated-tail",
+      "checkpoint": { "sequence": 1, "state": { "value": 1 } },
+      "records": [
+        { "sequence": 2, "previous": "record-1", "operation": "set", "value": 2 },
+        { "sequence": 3, "encoding": "truncated-json" }
+      ],
+      "expected": { "status": "tail-discarded", "value": 2, "lastSequence": 2 }
+    },
+    {
+      "id": "tampered-middle-record",
+      "checkpoint": { "sequence": 1, "state": { "value": 1 } },
+      "records": [
+        { "sequence": 2, "previous": "record-1", "operation": "set", "value": 999, "checksum": "invalid" },
+        { "sequence": 3, "previous": "record-2", "operation": "set", "value": 3 }
+      ],
+      "expected": { "status": "quarantined", "value": 1, "lastSequence": 1 }
+    },
+    {
+      "id": "checkpoint-hash-mismatch",
+      "checkpoint": { "sequence": 4, "state": { "value": 4 }, "checksum": "invalid" },
+      "records": [],
+      "expected": { "status": "blocked", "reasonCode": "checkpoint-integrity-failed" }
+    }
+  ]
+}
