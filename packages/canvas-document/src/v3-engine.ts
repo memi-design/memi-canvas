@@ -436,7 +436,8 @@ function applySingleAction(
   };
 }
 
-function applyAction(
+/** @internal Proof-only reducer; not exported from the package barrel. */
+export function applyCanvasV3ActionForInternalProof(
   document: CanvasDocumentV3,
   action: CanvasActionV3,
 ): CanvasDocumentV3 {
@@ -616,7 +617,7 @@ function nextSemanticDocument(
   document: CanvasDocumentV3,
   operation: CanvasOperationV3,
 ): CanvasDocumentV3 {
-  const content = applyAction(document, operation.action);
+  const content = applyCanvasV3ActionForInternalProof(document, operation.action);
   const candidate = {
     ...content,
     revision: document.revision + 1,

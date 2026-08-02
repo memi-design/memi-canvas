@@ -14,6 +14,7 @@ import {
   invertCanvasOperationV3,
   migrateCanvasDocumentV2ToV3,
   prepareCanvasOperationV3,
+  revertCanvasOperationV3,
 } from "./v3.js";
 
 const ids = {
@@ -107,6 +108,15 @@ describe("CanvasDocumentV3 engine", () => {
     expect(created.pagesById[ids.page]?.rootIds).toEqual([ids.node]);
     expect(created.revision).toBe(1);
     expect(create.inverseAction.type).toBe("node.delete");
+
+    const reverted = revertCanvasOperationV3(created, create);
+    expect(reverted.stateHash).toBe(empty.stateHash);
+    expect(() =>
+      revertCanvasOperationV3(
+        { ...created, operationCursor: null },
+        create,
+      ),
+    ).toThrow(/exact resulting/i);
 
     const inverse = invertCanvasOperationV3(created, create, {
       id: ids.operation[1],
