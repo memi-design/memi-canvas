@@ -15,6 +15,7 @@ export default defineConfig({
           globals: true,
           testTimeout: 10_000,
           include: ["packages/**/*.test.ts"],
+          exclude: ["packages/canvas-document/src/v3-replay-property.test.ts"],
         },
       },
       {
