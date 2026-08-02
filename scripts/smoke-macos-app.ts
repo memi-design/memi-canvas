@@ -15,6 +15,14 @@ const RUNTIME_SIDECAR_PATH = resolve(
   APP_PATH,
   "Contents/MacOS/memi-canvas-runtime",
 );
+const RUNTIME_BUN_PATH = resolve(
+  APP_PATH,
+  "Contents/Resources/runtime/memi-canvas-bun",
+);
+const RUNTIME_ENTRY_PATH = resolve(
+  APP_PATH,
+  "Contents/Resources/runtime/memi-canvas-runtime/main.js",
+);
 const MAX_ATTEMPTS = 80;
 const RPC_PROBE_TIMEOUT_MS = 5_000;
 // Must match the native bridge's bounded Unix-domain transport path. The full
@@ -90,18 +98,14 @@ async function processRows(): Promise<readonly ProcessRow[]> {
     .filter((row): row is ProcessRow => row !== null);
 }
 
-function isExactExecutableCommand(command: string, executable: string): boolean {
-  return command === executable || command.startsWith(`${executable} `);
-}
-
 function isPackagedRuntimeCommand(command: string): boolean {
-  // The release sidecar may be a self-contained executable or a signed
-  // launcher script. Accept only the launcher located inside this exact app
-  // bundle; never treat a checkout source command as packaged evidence.
+  // The signed launcher immediately execs the Bun copy shipped inside the app.
+  // Only the exact in-bundle Bun + in-bundle entry counts as process evidence;
+  // a wrapper, checkout source command, or user's global Bun never satisfies it.
+  const packagedBunCommand = `${RUNTIME_BUN_PATH} ${RUNTIME_ENTRY_PATH}`;
   return (
-    isExactExecutableCommand(command, RUNTIME_SIDECAR_PATH) ||
-    command === `/bin/sh ${RUNTIME_SIDECAR_PATH}` ||
-    command.startsWith(`/bin/sh ${RUNTIME_SIDECAR_PATH} `)
+    command === packagedBunCommand ||
+    command.startsWith(`${packagedBunCommand} `)
   );
 }
 
@@ -216,7 +220,12 @@ async function probeRuntimeSocket(socketPath: string): Promise<void> {
   }
 }
 
-await Promise.all([access(EXECUTABLE_PATH), access(RUNTIME_SIDECAR_PATH)]);
+await Promise.all([
+  access(EXECUTABLE_PATH),
+  access(RUNTIME_SIDECAR_PATH),
+  access(RUNTIME_BUN_PATH),
+  access(RUNTIME_ENTRY_PATH),
+]);
 const storageRoot = await mkdtemp(join(tmpdir(), "memi-canvas-app-smoke-"));
 const runtimeSocketPath = join(storageRoot, SOCKET_RELATIVE_PATH);
 const app = spawn(EXECUTABLE_PATH, [], {
