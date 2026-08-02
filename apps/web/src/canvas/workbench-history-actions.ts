@@ -1,6 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
+import type { CanvasActionIntentV3, CanvasOperationV3 } from "@memi/protocol";
 
 import type { CanonicalWorkbenchAuthority } from "./canonical-workbench-authority.js";
+import {
+  type CanonicalWorkbenchAuthorityV3,
+} from "./canonical-workbench-authority-v3.js";
 import { commandTraceAction } from "./scene-command-adapter.js";
 import type { CommandTrace } from "./command-bus.js";
 import {
@@ -78,6 +82,84 @@ export interface WorkbenchHistoryActions {
     action?: string,
   ) => void;
   readonly undoScene: () => void;
+}
+
+/**
+ * Operation-native history boundary for the V3 production workbench.
+ *
+ * Renderer projections remain read-only: callers submit a V3 action intent
+ * rather than a replacement WorkbenchNode array or an array diff.
+ */
+export interface V3WorkbenchHistoryActionContext {
+  readonly actorId: string;
+  readonly authority: CanonicalWorkbenchAuthorityV3;
+  readonly createOperationId: () => string;
+  readonly now: () => string;
+}
+
+export interface V3SemanticWorkbenchAction {
+  readonly action: CanvasActionIntentV3;
+  readonly actor?: "agent" | "human" | "system";
+  readonly label: string;
+  readonly selectionAfter?: SelectionState;
+  readonly traceId?: string | null;
+}
+
+export interface V3WorkbenchHistoryActions {
+  readonly commitSemanticAction: (
+    input: V3SemanticWorkbenchAction,
+  ) => Promise<CanvasOperationV3>;
+  readonly redoScene: () => Promise<CanvasOperationV3 | null>;
+  readonly selectNodeIds: (nodeIds: readonly string[]) => void;
+  readonly undoScene: () => Promise<CanvasOperationV3 | null>;
+}
+
+export function createV3WorkbenchHistoryActions(
+  context: V3WorkbenchHistoryActionContext,
+): V3WorkbenchHistoryActions {
+  const historyInput = (actor: "agent" | "human" | "system") => ({
+    actor,
+    actorId: context.actorId,
+    id: context.createOperationId(),
+    occurredAt: context.now(),
+  });
+
+  const commitSemanticAction: V3WorkbenchHistoryActions["commitSemanticAction"] = (
+    input,
+  ) =>
+    context.authority.commit(
+      {
+        ...historyInput(input.actor ?? "human"),
+        action: input.action,
+        label: input.label,
+        ...(input.traceId === undefined ? {} : { traceId: input.traceId }),
+      },
+      input.selectionAfter,
+    );
+
+  const undoScene = (): Promise<CanvasOperationV3 | null> =>
+    context.authority.getSnapshot().canUndo
+      ? context.authority.undo(historyInput("human"))
+      : Promise.resolve(null);
+
+  const redoScene = (): Promise<CanvasOperationV3 | null> =>
+    context.authority.getSnapshot().canRedo
+      ? context.authority.redo(historyInput("human"))
+      : Promise.resolve(null);
+
+  const selectNodeIds = (nodeIds: readonly string[]) => {
+    const ordered = nodeIds.filter(
+      (id, index) => nodeIds.indexOf(id) === index,
+    );
+    context.authority.setSelection(createSelectionState(ordered));
+  };
+
+  return {
+    commitSemanticAction,
+    redoScene,
+    selectNodeIds,
+    undoScene,
+  };
 }
 
 export function createWorkbenchHistoryActions(
