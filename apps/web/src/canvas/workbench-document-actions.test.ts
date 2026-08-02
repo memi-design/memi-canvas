@@ -79,6 +79,40 @@ afterEach(() => {
 });
 
 describe("workbench hierarchy actions", () => {
+  it("emits an explicit V3 detach receipt without falling back to a scene commit", () => {
+    const source = {
+      ...frame("source-screen", null, 40, 60),
+      kind: "CodeFrame" as const,
+      source: {
+        coverageCellId: "default",
+        repositoryRevision: "buzzr@abc123",
+        routeId: "home",
+        sourceAnchor: "src/Home.tsx#Home",
+        stateId: "default",
+        viewport: { height: 844, name: "mobile" as const, width: 390 },
+      },
+    };
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions([source], [source.id], () => null, commitIntentReceipt);
+
+    value.detachSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Detach source-screen",
+      expect.objectContaining({
+        kind: "detach",
+        node: expect.objectContaining({
+          frameContent: "source-screen",
+          kind: "DraftFrame",
+          provenance: expect.objectContaining({ repositoryRevision: "buzzr@abc123" }),
+        }),
+      }),
+      expect.objectContaining({ selectedIds: [source.id], targetIds: [source.id] }),
+    );
+    expect(JSON.stringify(commitIntentReceipt.mock.calls)).not.toContain("node.replace");
+  });
+
   it("emits a compact V3 group receipt with parent-relative child transforms", () => {
     const a = rectangle("a", null, 100, 80);
     const b = rectangle("b", null, 160, 120);

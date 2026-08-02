@@ -45,6 +45,8 @@ export type WorkbenchIntentReceiptV3 =
       /** Children must carry their intended parent-relative positions. */
       readonly children: readonly WorkbenchNode[];
     }
+  /** Replaces a source-authoritative V3 node with its detached canvas draft. */
+  | { readonly kind: "detach"; readonly node: WorkbenchNode }
   | { readonly kind: "replace"; readonly node: WorkbenchNode };
 
 export interface WorkbenchIntentReceiptInputV3 {
@@ -67,7 +69,12 @@ function requirePage(document: CanvasDocumentV3, pageId: CanvasPageId): void {
   }
 }
 
-function canvasId(
+/**
+ * Maps both pre-existing legacy projection IDs and IDs introduced by a receipt
+ * to the one deterministic V3 node identity. Keep post-commit selections on
+ * this seam: the authority accepts V3 IDs only.
+ */
+export function canonicalWorkbenchNodeIdV3(
   document: CanvasDocumentV3,
   pageId: CanvasPageId,
   workbenchId: string,
@@ -79,6 +86,14 @@ function canvasId(
       `${document.id}:${pageId}:workbench:${workbenchId}`,
     ).canonicalId,
   );
+}
+
+function canvasId(
+  document: CanvasDocumentV3,
+  pageId: CanvasPageId,
+  workbenchId: string,
+): CanvasNodeV3["id"] {
+  return canonicalWorkbenchNodeIdV3(document, pageId, workbenchId);
 }
 
 function canvasKind(node: WorkbenchNode): CanvasNodeV3["kind"] {
@@ -121,6 +136,22 @@ function style(node: WorkbenchNode): CanvasNodeV3["style"] {
   };
 }
 
+function detachedProvenance(node: WorkbenchNode): CanvasNodeV3["provenance"] {
+  if (node.provenance === undefined) return null;
+  return {
+    captureState: node.provenance.captureState ?? null,
+    coverageCellId: node.provenance.coverageCellId ?? null,
+    dirtyFileFingerprint: node.provenance.dirtyFileFingerprint ?? null,
+    repositoryDirty: node.provenance.repositoryDirty ?? null,
+    repositoryRevision: node.provenance.repositoryRevision,
+    routeId: node.provenance.routeId ?? null,
+    sourceAnchor: node.provenance.sourceAnchor,
+    sourceContentHash: node.provenance.sourceContentHash ?? null,
+    sourceFingerprint: node.provenance.sourceFingerprint ?? null,
+    stateId: node.provenance.stateId ?? null,
+  };
+}
+
 function toCanvasNode(
   document: CanvasDocumentV3,
   pageId: CanvasPageId,
@@ -133,7 +164,7 @@ function toCanvasNode(
     geometry: { height: node.size.height, width: node.size.width }, id: canvasId(document, pageId, node.id),
     instanceOverrides: {}, kind, layout: { ...layout, padding: { ...layout.padding } }, name: node.name,
     pageId, parentId: node.parentId === null ? null : canvasId(document, pageId, node.parentId),
-    provenance: null, referenceBinding: null, sourceAnchor: null, sourceBinding: null,
+    provenance: detachedProvenance(node), referenceBinding: null, sourceAnchor: null, sourceBinding: null,
     style: style(node), text: kind === "text" ? { autoResize: "width-height", characters: node.text ?? "" } : null,
     transform: { rotation: node.rotation ?? 0, scaleX: 1, scaleY: 1, x: node.position.x, y: node.position.y },
   });
@@ -271,6 +302,27 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
     return freeze(exactPropertyIntent(document, pageId, receipt));
   }
   if (receipt.kind === "replace") throw new Error("Unsupported node.replace fallback: emit explicit semantic receipt actions.");
+  if (receipt.kind === "detach") {
+    const current = existingById(document, pageId, receipt.node.id);
+    const node = toCanvasNode(document, pageId, receipt.node);
+    if (node.id !== current.id) {
+      throw new Error("Canvas V3 detach receipt must retain the selected node identity.");
+    }
+    const siblingOrder = current.parentId === null
+      ? document.pagesById[pageId]!.rootIds
+      : document.nodesById[current.parentId]?.childIds ?? [];
+    return freeze(asIntent([
+      { type: "node.delete", payload: { nodeId: current.id } },
+      {
+        type: "node.create",
+        payload: {
+          index: siblingOrder.indexOf(current.id),
+          node,
+          parentId: current.parentId,
+        },
+      },
+    ]));
+  }
   if (receipt.kind === "create" || receipt.kind === "paste") return freeze(asIntent(createActions(document, pageId, receipt.nodes)));
   if (receipt.kind === "move") return freeze(asIntent(receipt.nodes.flatMap((node) => {
     const action = transformAction(existing(document, pageId, node), node);

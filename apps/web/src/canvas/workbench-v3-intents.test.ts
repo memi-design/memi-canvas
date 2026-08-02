@@ -346,6 +346,42 @@ describe("workbench V3 semantic intent receipts", () => {
     expect(moved).not.toMatchObject({ type: "atomic.batch" });
   });
 
+  it("compiles an explicit detach receipt without a node.replace fallback", () => {
+    const source = rectangle("source-card", null, 20, 30);
+    const current = applyReceipt(document(), { kind: "create", nodes: [source] }).document;
+    const detached: WorkbenchNode = {
+      ...source,
+      frameContent: "Source card",
+      kind: "DraftFrame",
+      provenance: {
+        coverageCellId: "default",
+        repositoryRevision: "buzzr@abc123",
+        routeId: "home",
+        sourceAnchor: "src/Card.tsx#Card",
+        stateId: "default",
+      },
+    };
+
+    const action = compileWorkbenchIntentReceiptV3({
+      document: current,
+      pageId,
+      receipt: { kind: "detach", node: detached },
+    });
+
+    expect(action).toMatchObject({
+      type: "atomic.batch",
+      payload: { actions: [{ type: "node.delete" }, { type: "node.create" }] },
+    });
+    expect(JSON.stringify(action)).not.toContain("node.replace");
+    const next = applyReceipt(current, { kind: "detach", node: detached }).document;
+    const node = Object.values(next.nodesById)[0]!;
+    expect(node).toMatchObject({
+      content: { type: "frame", value: "Source card" },
+      provenance: { repositoryRevision: "buzzr@abc123" },
+      sourceBinding: null,
+    });
+  });
+
   it("rejects unsupported replacement fallbacks", () => {
     expect(() =>
       compileWorkbenchIntentReceiptV3({

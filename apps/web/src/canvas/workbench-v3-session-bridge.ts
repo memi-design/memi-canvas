@@ -7,6 +7,7 @@ import {
   createV3WorkbenchHistoryActions,
 } from "./workbench-history-actions.js";
 import {
+  canonicalWorkbenchNodeIdV3,
   compileWorkbenchIntentReceiptV3,
   type WorkbenchIntentReceiptV3,
 } from "./workbench-v3-intents.js";
@@ -73,6 +74,17 @@ export function createRecoveredSerialQueue(onFailure: (message: string) => void)
   };
 }
 
+/** Canonicalize the legacy projection selection at the V3 commit boundary. */
+export function canonicalizeWorkbenchSelectionIdsV3(input: {
+  readonly document: CanvasWorkbenchV3Session["document"];
+  readonly pageId: CanvasWorkbenchV3Session["activePageId"];
+  readonly selectedIds: readonly string[];
+}): readonly string[] {
+  return [...new Set(input.selectedIds.map((id) =>
+    canonicalWorkbenchNodeIdV3(input.document, input.pageId, id),
+  ))];
+}
+
 export function useWorkbenchV3SessionBridge(input: {
   readonly authority: CanonicalWorkbenchAuthorityV3 | null;
   readonly session: CanvasWorkbenchV3Session;
@@ -113,7 +125,13 @@ export function useWorkbenchV3SessionBridge(input: {
         pageId: current.session.activePageId,
         receipt,
       });
-      const selectedIds = options.selectedIds;
+      const selectedIds = options.selectedIds === undefined
+        ? undefined
+        : canonicalizeWorkbenchSelectionIdsV3({
+            document: current.authority.getSnapshot().document,
+            pageId: current.session.activePageId,
+            selectedIds: options.selectedIds,
+          });
       await currentHistory.commitSemanticAction({
         action,
         label,

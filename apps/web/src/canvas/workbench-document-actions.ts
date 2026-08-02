@@ -16,7 +16,6 @@ import {
   dependentNodeIds,
   nodeAuthority,
   provenanceFromSource,
-  replaceNode,
   uniqueNodeId,
   type Point,
   type ComponentInstanceBinding,
@@ -500,24 +499,18 @@ export function createWorkbenchDocumentActions(
     ) {
       return;
     }
-    context.commitScene(
+    const { source, ...withoutSource } = selectedNode;
+    const detached: WorkbenchNode = {
+      ...withoutSource,
+      frameContent: selectedNode.name,
+      kind: "DraftFrame",
+      provenance: provenanceFromSource(source),
+    };
+    commit(
       `Detach ${selectedNode.name}`,
-      replaceNode(context.nodes, selectedNode.id, (node) => {
-        const { source, ...withoutSource } = node;
-        if (source === undefined) {
-          return node;
-        }
-        return {
-          ...withoutSource,
-          kind: "DraftFrame",
-          provenance: provenanceFromSource(source),
-          frameContent: node.name,
-        };
-      }),
-      {
-        selectedIds: [selectedNode.id],
-        targetIds: [selectedNode.id],
-      },
+      { kind: "detach", node: detached },
+      context.nodes,
+      { selectedIds: [selectedNode.id], targetIds: [selectedNode.id] },
     );
     context.appendTrace(
       `Detached ${selectedNode.name} from ${nodeAuthority(selectedNode)}`,
