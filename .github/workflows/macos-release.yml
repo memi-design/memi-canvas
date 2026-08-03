@@ -1,0 +1,154 @@
+name: macOS release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing vMAJOR.MINOR.PATCH tag to package"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-publish:
+    name: Package and publish macOS DMG
+    runs-on: macos-14
+    environment: macos-release
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref_name }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${RELEASE_TAG#v}" >> "${GITHUB_ENV}"
+
+      - run: npm ci
+
+      - name: Run release verification
+        run: npm run verify
+
+      - name: Import Developer ID certificate when configured
+        if: ${{ env.APPLE_CERTIFICATE != '' && env.APPLE_CERTIFICATE_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="${RUNNER_TEMP}/memi-build.keychain-db"
+          certificate_path="${RUNNER_TEMP}/memi-developer-id.p12"
+          printf '%s' "${APPLE_CERTIFICATE}" | /usr/bin/base64 --decode > "${certificate_path}"
+          /usr/bin/security create-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          echo "MEMI_BUILD_KEYCHAIN=${keychain_path}" >> "${GITHUB_ENV}"
+          /usr/bin/security set-keychain-settings -lut 3600 "${keychain_path}"
+          /usr/bin/security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          /usr/bin/security import "${certificate_path}" \
+            -k "${keychain_path}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign
+          /usr/bin/security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "${KEYCHAIN_PASSWORD}" "${keychain_path}"
+          /usr/bin/security list-keychains -d user -s "${keychain_path}"
+          identity="${APPLE_SIGNING_IDENTITY:-}"
+          if [[ -z "${identity}" ]]; then
+            identity=$(/usr/bin/security find-identity -v -p codesigning "${keychain_path}" \
+              | /usr/bin/sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+              | /usr/bin/head -n 1)
+          fi
+          if [[ -z "${identity}" ]]; then
+            echo "No Developer ID Application identity was found in the imported certificate." >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=${identity}" >> "${GITHUB_ENV}"
+
+      - name: Build the release DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace @memi/macos run tauri -- build \
+            --config "{\"version\":\"${RELEASE_VERSION}\"}" \
+            --bundles dmg
+
+      - name: Package checksums and stable aliases
+        run: >-
+          npm exec vite-node -- scripts/package-macos-release.ts
+          --tag "${RELEASE_TAG}"
+
+      - name: Publish GitHub Release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="dist/releases/${RELEASE_VERSION}"
+          assets=(
+            "${output}/Memi.Canvas-${RELEASE_VERSION}-arm64.dmg"
+            "${output}/Memi.Canvas-${RELEASE_VERSION}-arm64.app.zip"
+            "${output}/Memi.Canvas-latest-arm64.dmg"
+            "${output}/Memi.Canvas-latest-arm64.app.zip"
+            "${output}/release-manifest.json"
+            "${output}/SHA256SUMS.txt"
+          )
+          for asset in "${assets[@]}"; do
+            test -f "${asset}"
+          done
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
+          else
+            release_args=(
+              "${RELEASE_TAG}"
+              "${assets[@]}"
+              --title "Memi Canvas ${RELEASE_VERSION}"
+              --generate-notes
+              --notes "Memi Canvas macOS release. This is open-source WIP software. Verify SHA256SUMS.txt before opening the DMG. Signed and notarized only when the repository Apple release secrets are configured."
+            )
+            if [[ "${RELEASE_TAG}" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "${release_args[@]}"
+          fi
+
+      - name: Print stable download URLs
+        run: |
+          echo "DMG: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/Memi.Canvas-latest-arm64.dmg"
+          echo "ZIP: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/Memi.Canvas-latest-arm64.app.zip"
+
+      - name: Remove temporary signing keychain
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/security delete-keychain "${RUNNER_TEMP}/memi-build.keychain-db" || true
+          /bin/rm -f "${RUNNER_TEMP}/memi-developer-id.p12"
