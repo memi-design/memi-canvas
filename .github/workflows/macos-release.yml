@@ -25,19 +25,12 @@ jobs:
     timeout-minutes: 45
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check out the tagged source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.release_tag || github.ref_name }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -56,7 +49,14 @@ jobs:
             echo "Invalid release tag: ${RELEASE_TAG}" >&2
             exit 1
           fi
+          tagged_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "${tagged_sha}" != "${checked_out_sha}" ]]; then
+            echo "Checked out ${checked_out_sha}, but ${RELEASE_TAG} resolves to ${tagged_sha}." >&2
+            exit 1
+          fi
           echo "RELEASE_VERSION=${RELEASE_TAG#v}" >> "${GITHUB_ENV}"
+          echo "SOURCE_SHA=${checked_out_sha}" >> "${GITHUB_ENV}"
 
       - run: npm ci
 
@@ -64,10 +64,40 @@ jobs:
         run: npm run verify
 
       - name: Import Developer ID certificate when configured
-        if: ${{ env.APPLE_CERTIFICATE != '' && env.APPLE_CERTIFICATE_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' }}
+        id: signing
         shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
+          required_values=(
+            "${APPLE_CERTIFICATE}"
+            "${APPLE_CERTIFICATE_PASSWORD}"
+            "${APPLE_ID}"
+            "${APPLE_PASSWORD}"
+            "${APPLE_TEAM_ID}"
+            "${KEYCHAIN_PASSWORD}"
+          )
+          configured_count=0
+          for value in "${required_values[@]}"; do
+            if [[ -n "${value}" ]]; then
+              configured_count=$((configured_count + 1))
+            fi
+          done
+          if [[ "${configured_count}" -eq 0 ]]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${configured_count}" -ne "${#required_values[@]}" ]]; then
+            echo "Apple release credentials are partially configured." >&2
+            exit 1
+          fi
           keychain_path="${RUNNER_TEMP}/memi-build.keychain-db"
           certificate_path="${RUNNER_TEMP}/memi-developer-id.p12"
           printf '%s' "${APPLE_CERTIFICATE}" | /usr/bin/base64 --decode > "${certificate_path}"
@@ -93,9 +123,13 @@ jobs:
             echo "No Developer ID Application identity was found in the imported certificate." >&2
             exit 1
           fi
-          echo "APPLE_SIGNING_IDENTITY=${identity}" >> "${GITHUB_ENV}"
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          if [[ -z "${APPLE_SIGNING_IDENTITY}" ]]; then
+            echo "identity=${identity}" >> "${GITHUB_OUTPUT}"
+          fi
 
-      - name: Build the release DMG
+      - name: Build the unsigned release DMG
+        if: ${{ steps.signing.outputs.enabled != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -103,10 +137,37 @@ jobs:
             --config "{\"version\":\"${RELEASE_VERSION}\"}" \
             --bundles dmg
 
-      - name: Package checksums and stable aliases
+      - name: Build, sign, and notarize the release DMG
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || steps.signing.outputs.identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          npm --workspace @memi/macos run tauri -- build \
+            --config "{\"version\":\"${RELEASE_VERSION}\"}" \
+            --bundles dmg
+
+      - name: Smoke the exact release application bundle
         run: >-
-          npm exec vite-node -- scripts/package-macos-release.ts
-          --tag "${RELEASE_TAG}"
+          npm exec vite-node -- scripts/smoke-macos-app.ts
+          --app "apps/macos/src-tauri/target/release/bundle/macos/Memi Canvas.app"
+
+      - name: Package checksums and stable aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec vite-node -- scripts/package-macos-release.ts \
+            --tag "${RELEASE_TAG}" \
+            --source-sha "${SOURCE_SHA}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-ref "${GITHUB_WORKFLOW_REF}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --server-url "${GITHUB_SERVER_URL}"
 
       - name: Publish GitHub Release assets
         shell: bash

@@ -38,7 +38,7 @@ describe("macOS release workflow contract", () => {
     const workflow = await readFile(workflowPath, "utf8");
 
     expect(workflow).toContain("ref: refs/tags/${{ env.RELEASE_TAG }}");
-    expect(workflow).toContain('--source-sha "${GITHUB_SHA}"');
+    expect(workflow).toContain('--source-sha "${SOURCE_SHA}"');
     expect(workflow).toContain('--repository "${GITHUB_REPOSITORY}"');
     expect(workflow).toContain('--workflow-ref "${GITHUB_WORKFLOW_REF}"');
     expect(workflow).toContain('--run-id "${GITHUB_RUN_ID}"');

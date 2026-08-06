@@ -13,8 +13,15 @@ import {
   type ProcessRow,
 } from "./smoke-macos-app-process.js";
 
+function optionalOption(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value?.trim() || undefined;
+}
+
 const APP_PATH = resolve(
-  "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+  optionalOption("--app") ??
+    "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
 );
 const EXECUTABLE_PATH = resolve(
   APP_PATH,

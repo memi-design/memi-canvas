@@ -1,4 +1,6 @@
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -23,7 +25,7 @@ interface CommandResult {
   readonly exitCode: number;
 }
 
-interface ArtifactRecord {
+export interface ArtifactRecord {
   readonly name: string;
   readonly kind: "dmg" | "app-zip";
   readonly sha256: string;
@@ -45,7 +47,7 @@ function optionalOption(name: string): string | undefined {
   return value?.trim() || undefined;
 }
 
-function releaseVersion(tag: string): string {
+export function releaseVersion(tag: string): string {
   if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(tag)) {
     throw new Error(
       `Release tag ${JSON.stringify(tag)} must match vMAJOR.MINOR.PATCH[-prerelease].`,
@@ -95,13 +97,117 @@ async function findSingle(
   return join(directory, entries[0]);
 }
 
-async function sha256(path: string): Promise<string> {
-  const result = await run("/usr/bin/shasum", ["-a", "256", path]);
-  const digest = result.stdout.trim().split(/\s+/u)[0];
-  if (!/^[0-9a-f]{64}$/u.test(digest)) {
-    throw new Error(`Could not calculate a SHA-256 digest for ${path}.`);
+export async function discoverReleaseBundle(
+  bundleBase: string,
+): Promise<{ readonly appPath: string; readonly dmgPath: string }> {
+  const appPath = await findSingle(join(bundleBase, "macos"), (name) =>
+    name.endsWith(".app"),
+  );
+  const dmgPath = await findSingle(join(bundleBase, "dmg"), (name) =>
+    name.endsWith(".dmg"),
+  );
+  return { appPath, dmgPath };
+}
+
+export function artifactFileNames(
+  version: string,
+  architecture: "arm64",
+): {
+  readonly dmg: string;
+  readonly appZip: string;
+  readonly latestDmg: string;
+  readonly latestAppZip: string;
+} {
+  return {
+    dmg: `Memi.Canvas-${version}-${architecture}.dmg`,
+    appZip: `Memi.Canvas-${version}-${architecture}.app.zip`,
+    latestDmg: `Memi.Canvas-latest-${architecture}.dmg`,
+    latestAppZip: `Memi.Canvas-latest-${architecture}.app.zip`,
+  };
+}
+
+export async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk as Buffer);
   }
-  return digest;
+  return hash.digest("hex");
+}
+
+export function projectSigningState(input: {
+  readonly signatureExitCode: number;
+  readonly identityDetails: string;
+  readonly notarizationExitCode: number | undefined;
+}): { readonly signed: boolean; readonly notarized: boolean } {
+  const signed =
+    input.signatureExitCode === 0 &&
+    /Authority=Developer ID Application:/u.test(input.identityDetails);
+  return {
+    signed,
+    notarized: signed && input.notarizationExitCode === 0,
+  };
+}
+
+interface ReleaseManifestInput {
+  readonly tag: string;
+  readonly architecture: "arm64";
+  readonly sourceSha: string;
+  readonly repository: string;
+  readonly workflowRef: string;
+  readonly runId: string;
+  readonly runAttempt: string;
+  readonly serverUrl: string;
+  readonly signed: boolean;
+  readonly notarized: boolean;
+  readonly artifacts: readonly ArtifactRecord[];
+}
+
+export function createReleaseManifest(input: ReleaseManifestInput) {
+  const version = releaseVersion(input.tag);
+  if (!/^[0-9a-f]{40}$/u.test(input.sourceSha)) {
+    throw new Error("Release source SHA must be an immutable 40-character commit SHA.");
+  }
+  if (!/^[1-9]\d*$/u.test(input.runId)) {
+    throw new Error("GitHub Actions run ID must be a positive integer.");
+  }
+  if (!/^[1-9]\d*$/u.test(input.runAttempt)) {
+    throw new Error("GitHub Actions run attempt must be a positive integer.");
+  }
+  if (!/^[^/\s]+\/[^/\s]+$/u.test(input.repository)) {
+    throw new Error("GitHub repository must use owner/name format.");
+  }
+  if (input.workflowRef.length === 0) {
+    throw new Error("GitHub workflow ref is required.");
+  }
+  const serverUrl = input.serverUrl.replace(/\/+$/u, "");
+  if (!serverUrl.startsWith("https://")) {
+    throw new Error("GitHub server URL must use HTTPS.");
+  }
+  const runAttempt = Number(input.runAttempt);
+  return {
+    schema: "memi.macos-release.v2",
+    product: "Memi Canvas",
+    tag: input.tag,
+    version,
+    channel: version.includes("-") ? "preview" : "stable",
+    platform: "macOS",
+    architecture: input.architecture,
+    minimumSystemVersion: "13.0",
+    source: {
+      sha: input.sourceSha,
+    },
+    provenance: {
+      provider: "github-actions",
+      repository: input.repository,
+      workflowRef: input.workflowRef,
+      runId: input.runId,
+      runAttempt,
+      runUrl: `${serverUrl}/${input.repository}/actions/runs/${input.runId}/attempts/${runAttempt}`,
+    },
+    signed: input.signed,
+    notarized: input.notarized,
+    artifacts: input.artifacts,
+  } as const;
 }
 
 async function packageRelease(): Promise<void> {
@@ -110,22 +216,24 @@ async function packageRelease(): Promise<void> {
   const bundleBase = optionalOption("--bundle-base")
     ? resolve(optionalOption("--bundle-base") as string)
     : dirname(defaultBundleRoot);
-  const bundleRoot = join(bundleBase, "macos");
-  const dmgRoot = join(bundleBase, "dmg");
   const outputDirectory = resolve(
     optionalOption("--output-dir") ?? join(root, "dist", "releases", version),
   );
-  const architecture = process.arch === "arm64" ? "arm64" : process.arch;
+  const architecture = "arm64" as const;
+  if (process.arch !== architecture) {
+    throw new Error(
+      `macOS release packaging requires arm64; received ${process.arch}.`,
+    );
+  }
 
   await mkdir(outputDirectory, { recursive: true });
-  const sourceDmg = await findSingle(dmgRoot, (name) => name.endsWith(".dmg"));
-  const sourceApp = await findSingle(bundleRoot, (name) =>
-    name.endsWith(".app"),
-  );
-  const dmgName = `Memi.Canvas-${version}-${architecture}.dmg`;
-  const appZipName = `Memi.Canvas-${version}-${architecture}.app.zip`;
-  const latestDmgName = `Memi.Canvas-latest-${architecture}.dmg`;
-  const latestAppZipName = `Memi.Canvas-latest-${architecture}.app.zip`;
+  const { appPath: sourceApp, dmgPath: sourceDmg } =
+    await discoverReleaseBundle(bundleBase);
+  const names = artifactFileNames(version, architecture);
+  const dmgName = names.dmg;
+  const appZipName = names.appZip;
+  const latestDmgName = names.latestDmg;
+  const latestAppZipName = names.latestAppZip;
   const dmgPath = join(outputDirectory, dmgName);
   const appZipPath = join(outputDirectory, appZipName);
 
@@ -155,17 +263,23 @@ async function packageRelease(): Promise<void> {
     ["--display", "--verbose=4", sourceApp],
     { allowFailure: true },
   );
-  const signed =
+  const signatureIndicatesDeveloperId =
     signature.exitCode === 0 &&
-    /Authority=Developer ID Application:/u.test(identity.stderr);
-  const notarization = signed
+    /Authority=Developer ID Application:/u.test(
+      `${identity.stdout}\n${identity.stderr}`,
+    );
+  const notarization = signatureIndicatesDeveloperId
     ? await run(
         "/usr/sbin/spctl",
         ["--assess", "--type", "execute", "--verbose=2", sourceApp],
         { allowFailure: true },
       )
     : undefined;
-  const notarized = notarization !== undefined && notarization.exitCode === 0;
+  const { signed, notarized } = projectSigningState({
+    signatureExitCode: signature.exitCode,
+    identityDetails: `${identity.stdout}\n${identity.stderr}`,
+    notarizationExitCode: notarization?.exitCode,
+  });
 
   const artifactNames = [dmgName, appZipName, latestDmgName, latestAppZipName];
   const artifacts: ArtifactRecord[] = [];
@@ -175,24 +289,24 @@ async function packageRelease(): Promise<void> {
     artifacts.push({
       name,
       kind: name.endsWith(".dmg") ? "dmg" : "app-zip",
-      sha256: await sha256(path),
+      sha256: await sha256File(path),
       sizeBytes: fileStats.size,
     });
   }
 
-  const manifest = {
-    schema: "memi.macos-release.v1",
-    product: "Memi Canvas",
+  const manifest = createReleaseManifest({
     tag,
-    version,
-    channel: version.includes("-") ? "preview" : "stable",
-    platform: "macOS",
     architecture,
-    minimumSystemVersion: "13.0",
+    sourceSha: requiredOption("--source-sha"),
+    repository: requiredOption("--repository"),
+    workflowRef: requiredOption("--workflow-ref"),
+    runId: requiredOption("--run-id"),
+    runAttempt: requiredOption("--run-attempt"),
+    serverUrl: requiredOption("--server-url"),
     signed,
     notarized,
     artifacts,
-  } as const;
+  });
   await writeFile(
     join(outputDirectory, "release-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -206,4 +320,9 @@ async function packageRelease(): Promise<void> {
   process.stdout.write(`${JSON.stringify(manifest)}\n`);
 }
 
-await packageRelease();
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  await packageRelease();
+}
