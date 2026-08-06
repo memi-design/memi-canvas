@@ -6,7 +6,10 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { AuthoringNumberField } from "./authoring-field.js";
+import {
+  AuthoringNumberField,
+  AuthoringTextField,
+} from "./authoring-field.js";
 import {
   createAuthoringSelectionTransaction,
   sharedAuthoringProperties,
@@ -268,6 +271,25 @@ export function AuthoringPropertySections({
   const fill = fieldValue(shared.fill, node.fill);
   const stroke = fieldValue(shared.stroke, node.stroke);
   const strokeWeight = fieldValue(shared.strokeWeight, node.strokeWeight);
+  const textSupported = authoringNodes.every(({ kind }) => kind === "Text");
+  const fontFamily = fieldValue(
+    shared.fontFamily,
+    node.fontFamily ?? "Inter Variable",
+  );
+  const fontSize = fieldValue(shared.fontSize, node.fontSize ?? 16);
+  const fontWeight = fieldValue(shared.fontWeight, node.fontWeight ?? 400);
+  const letterSpacing = fieldValue(
+    shared.letterSpacing,
+    node.letterSpacing ?? 0,
+  );
+  const lineHeight = fieldValue(
+    shared.lineHeight,
+    node.lineHeight ?? Math.round((node.fontSize ?? 16) * 1.2),
+  );
+  const textAlign = fieldValue(
+    shared.textAlign,
+    node.textAlign ?? "left",
+  );
   return (
     <>
       <fieldset aria-label="Position" className="inspector-section">
@@ -450,6 +472,120 @@ export function AuthoringPropertySections({
           ) : null}
         </div>
       </fieldset>
+
+      {textSupported ? (
+        <fieldset aria-label="Text" className="inspector-section">
+          <legend>Text</legend>
+          <AuthoringTextField
+            label="Font family"
+            mixed={fontFamily.mixed}
+            onCommit={(value) => {
+              const next = value.trim();
+              if (next.length === 0) return;
+              commitChange(`Change ${selectionLabel} font family`, (current) => ({
+                ...current,
+                fontFamily: next,
+              }));
+            }}
+            value={fontFamily.value ?? "Inter Variable"}
+          />
+          <div className="inspector-property-grid">
+            <AuthoringNumberField
+              label="Font size"
+              minimum={1}
+              mixed={fontSize.mixed}
+              onCommit={(value) =>
+                commitChange(`Change ${selectionLabel} font size`, (current) => ({
+                  ...current,
+                  fontSize: Math.max(1, value),
+                }))
+              }
+              onPreview={(value) =>
+                previewChange(`Change ${selectionLabel} font size`, (current) => ({
+                  ...current,
+                  fontSize: Math.max(1, value),
+                }))
+              }
+              value={fontSize.value ?? 16}
+            />
+            <AuthoringNumberField
+              label="Font weight"
+              minimum={1}
+              mixed={fontWeight.mixed}
+              onCommit={(value) =>
+                commitChange(`Change ${selectionLabel} font weight`, (current) => ({
+                  ...current,
+                  fontWeight: Math.round(clamp(value, 1, 900)),
+                }))
+              }
+              onPreview={(value) =>
+                previewChange(`Change ${selectionLabel} font weight`, (current) => ({
+                  ...current,
+                  fontWeight: Math.round(clamp(value, 1, 900)),
+                }))
+              }
+              value={fontWeight.value ?? 400}
+            />
+            <AuthoringNumberField
+              label="Line height"
+              minimum={1}
+              mixed={lineHeight.mixed}
+              onCommit={(value) =>
+                commitChange(`Change ${selectionLabel} line height`, (current) => ({
+                  ...current,
+                  lineHeight: Math.max(1, value),
+                }))
+              }
+              onPreview={(value) =>
+                previewChange(`Change ${selectionLabel} line height`, (current) => ({
+                  ...current,
+                  lineHeight: Math.max(1, value),
+                }))
+              }
+              value={lineHeight.value ?? 19}
+            />
+            <AuthoringNumberField
+              label="Letter spacing"
+              mixed={letterSpacing.mixed}
+              onCommit={(value) =>
+                commitChange(`Change ${selectionLabel} letter spacing`, (current) => ({
+                  ...current,
+                  letterSpacing: clamp(value, -1_000, 1_000),
+                }))
+              }
+              onPreview={(value) =>
+                previewChange(`Change ${selectionLabel} letter spacing`, (current) => ({
+                  ...current,
+                  letterSpacing: clamp(value, -1_000, 1_000),
+                }))
+              }
+              value={letterSpacing.value ?? 0}
+            />
+            <label className="canvas-property">
+              <span>Text alignment</span>
+              <select
+                aria-label="Text alignment"
+                onChange={(event) => {
+                  const next = event.currentTarget.value;
+                  if (next === "") return;
+                  const textAlign = next as NonNullable<WorkbenchNode["textAlign"]>;
+                  commitChange(
+                    `Change ${selectionLabel} text alignment`,
+                    (current) => ({ ...current, textAlign }),
+                  );
+                }}
+                value={textAlign.mixed ? "" : textAlign.value}
+              >
+                {textAlign.mixed ? <option value="">Mixed</option> : null}
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+                <option value="justify">Justify</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
 
       <fieldset aria-label="Appearance" className="inspector-section">
         <legend>Appearance</legend>

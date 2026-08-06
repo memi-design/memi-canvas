@@ -23,6 +23,14 @@ export interface SharedAuthoringProperties {
   readonly stroke: SharedAuthoringValue<string | undefined>;
   readonly strokeWeight: SharedAuthoringValue<number | undefined>;
   readonly text: SharedAuthoringValue<string | undefined>;
+  readonly fontFamily: SharedAuthoringValue<string | undefined>;
+  readonly fontSize: SharedAuthoringValue<number | undefined>;
+  readonly fontWeight: SharedAuthoringValue<number | undefined>;
+  readonly letterSpacing: SharedAuthoringValue<number | undefined>;
+  readonly lineHeight: SharedAuthoringValue<number | undefined>;
+  readonly textAlign: SharedAuthoringValue<
+    WorkbenchNode["textAlign"]
+  >;
   readonly width: SharedAuthoringValue<number>;
   readonly x: SharedAuthoringValue<number>;
   readonly y: SharedAuthoringValue<number>;
@@ -107,6 +115,12 @@ export function sharedAuthoringProperties(
     stroke: sharedValue(nodes, (node) => node.stroke),
     strokeWeight: sharedValue(nodes, (node) => node.strokeWeight),
     text: sharedValue(nodes, (node) => node.text),
+    fontFamily: sharedValue(nodes, (node) => node.fontFamily),
+    fontSize: sharedValue(nodes, (node) => node.fontSize),
+    fontWeight: sharedValue(nodes, (node) => node.fontWeight),
+    letterSpacing: sharedValue(nodes, (node) => node.letterSpacing),
+    lineHeight: sharedValue(nodes, (node) => node.lineHeight),
+    textAlign: sharedValue(nodes, (node) => node.textAlign),
     width: sharedValue(nodes, (node) => node.size.width),
     x: sharedValue(nodes, (node) => node.position.x),
     y: sharedValue(nodes, (node) => node.position.y),

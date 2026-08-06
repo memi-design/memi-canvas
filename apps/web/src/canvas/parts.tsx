@@ -409,7 +409,27 @@ export function CanvasNodeView({
             : {}),
           ...((!semanticOverlay || semanticOverride) &&
           node.kind === "Text"
-            ? { color: node.fill }
+            ? {
+                color: node.fill,
+                ...(node.fontFamily === undefined
+                  ? {}
+                  : { fontFamily: node.fontFamily }),
+                ...(node.fontSize === undefined
+                  ? {}
+                  : { fontSize: `${node.fontSize}px` }),
+                ...(node.fontWeight === undefined
+                  ? {}
+                  : { fontWeight: node.fontWeight }),
+                ...(node.letterSpacing === undefined
+                  ? {}
+                  : { letterSpacing: `${node.letterSpacing}px` }),
+                ...(node.lineHeight === undefined
+                  ? {}
+                  : { lineHeight: `${node.lineHeight}px` }),
+                ...(node.textAlign === undefined
+                  ? {}
+                  : { textAlign: node.textAlign }),
+              }
             : {}),
           height: "100%",
           width: "100%",

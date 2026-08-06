@@ -318,6 +318,12 @@ export interface WorkbenchNode {
   readonly hidden: boolean;
   readonly path?: readonly Point[];
   readonly text?: string;
+  readonly fontFamily?: string;
+  readonly fontSize?: number;
+  readonly fontWeight?: number;
+  readonly letterSpacing?: number;
+  readonly lineHeight?: number;
+  readonly textAlign?: "left" | "center" | "right" | "justify";
   readonly fill?: string;
   readonly stroke?: string;
   readonly rotation?: number;
@@ -578,6 +584,22 @@ export function designDocumentFromWorkbench(
           ? {}
           : { path: structuredClone(node.path) }),
         ...(node.text === undefined ? {} : { text: node.text }),
+        ...(node.fontFamily === undefined
+          ? {}
+          : { fontFamily: node.fontFamily }),
+        ...(node.fontSize === undefined ? {} : { fontSize: node.fontSize }),
+        ...(node.fontWeight === undefined
+          ? {}
+          : { fontWeight: node.fontWeight }),
+        ...(node.letterSpacing === undefined
+          ? {}
+          : { letterSpacing: node.letterSpacing }),
+        ...(node.lineHeight === undefined
+          ? {}
+          : { lineHeight: node.lineHeight }),
+        ...(node.textAlign === undefined
+          ? {}
+          : { textAlign: node.textAlign }),
         ...(node.frameContent === undefined
           ? {}
           : { frameContent: node.frameContent }),

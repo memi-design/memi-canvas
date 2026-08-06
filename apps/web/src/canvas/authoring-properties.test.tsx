@@ -100,10 +100,24 @@ describe("professional authoring properties", () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(
-      (onChange.mock.calls[0]?.[1](textNode) as WorkbenchNode & {
+      (onChange.mock.calls[0]![1](textNode) as WorkbenchNode & {
         fontSize?: number;
       }).fontSize,
     ).toBe(48);
+  });
+
+  it("renders and undoes a canonical typography edit in the workbench", async () => {
+    await renderWorkbench();
+    const text = screen.getByRole("button", {
+      name: "Welcome headline on canvas",
+    });
+    fireEvent.click(text);
+
+    await commitNumber("Font size", "48");
+    await waitFor(() => expect(text.style.fontSize).toBe("48px"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(text.style.fontSize).toBe(""));
   });
 
   it("coalesces a numeric field session into one semantic change", async () => {

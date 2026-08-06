@@ -145,6 +145,12 @@ export type CanvasLayoutV2 = z.infer<typeof CanvasLayoutV2Schema>;
 export const CanvasTextV2Schema = z.strictObject({
   characters: z.string().max(1_000_000),
   autoResize: z.enum(["none", "width-height", "height"]),
+  fontFamily: z.string().trim().min(1).max(512).optional(),
+  fontSize: FiniteNumberSchema.positive().max(10_000).optional(),
+  fontWeight: z.number().int().min(1).max(900).optional(),
+  letterSpacing: FiniteNumberSchema.min(-1_000).max(1_000).optional(),
+  lineHeight: FiniteNumberSchema.positive().max(10_000).optional(),
+  textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
 });
 export type CanvasTextV2 = z.infer<typeof CanvasTextV2Schema>;
 
