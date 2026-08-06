@@ -65,6 +65,18 @@ describe("Memi editor Studio theme contract", () => {
     expect(interactionsCss).toMatch(
       /\.canvas-node__selection-bounds[\s\S]*?border-color:\s*var\(--accent\)/,
     );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-bounds[\s\S]*?inset:\s*0[\s\S]*?position:\s*absolute[\s\S]*?pointer-events:\s*none/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-handle[\s\S]*?height:\s*calc\(8px \* var\(--canvas-inverse-zoom\)\)[\s\S]*?position:\s*absolute[\s\S]*?width:\s*calc\(8px \* var\(--canvas-inverse-zoom\)\)/,
+    );
+    expect(interactionsCss).toContain(
+      ".canvas-node__selection-handle--nw",
+    );
+    expect(interactionsCss).toContain(
+      ".canvas-node__selection-handle--se",
+    );
     expect(css).not.toContain(".canvas-node__selection-bounds {");
     expect(css).not.toContain(".canvas-node__selection-handle {");
 
