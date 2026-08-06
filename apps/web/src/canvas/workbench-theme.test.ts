@@ -6,6 +6,10 @@ const css = readFileSync(
   resolve("apps/web/src/canvas/workbench.css"),
   "utf8",
 );
+const interactionsCss = readFileSync(
+  resolve("apps/web/src/canvas/interactions.css"),
+  "utf8",
+);
 const gridCss = readFileSync(
   resolve("apps/web/src/canvas/canvas-grid.css"),
   "utf8",
@@ -58,9 +62,11 @@ describe("Memi editor Studio theme contract", () => {
     expect(css).toMatch(
       /\.layers-tree \.layer-leaf\[aria-selected="true"\][\s\S]*?background:\s*var\(--accent-dark\)/,
     );
-    expect(css).toMatch(
-      /\.canvas-node\[data-selected="true"\][\s\S]*?border-color:\s*var\(--accent\)/,
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-bounds[\s\S]*?border-color:\s*var\(--accent\)/,
     );
+    expect(css).not.toContain(".canvas-node__selection-bounds {");
+    expect(css).not.toContain(".canvas-node__selection-handle {");
 
     const weights = Array.from(
       chromeCss.matchAll(/font-weight:\s*(\d+)/g),
