@@ -2,6 +2,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type DragEvent,
   type KeyboardEvent,
 } from "react";
 
@@ -10,6 +11,12 @@ import { descendantNodeIds } from "./layer-hierarchy.js";
 import type { WorkbenchNode } from "./model.js";
 
 const expansionSeparator = "\u0001";
+
+export interface LayerMoveRequest {
+  readonly index: number;
+  readonly nodeId: string;
+  readonly parentId: string | null;
+}
 
 /**
  * Adds selection-required tree branches without scheduling an update when they
@@ -32,10 +39,12 @@ export function mergeExpansionIds(
 
 export function Layers({
   nodes,
+  onMove,
   selectedNodeId,
   onSelect,
 }: {
   readonly nodes: readonly WorkbenchNode[];
+  readonly onMove?: (move: LayerMoveRequest) => void;
   readonly selectedNodeId: string | null;
   readonly onSelect: (nodeId: string) => void;
 }) {
@@ -194,6 +203,10 @@ export function Layers({
     }),
     [designIds, importedDescendantIds, nodes],
   );
+  const draftIds = useMemo(
+    () => new Set(draftNodes.map(({ id }) => id)),
+    [draftNodes],
+  );
   const selectedNode =
     selectedNodeId === null ? undefined : nodesById.get(selectedNodeId);
   const selectedIsDesign =
@@ -249,7 +262,24 @@ export function Layers({
       return ["design-system"];
     }
     if (sourceAnchor === undefined) {
-      return ["drafts"];
+      const draftBranches: string[] = [];
+      let current = selectedNode;
+      const seen = new Set<string>();
+      while (
+        current !== undefined &&
+        draftIds.has(current.id) &&
+        !seen.has(current.id)
+      ) {
+        seen.add(current.id);
+        if ((childrenByParentId.get(current.id)?.length ?? 0) > 0) {
+          draftBranches.push(`draft-${current.id}`);
+        }
+        current =
+          current.parentId === null
+            ? undefined
+            : nodesById.get(current.parentId);
+      }
+      return ["drafts", ...draftBranches];
     }
     return [
       "product-flows",
@@ -264,6 +294,8 @@ export function Layers({
   const [focusedItemId, setFocusedItemId] = useState(
     selectedNodeId ?? "product-flows",
   );
+  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
   const requiredExpansionSignature = [...requiredExpansionIds()]
     .sort()
     .join(expansionSeparator);
@@ -351,6 +383,179 @@ export function Layers({
     node.kind === "ReferenceFrame" && node.locked
       ? `${node.name} ${node.kind} Locked reference`
       : `${node.name} ${node.kind}`;
+
+  const editableContainerKinds = new Set<WorkbenchNode["kind"]>([
+    "Component",
+    "DraftFrame",
+    "Frame",
+    "Group",
+    "Section",
+  ]);
+  const sourceAuthorityKinds = new Set<WorkbenchNode["kind"]>([
+    "CodeFrame",
+    "ReferenceFrame",
+    "RoutePlaceholder",
+  ]);
+  const hierarchyAllowsMove = (node: WorkbenchNode): boolean => {
+    const seen = new Set<string>();
+    let current: WorkbenchNode | undefined = node;
+    while (current !== undefined) {
+      if (
+        seen.has(current.id) ||
+        current.locked ||
+        current.source !== undefined ||
+        sourceAuthorityKinds.has(current.kind)
+      ) {
+        return false;
+      }
+      seen.add(current.id);
+      current =
+        current.parentId === null
+          ? undefined
+          : nodesById.get(current.parentId);
+    }
+    return true;
+  };
+  const acceptsChildren = (node: WorkbenchNode): boolean =>
+    editableContainerKinds.has(node.kind) && hierarchyAllowsMove(node);
+  const isAncestorOf = (ancestorId: string, nodeId: string): boolean => {
+    const seen = new Set<string>();
+    let current = nodesById.get(nodeId);
+    while (current !== undefined && !seen.has(current.id)) {
+      if (current.id === ancestorId) return true;
+      seen.add(current.id);
+      current =
+        current.parentId === null
+          ? undefined
+          : nodesById.get(current.parentId);
+    }
+    return false;
+  };
+  const requestMove = (move: LayerMoveRequest, message: string): void => {
+    onMove?.(move);
+    setMoveAnnouncement(message);
+  };
+  const siblingNodes = (parentId: string | null): readonly WorkbenchNode[] =>
+    nodes.filter((candidate) => candidate.parentId === parentId);
+  const dropMove = (
+    event: DragEvent<HTMLLIElement>,
+    target: WorkbenchNode,
+  ): LayerMoveRequest | null => {
+    const sourceId =
+      draggedNodeId ?? event.dataTransfer.getData("text/plain") ?? null;
+    const source = sourceId === null ? undefined : nodesById.get(sourceId);
+    if (
+      source === undefined ||
+      source.id === target.id ||
+      !hierarchyAllowsMove(source) ||
+      isAncestorOf(source.id, target.id)
+    ) {
+      return null;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const offset =
+      bounds.height <= 0 ? 0.5 : (event.clientY - bounds.top) / bounds.height;
+    if (acceptsChildren(target) && offset >= 0.25 && offset <= 0.75) {
+      return {
+        index: siblingNodes(target.id).filter(({ id }) => id !== source.id)
+          .length,
+        nodeId: source.id,
+        parentId: target.id,
+      };
+    }
+    const siblings = siblingNodes(target.parentId).filter(
+      ({ id }) => id !== source.id,
+    );
+    const targetIndex = siblings.findIndex(({ id }) => id === target.id);
+    if (targetIndex < 0) return null;
+    return {
+      index: targetIndex + (offset > 0.5 ? 1 : 0),
+      nodeId: source.id,
+      parentId: target.parentId,
+    };
+  };
+  const draftDragProps = (node: WorkbenchNode) => {
+    const movable = onMove !== undefined && hierarchyAllowsMove(node);
+    return {
+      draggable: movable,
+      onDragEnd: () => setDraggedNodeId(null),
+      onDragOver: (event: DragEvent<HTMLLIElement>) => {
+        if (dropMove(event, node) === null) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      },
+      onDragStart: (event: DragEvent<HTMLLIElement>) => {
+        if (!movable) {
+          event.preventDefault();
+          return;
+        }
+        setDraggedNodeId(node.id);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", node.id);
+      },
+      onDrop: (event: DragEvent<HTMLLIElement>) => {
+        const move = dropMove(event, node);
+        setDraggedNodeId(null);
+        if (move === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        requestMove(move, `Moved ${move.nodeId} near ${node.name}`);
+      },
+    };
+  };
+
+  const handleDraftMoveKey = (
+    event: KeyboardEvent<HTMLLIElement>,
+    node: WorkbenchNode,
+  ): boolean => {
+    if (!event.altKey || !hierarchyAllowsMove(node) || onMove === undefined) {
+      return false;
+    }
+    const siblings = siblingNodes(node.parentId);
+    const currentIndex = siblings.findIndex(({ id }) => id === node.id);
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      const nextIndex =
+        currentIndex + (event.key === "ArrowUp" ? -1 : 1);
+      if (nextIndex < 0 || nextIndex >= siblings.length) return true;
+      event.preventDefault();
+      requestMove(
+        { index: nextIndex, nodeId: node.id, parentId: node.parentId },
+        `${node.name} moved ${event.key === "ArrowUp" ? "up" : "down"}`,
+      );
+      return true;
+    }
+    if (event.key === "ArrowRight") {
+      const previous = siblings[currentIndex - 1];
+      if (previous === undefined || !acceptsChildren(previous)) return true;
+      event.preventDefault();
+      requestMove(
+        {
+          index: siblingNodes(previous.id).length,
+          nodeId: node.id,
+          parentId: previous.id,
+        },
+        `${node.name} moved into ${previous.name}`,
+      );
+      return true;
+    }
+    if (event.key === "ArrowLeft" && node.parentId !== null) {
+      const parent = nodesById.get(node.parentId);
+      if (parent === undefined || !hierarchyAllowsMove(parent)) return true;
+      const parentSiblings = siblingNodes(parent.parentId);
+      const parentIndex = parentSiblings.findIndex(({ id }) => id === parent.id);
+      event.preventDefault();
+      requestMove(
+        {
+          index: parentIndex + 1,
+          nodeId: node.id,
+          parentId: parent.parentId,
+        },
+        `${node.name} moved out of ${parent.name}`,
+      );
+      return true;
+    }
+    return false;
+  };
 
   const renderLeaf = (node: WorkbenchNode) => (
     <li
@@ -606,9 +811,134 @@ export function Layers({
       </li>
     );
   };
+  const renderDraftBranch = (node: WorkbenchNode): React.ReactNode => {
+    const children = (childrenByParentId.get(node.id) ?? []).filter(
+      (candidate) => draftIds.has(candidate.id),
+    );
+    const branchId = `draft-${node.id}`;
+    const isExpanded = expanded.has(branchId);
+    const movable = onMove !== undefined && hierarchyAllowsMove(node);
+    const common = {
+      "aria-keyshortcuts": movable
+        ? "Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
+        : undefined,
+      "aria-label": nodeAriaLabel(node),
+      "aria-selected": node.id === selectedNodeId,
+      ...draftDragProps(node),
+      key: node.id,
+      onFocus: () => setFocusedItemId(node.id),
+      role: "treeitem" as const,
+      tabIndex: node.id === focusedItemId ? 0 : -1,
+    };
+    if (children.length === 0) {
+      return (
+        <li
+          {...common}
+          className="layer-leaf"
+          onClick={() => onSelect(node.id)}
+          onKeyDown={(event) => {
+            if (!handleDraftMoveKey(event, node)) handleLeafKeyDown(event, node);
+          }}
+        >
+          <span className="layer-row-icon">
+            <EditorIcon name={layerIcon(node)} size={14} />
+          </span>
+          <span className="layer-row-label">{layerLabel(node)}</span>
+          {node.locked ? (
+            <span className="layer-row-state" title="Locked">
+              <EditorIcon name="lock" size={12} />
+            </span>
+          ) : null}
+        </li>
+      );
+    }
+    return (
+      <li
+        {...common}
+        aria-expanded={isExpanded}
+        className="layer-group layer-node-branch"
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (handleDraftMoveKey(event, node)) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(node.id);
+          } else if (event.key === "ArrowRight") {
+            event.preventDefault();
+            if (!isExpanded) toggle(branchId);
+            else {
+              event.currentTarget
+                .querySelector<HTMLElement>(
+                  ':scope > [role="group"] > [role="treeitem"]',
+                )
+                ?.focus();
+            }
+          } else if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            if (isExpanded) toggle(branchId);
+            else {
+              event.currentTarget.parentElement
+                ?.closest<HTMLElement>('[role="treeitem"]')
+                ?.focus();
+            }
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            focusAdjacentItem(
+              event,
+              event.key === "ArrowDown" ? "next" : "previous",
+            );
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            focusAdjacentItem(event, event.key === "Home" ? "first" : "last");
+          }
+        }}
+      >
+        <div
+          className="layer-group-row"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(node.id);
+          }}
+        >
+          <span
+            aria-hidden="true"
+            className="layer-branch-toggle"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggle(branchId);
+            }}
+          >
+            <EditorIcon
+              name={isExpanded ? "chevron-down" : "chevron-right"}
+              size={12}
+            />
+          </span>
+          <EditorIcon name={layerIcon(node)} size={14} />
+          <span>{layerLabel(node)}</span>
+          {node.locked ? (
+            <span className="layer-row-state" title="Locked">
+              <EditorIcon name="lock" size={12} />
+            </span>
+          ) : null}
+        </div>
+        {isExpanded ? (
+          <ul className="layer-group-children" role="group">
+            {children.map(renderDraftBranch)}
+          </ul>
+        ) : null}
+      </li>
+    );
+  };
+  const draftRootNodes = draftNodes.filter(
+    (node) => node.parentId === null || !draftIds.has(node.parentId),
+  );
 
   return (
-    <ul aria-label="Layers" className="layers-tree" role="tree">
+    <>
+      <p aria-live="polite" className="canvas-visually-hidden" role="status">
+        {moveAnnouncement}
+      </p>
+      <ul aria-label="Layers" className="layers-tree" role="tree">
       {designNodes.length > 0
         ? renderGroup(
             "design-system",
@@ -684,11 +1014,12 @@ export function Layers({
         ? renderGroup(
             "drafts",
             "Drafts",
-            () => draftNodes.map(renderLeaf),
+            () => draftRootNodes.map(renderDraftBranch),
             "frame",
           )
         : null}
-    </ul>
+      </ul>
+    </>
   );
 }
 

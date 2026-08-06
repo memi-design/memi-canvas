@@ -105,16 +105,7 @@ describe("Draft layers hierarchy", () => {
       node("Parent", "Group", null),
       node("Child frame", "Frame", "Parent"),
       node("Locked", "Rectangle", null, { locked: true }),
-      node("Source", "CodeFrame", null, {
-        source: {
-          coverageCellId: null,
-          repositoryRevision: "repo@abc123",
-          routeId: null,
-          sourceAnchor: "src/App.tsx#App",
-          stateId: null,
-          viewport: { height: 800, name: "desktop", width: 1280 },
-        },
-      }),
+      node("Source", "CodeFrame", null),
     ];
     render(
       <Layers
@@ -136,6 +127,7 @@ describe("Draft layers hierarchy", () => {
 
     onMove.mockClear();
     const parent = screen.getByRole("treeitem", { name: "Parent Group" });
+    fireEvent.click(parent.querySelector(".layer-branch-toggle")!);
     const child = within(parent).getByRole("treeitem", {
       name: "Child frame Frame",
     });

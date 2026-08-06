@@ -147,11 +147,11 @@ describe("workbench hierarchy actions", () => {
       ...frame("source", null, 500, 0),
       kind: "CodeFrame" as const,
       source: {
-        coverageCellId: null,
+        coverageCellId: "home:desktop",
         repositoryRevision: "repo@abc123",
-        routeId: null,
+        routeId: "home",
         sourceAnchor: "src/App.tsx#App",
-        stateId: null,
+        stateId: "default",
         viewport: { height: 800, name: "desktop" as const, width: 1280 },
       },
     };
