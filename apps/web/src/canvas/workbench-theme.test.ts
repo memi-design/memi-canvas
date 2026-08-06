@@ -139,5 +139,8 @@ describe("Memi editor Studio theme contract", () => {
     expect(interactionsCss).toMatch(
       /\.canvas-node\[data-interaction-restriction="source-linked"\][\s\S]*?\.canvas-node__selection-bounds/,
     );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="source-linked"\]\[data-direct-manipulation="move"\][\s\S]*?\.canvas-node__selection-bounds[\s\S]*?var\(--accent-soft\)/,
+    );
   });
 });
