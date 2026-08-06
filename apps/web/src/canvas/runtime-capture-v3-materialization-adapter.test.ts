@@ -21,6 +21,7 @@ import {
   prepareRuntimeCaptureMaterializationV3,
 } from "./runtime-capture-v3-materialization-adapter.js";
 import { hydrateCommittedImportCanvasDocumentV3 } from "../imports/repository/committed-import-v3-hydration.js";
+import { RepositoryReconstructionReviewSchema } from "../imports/repository/repository-reconstruction-review.js";
 
 const ids = {
   document: "doc_01J00000000000000000000000",
@@ -230,6 +231,25 @@ function committedJob() {
   });
 }
 
+function verifiedReconstructionReview() {
+  return RepositoryReconstructionReviewSchema.parse({
+    confidenceBySemanticKey: {
+      "auth.continue.label": {
+        basis: ["runtime-geometry", "source-anchor"],
+        score: 0.98,
+      },
+    },
+    fidelity: {
+      diffArtifactId: "art_01J00000000000000000000006",
+      evaluatedAt: "2026-08-02T17:00:05.000Z",
+      maximumGeometryDelta: 0.25,
+      ssim: 0.992,
+      status: "verified",
+    },
+    schemaVersion: 1,
+  });
+}
+
 function memoryJournalPort() {
   let journal: CanvasDocumentJournalV3 | null = null;
   const appends: CanvasDocumentAppendV3[] = [];
@@ -411,6 +431,15 @@ describe("runtime capture V3 materialization", () => {
       screenshotArtifactId: "art_01J00000000000000000000001",
       verification: { status: "verified" },
     });
+    expect(
+      result.persistence.document.reconstructionsById[plan.reconstructionId]
+        ?.fidelity,
+    ).toEqual({
+      diffArtifactId: null,
+      maximumGeometryDelta: null,
+      ssim: null,
+      status: "needs-review",
+    });
 
     const restarted = await CanvasDocumentV3PersistenceAdapter.open(
       seed(),
@@ -427,5 +456,39 @@ describe("runtime capture V3 materialization", () => {
     expect(repeated.plans).toHaveLength(0);
     expect(repeated.persistence.document).toEqual(result.persistence.document);
     expect(memory.appends).toHaveLength(1);
+  });
+
+  it("preserves verified reconstruction fidelity separately from runtime capture validity", async () => {
+    const memory = memoryJournalPort();
+    const initial = await CanvasDocumentV3PersistenceAdapter.open(
+      seed(),
+      memory.port,
+    );
+    const result = await hydrateCommittedImportCanvasDocumentV3(initial, {
+      expectedDocumentRevision: 0,
+      job: committedJob(),
+      pageId: ids.page,
+      reconstructionsByArtifactId: {
+        art_01J00000000000000000000000: capture(),
+      },
+      reconstructionReviewsByArtifactId: {
+        art_01J00000000000000000000000: verifiedReconstructionReview(),
+      },
+    });
+
+    const plan = result.plans[0]!;
+    expect(
+      result.persistence.document.evidenceById[plan.evidenceId]?.verification
+        .status,
+    ).toBe("verified");
+    expect(
+      result.persistence.document.reconstructionsById[plan.reconstructionId]
+        ?.fidelity,
+    ).toEqual({
+      diffArtifactId: "art_01J00000000000000000000006",
+      maximumGeometryDelta: 0.25,
+      ssim: 0.992,
+      status: "verified",
+    });
   });
 });
