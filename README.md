@@ -132,7 +132,7 @@ When a tagged macOS release is available, download the arm64 DMG from the stable
 
 [Download Memi Canvas for macOS](https://github.com/memi-design/memi-canvas/releases/latest/download/Memi.Canvas-latest-arm64.dmg)
 
-The release also includes an `.app.zip`, `release-manifest.json`, and `SHA256SUMS.txt`. Check the manifest before distributing a build: unsigned previews are expected until Apple Developer ID signing and notarization secrets are configured for the repository. The package requires macOS 13 or newer and currently targets Apple silicon.
+The release also includes an `.app.zip`, `release-manifest.json`, and `SHA256SUMS.txt`. Check the manifest before distributing a build: it records the immutable source commit, GitHub Actions run provenance, signing state, and per-artifact digests. Unsigned previews are expected until Apple Developer ID signing and notarization secrets are configured for the repository. The package requires macOS 13 or newer and currently targets Apple silicon.
 
 Maintainers create a release by pushing a protected tag such as `v0.1.0`; the `macOS release` workflow builds the DMG from that exact tag, verifies the disk image, creates the stable aliases used by the landing page, and publishes checksums with the GitHub Release.
 
