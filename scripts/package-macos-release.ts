@@ -148,6 +148,18 @@ export function projectSigningState(input: {
   };
 }
 
+export function assertSigningRequirement(input: {
+  readonly requireSigned: boolean;
+  readonly signed: boolean;
+  readonly notarized: boolean;
+}): void {
+  if (input.requireSigned && (!input.signed || !input.notarized)) {
+    throw new Error(
+      "Configured public releases must be signed and notarized before packaging.",
+    );
+  }
+}
+
 interface ReleaseManifestInput {
   readonly tag: string;
   readonly architecture: "arm64";
@@ -279,6 +291,11 @@ async function packageRelease(): Promise<void> {
     signatureExitCode: signature.exitCode,
     identityDetails: `${identity.stdout}\n${identity.stderr}`,
     notarizationExitCode: notarization?.exitCode,
+  });
+  assertSigningRequirement({
+    requireSigned: process.argv.includes("--require-signed"),
+    signed,
+    notarized,
   });
 
   const artifactNames = [dmgName, appZipName, latestDmgName, latestAppZipName];

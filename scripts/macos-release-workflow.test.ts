@@ -33,6 +33,11 @@ describe("macOS release workflow contract", () => {
     );
     expect(workflow).toContain('/usr/bin/ditto -x -k "${app_zip}" "${smoke_root}"');
     expect(workflow).toContain('--app "${smoke_root}/Memi Canvas.app"');
+    expect(workflow).toContain(
+      '/usr/bin/hdiutil attach -readonly -nobrowse',
+    );
+    expect(workflow).toContain('--app "${dmg_mount}/Memi Canvas.app"');
+    expect(workflow.match(/scripts\/smoke-macos-app\.ts/gu)).toHaveLength(2);
     expect(smokeIndex).toBeGreaterThan(0);
     expect(packageIndex).toBeGreaterThan(0);
     expect(smokeIndex).toBeGreaterThan(packageIndex);
