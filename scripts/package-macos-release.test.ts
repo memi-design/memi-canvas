@@ -13,6 +13,7 @@ import {
   projectSigningState,
   releaseVersion,
   sha256File,
+  shouldRunPackageRelease,
   type ArtifactRecord,
 } from "./package-macos-release.js";
 
@@ -33,6 +34,20 @@ afterEach(async () => {
 });
 
 describe("macOS release packaging contract", () => {
+  it("runs when vite-node passes the package script after its own entrypoint", () => {
+    const scriptPath = join(process.cwd(), "scripts", "package-macos-release.ts");
+
+    expect(
+      shouldRunPackageRelease([
+        process.execPath,
+        join(process.cwd(), "node_modules", "vite-node", "vite-node.mjs"),
+        scriptPath,
+        "--tag",
+        "v1.2.3",
+      ]),
+    ).toBe(true);
+  });
+
   it.each([
     ["v1.2.3", "1.2.3"],
     ["v10.20.30-beta.1", "10.20.30-beta.1"],
