@@ -17,6 +17,7 @@ import {
   createSceneState,
   createSelectionState,
   replaceNode,
+  type WorkbenchNode,
 } from "./model.js";
 import { createCanvasAutosave } from "./persistence.js";
 
@@ -76,6 +77,35 @@ beforeEach(() => {
 });
 
 describe("professional authoring properties", () => {
+  it("exposes coherent typography controls only for text layers", async () => {
+    const onChange = vi.fn();
+    const textNode = createSceneState(canvasWorkbenchFixture).nodes.find(
+      ({ kind }) => kind === "Text",
+    )!;
+    render(
+      <AuthoringPropertySections node={textNode} onChange={onChange} />,
+    );
+
+    expect(screen.getByLabelText("Font family")).toBeTruthy();
+    expect(screen.getByLabelText("Font size")).toBeTruthy();
+    expect(screen.getByLabelText("Font weight")).toBeTruthy();
+    expect(screen.getByLabelText("Line height")).toBeTruthy();
+    expect(screen.getByLabelText("Letter spacing")).toBeTruthy();
+    expect(screen.getByLabelText("Text alignment")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Font size"), {
+      target: { value: "48" },
+    });
+    fireEvent.blur(screen.getByLabelText("Font size"));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(
+      (onChange.mock.calls[0]?.[1](textNode) as WorkbenchNode & {
+        fontSize?: number;
+      }).fontSize,
+    ).toBe(48);
+  });
+
   it("coalesces a numeric field session into one semantic change", async () => {
     const onChange = vi.fn();
     const onPreview = vi.fn();
