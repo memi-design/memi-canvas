@@ -15,13 +15,20 @@ import {
   createCanvasDocumentV3,
 } from "@memi/canvas-document";
 
+import { createRepositoryCanvasProject } from "../imports/repository/repository-workbench.js";
 import { RuntimeCaptureScreenV1Schema } from "./runtime-capture-canonical-types.js";
 import {
   materializeRuntimeCaptureV3,
   prepareRuntimeCaptureMaterializationV3,
 } from "./runtime-capture-v3-materialization-adapter.js";
-import { hydrateCommittedImportCanvasDocumentV3 } from "../imports/repository/committed-import-v3-hydration.js";
+import {
+  hydrateCommittedImportCanvasDocumentV3,
+  persistCommittedImportCanvasDocumentV3,
+} from "../imports/repository/committed-import-v3-hydration.js";
+import type { StreamingRepositoryCanvasProject } from "../imports/repository/repository-capture-workbench.js";
+import type { RepositoryProjectRecord } from "../imports/repository/repository-project-persistence.js";
 import { RepositoryReconstructionReviewSchema } from "../imports/repository/repository-reconstruction-review.js";
+import type { RuntimeClientV1 } from "../runtime/runtime-client.js";
 
 const ids = {
   document: "doc_01J00000000000000000000000",
@@ -248,6 +255,43 @@ function verifiedReconstructionReview() {
     },
     schemaVersion: 1,
   });
+}
+
+function repositoryManifest() {
+  return {
+    components: [],
+    dirty: false,
+    files: [],
+    platform: "react-native-expo" as const,
+    projectName: "Buzzr",
+    revision: sourceRevision,
+    rootPath: "/fixtures/products/buzzr",
+    schemaVersion: 1 as const,
+    screens: [],
+    tokens: [],
+  };
+}
+
+function persistedRecord(): RepositoryProjectRecord {
+  const job = committedJob();
+  const artifact = job.artifacts[0]!;
+  return {
+    capture: {
+      artifactReferences: {
+        [artifact.id]: {
+          alt: "Buzzr sign-in screen",
+          capturedAt: "2026-08-02T17:00:00.000Z",
+          reconstruction: capture(),
+          reconstructionReview: verifiedReconstructionReview(),
+          sourceUrl: "memi-source://repository/app/(auth)/sign-in.tsx",
+          src: `memi-artifact://localhost/${artifact.screenshotArtifactId}`,
+        },
+      },
+      job,
+    },
+    harnessId: "test-harness",
+    manifest: repositoryManifest(),
+  } as unknown as RepositoryProjectRecord;
 }
 
 function memoryJournalPort() {
@@ -490,5 +534,70 @@ describe("runtime capture V3 materialization", () => {
       ssim: 0.992,
       status: "verified",
     });
+  });
+
+  it("forwards persisted reconstruction reviews through committed materialization", async () => {
+    const memory = memoryJournalPort();
+    const baseProject = createRepositoryCanvasProject(
+      repositoryManifest(),
+      ids.project,
+      "test-harness",
+    );
+    const canvasProject: StreamingRepositoryCanvasProject = Object.freeze({
+      ...baseProject,
+      failureCards: Object.freeze([]),
+      importState: Object.freeze({ sequence: 14, state: "ready" as const }),
+      reconstructions: Object.freeze([]),
+    });
+    const runtimeClient = {
+      canvasDocuments: {
+        append: async ({ append }: { append: CanvasDocumentAppendV3 }) => ({
+          receipt: await memory.port.append(append),
+        }),
+        checkpoint: async (
+          { snapshot }: { snapshot: CanvasDocumentSnapshotV3 },
+        ) => {
+          await memory.port.checkpoint(snapshot);
+          return { journal: await memory.port.load(snapshot.identity) };
+        },
+        initialize: async (
+          { snapshot }: { snapshot: CanvasDocumentSnapshotV3 },
+        ) => {
+          await memory.port.initialize(snapshot);
+          return { journal: await memory.port.load(snapshot.identity) };
+        },
+        load: async (
+          { identity }: { identity: CanvasDocumentIdentityV3 },
+        ) => ({ journal: await memory.port.load(identity) }),
+      },
+    } as unknown as Pick<RuntimeClientV1, "canvasDocuments">;
+
+    await persistCommittedImportCanvasDocumentV3({
+      canvasProject,
+      job: committedJob(),
+      record: persistedRecord(),
+      runtimeClient,
+    });
+
+    const operation = memory.appends[0]?.operation;
+    expect(operation?.action.type).toBe("atomic.batch");
+    if (operation?.action.type !== "atomic.batch") return;
+    expect(operation.action.payload.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            next: expect.objectContaining({
+              fidelity: {
+                diffArtifactId: "art_01J00000000000000000000006",
+                maximumGeometryDelta: 0.25,
+                ssim: 0.992,
+                status: "verified",
+              },
+            }),
+          }),
+          type: "reconstruction.define",
+        }),
+      ]),
+    );
   });
 });
