@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  canonicalizeMacOsAppPath,
   findPackagedRuntimeSidecar,
   formatDirectChildDiagnostic,
   macOsVisibleWindowProbe,
@@ -19,9 +20,11 @@ function optionalOption(name: string): string | undefined {
   return value?.trim() || undefined;
 }
 
-const APP_PATH = resolve(
-  optionalOption("--app") ??
-    "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+const APP_PATH = await canonicalizeMacOsAppPath(
+  resolve(
+    optionalOption("--app") ??
+      "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+  ),
 );
 const EXECUTABLE_PATH = resolve(
   APP_PATH,

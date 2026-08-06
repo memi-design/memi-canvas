@@ -1,7 +1,13 @@
+import { realpath } from "node:fs/promises";
+
 export interface ProcessRow {
   readonly pid: number;
   readonly parentPid: number;
   readonly command: string;
+}
+
+export async function canonicalizeMacOsAppPath(appPath: string): Promise<string> {
+  return await realpath(appPath);
 }
 
 export function macOsProcessListArguments(): readonly string[] {
