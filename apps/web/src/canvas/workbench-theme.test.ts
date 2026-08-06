@@ -128,4 +128,16 @@ describe("Memi editor Studio theme contract", () => {
       ") .canvas-node__surface {\n  cursor: crosshair;",
     );
   });
+
+  it("visually separates hover, locked, and source-linked interaction states", () => {
+    expect(interactionsCss).toMatch(
+      /\.canvas-node:not\(\[data-selected="true"\]\)[\s\S]*?\.canvas-node__surface:hover[\s\S]*?outline:/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="locked"\][\s\S]*?\.canvas-node__selection-bounds/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="source-linked"\][\s\S]*?\.canvas-node__selection-bounds/,
+    );
+  });
 });
