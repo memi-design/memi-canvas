@@ -4,6 +4,7 @@ import {
   CanvasDocumentV2Schema,
   CanvasNodeV2Schema,
   CanvasOperationV2Schema,
+  CanvasTextV2Schema,
   LegacyCanvasIdMappingReceiptV2Schema,
   SourceAnchorV2Schema,
 } from "./canvas-v2.js";
@@ -51,6 +52,27 @@ describe("Canvas V2 protocol", () => {
     sourceAnchor: null,
     sourceBinding: null,
   };
+
+  it("validates professional text appearance without accepting invalid metrics", () => {
+    const appearance = {
+      autoResize: "height",
+      characters: "Design at the speed of thought",
+      fontFamily: "Inter Variable",
+      fontSize: 48,
+      fontWeight: 500,
+      letterSpacing: -0.8,
+      lineHeight: 56,
+      textAlign: "center",
+    };
+
+    expect(CanvasTextV2Schema.safeParse(appearance).success).toBe(true);
+    expect(
+      CanvasTextV2Schema.safeParse({ ...appearance, fontSize: 0 }).success,
+    ).toBe(false);
+    expect(
+      CanvasTextV2Schema.safeParse({ ...appearance, fontWeight: 950 }).success,
+    ).toBe(false);
+  });
 
   it("fails closed on unknown document and operation fields", () => {
     const document = {

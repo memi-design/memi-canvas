@@ -179,6 +179,12 @@ const LegacyNodeSchema = z.strictObject({
   strokeAlign: z.enum(["inside", "center", "outside"]).optional(),
   strokeWeight: z.number().finite().nonnegative().optional(),
   text: z.string().max(1_000_000).optional(),
+  fontFamily: safeText(512).optional(),
+  fontSize: z.number().finite().positive().max(10_000).optional(),
+  fontWeight: z.number().int().min(1).max(900).optional(),
+  letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
+  lineHeight: z.number().finite().positive().max(10_000).optional(),
+  textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
 }).superRefine((node, context) => {
   if (node.kind === "Image" && node.image === undefined) {
     context.addIssue({

@@ -17,6 +17,7 @@ import {
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
 
 import { DEFAULT_WORKBENCH_LAYOUT, type WorkbenchNode } from "./model.js";
+import { canvasTextFromWorkbench } from "./workbench-text-style.js";
 
 /** A compact, user-action receipt. It deliberately never accepts scene arrays. */
 export type WorkbenchIntentReceiptV3 =
@@ -296,7 +297,9 @@ function toCanvasNode(
     instanceOverrides: instanceOverrides(node), kind, layout: { ...layout, padding: { ...layout.padding } }, name: node.name,
     pageId, parentId: node.parentId === null ? null : canvasId(document, pageId, node.parentId),
     provenance: detachedProvenance(node), referenceBinding: null, sourceAnchor: null, sourceBinding: null,
-    style: style(node), text: kind === "text" ? { autoResize: "width-height", characters: node.text ?? "" } : null,
+    style: style(node), text: kind === "text"
+      ? canvasTextFromWorkbench(node, node.text ?? "")
+      : null,
     transform: { rotation: node.rotation ?? 0, scaleX: 1, scaleY: 1, x: node.position.x, y: node.position.y },
   });
 }

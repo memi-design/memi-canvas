@@ -279,6 +279,16 @@ export function CanvasNodeView({
   const [directManipulation, setDirectManipulation] =
     useState<DirectManipulation>(null);
   const selectionRole = selectionRoleFor(node);
+  const interactionRestriction = node.locked
+    ? "locked"
+    : node.source !== undefined
+      ? "source-linked"
+      : "none";
+  const selectionDescription = `${selectionRole} selection boundary${
+    interactionRestriction === "none"
+      ? ""
+      : `, ${interactionRestriction} layer`
+  }`;
 
   useEffect(() => {
     if (directManipulation === null) {
@@ -309,6 +319,7 @@ export function CanvasNodeView({
       data-node-id={node.id}
       data-node-kind={node.kind}
       data-locked={node.locked}
+      data-interaction-restriction={interactionRestriction}
       data-proposal={proposed}
       data-selected={selected}
       data-semantic-overlay={semanticOverlay}
@@ -329,7 +340,7 @@ export function CanvasNodeView({
       {selected ? (
         <span
           aria-label={`Selection bounds for ${node.name}`}
-          aria-description={`${selectionRole} selection boundary`}
+          aria-description={selectionDescription}
           className={`canvas-node__selection-bounds canvas-node__selection-bounds--${selectionRole}`}
           data-artwork="false"
           data-selection-role={selectionRole}
@@ -398,7 +409,27 @@ export function CanvasNodeView({
             : {}),
           ...((!semanticOverlay || semanticOverride) &&
           node.kind === "Text"
-            ? { color: node.fill }
+            ? {
+                color: node.fill,
+                ...(node.fontFamily === undefined
+                  ? {}
+                  : { fontFamily: node.fontFamily }),
+                ...(node.fontSize === undefined
+                  ? {}
+                  : { fontSize: `${node.fontSize}px` }),
+                ...(node.fontWeight === undefined
+                  ? {}
+                  : { fontWeight: node.fontWeight }),
+                ...(node.letterSpacing === undefined
+                  ? {}
+                  : { letterSpacing: `${node.letterSpacing}px` }),
+                ...(node.lineHeight === undefined
+                  ? {}
+                  : { lineHeight: `${node.lineHeight}px` }),
+                ...(node.textAlign === undefined
+                  ? {}
+                  : { textAlign: node.textAlign }),
+              }
             : {}),
           height: "100%",
           width: "100%",

@@ -78,4 +78,63 @@ describe("canvas selection feedback", () => {
       screen.queryByRole("status", { name: `Moving ${node.name}` }),
     ).toBeNull();
   });
+
+  it("identifies locked and source-linked selection restrictions without changing artwork", () => {
+    const locked = { ...selectedNode("Frame"), locked: true };
+    const { rerender } = render(
+      <CanvasNodeView
+        node={locked}
+        onPointerDown={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelect={vi.fn()}
+        selected
+      />,
+    );
+
+    const lockedRoot = screen
+      .getByRole("button", { name: `${locked.name} on canvas` })
+      .parentElement;
+    expect(lockedRoot?.getAttribute("data-interaction-restriction")).toBe(
+      "locked",
+    );
+    expect(
+      screen.getByLabelText(`Selection bounds for ${locked.name}`).getAttribute(
+        "aria-description",
+      ),
+    ).toContain("locked");
+
+    const sourceLinked: WorkbenchNode = {
+      ...selectedNode("Frame"),
+      id: "source-linked-frame",
+      name: "Source-linked frame",
+      source: {
+        coverageCellId: "coverage-home",
+        repositoryRevision: "abc123",
+        routeId: "/home",
+        sourceAnchor: "app/home.tsx#Home",
+        stateId: "default",
+        viewport: { height: 844, name: "mobile", width: 390 },
+      },
+    };
+    rerender(
+      <CanvasNodeView
+        node={sourceLinked}
+        onPointerDown={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelect={vi.fn()}
+        selected
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: `${sourceLinked.name} on canvas` })
+        .parentElement?.getAttribute("data-interaction-restriction"),
+    ).toBe("source-linked");
+    expect(
+      screen
+        .getByLabelText(`Selection bounds for ${sourceLinked.name}`)
+        .getAttribute("aria-description"),
+    ).toContain("source-linked");
+  });
 });

@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { LegacyNode } from "./canvas-state-migration.js";
 import { serializeCanvasPath } from "./canvas-path.js";
 import { DEFAULT_WORKBENCH_LAYOUT } from "./model.js";
+import { canvasTextFromWorkbench } from "./workbench-text-style.js";
 
 function nullableRepositoryFields(
   value: Readonly<Record<string, unknown>>,
@@ -230,10 +231,7 @@ export function canonicalNodeFromLegacy(
     },
     text:
       kind === "text"
-        ? {
-            autoResize: "width-height",
-            characters: legacy.text ?? "",
-          }
+        ? canvasTextFromWorkbench(legacy, legacy.text ?? "")
         : null,
     transform: {
       rotation: legacy.rotation ?? 0,
