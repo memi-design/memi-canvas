@@ -13,25 +13,30 @@ describe("macOS release workflow contract", () => {
     const npmCiIndex = workflow.indexOf("- run: npm ci");
     const verificationIndex = workflow.indexOf("npm run verify");
     const firstAppleSecretIndex = workflow.indexOf("secrets.APPLE_");
+    const jobDefinition = workflow.slice(0, workflow.indexOf("    steps:"));
 
     expect(npmCiIndex).toBeGreaterThan(0);
     expect(verificationIndex).toBeGreaterThan(npmCiIndex);
     expect(firstAppleSecretIndex).toBeGreaterThan(verificationIndex);
-    expect(workflow).not.toMatch(/    env:\n(?:      .*\n)*      APPLE_/u);
+    expect(jobDefinition).not.toContain("${{ secrets.");
   });
 
-  it("smokes the exact release app before packaging and upload", async () => {
+  it("smokes the extracted versioned app archive before upload", async () => {
     const workflow = await readFile(workflowPath, "utf8");
     const smokeIndex = workflow.indexOf("scripts/smoke-macos-app.ts");
     const packageIndex = workflow.indexOf("scripts/package-macos-release.ts");
     const uploadIndex = workflow.indexOf("gh release upload");
 
+    expect(workflow).toContain("--bundles app dmg");
     expect(workflow).toContain(
-      '--app "apps/macos/src-tauri/target/release/bundle/macos/Memi Canvas.app"',
+      'Memi.Canvas-${RELEASE_VERSION}-arm64.app.zip',
     );
+    expect(workflow).toContain('/usr/bin/ditto -x -k "${app_zip}" "${smoke_root}"');
+    expect(workflow).toContain('--app "${smoke_root}/Memi Canvas.app"');
     expect(smokeIndex).toBeGreaterThan(0);
-    expect(packageIndex).toBeGreaterThan(smokeIndex);
-    expect(uploadIndex).toBeGreaterThan(packageIndex);
+    expect(packageIndex).toBeGreaterThan(0);
+    expect(smokeIndex).toBeGreaterThan(packageIndex);
+    expect(uploadIndex).toBeGreaterThan(smokeIndex);
   });
 
   it("checks out a tag ref and passes immutable run provenance", async () => {
@@ -43,5 +48,7 @@ describe("macOS release workflow contract", () => {
     expect(workflow).toContain('--workflow-ref "${GITHUB_WORKFLOW_REF}"');
     expect(workflow).toContain('--run-id "${GITHUB_RUN_ID}"');
     expect(workflow).toContain('--run-attempt "${GITHUB_RUN_ATTEMPT}"');
+    expect(workflow).toContain('--server-url "${GITHUB_SERVER_URL}"');
+    expect(workflow).toContain("package_args+=(--require-signed)");
   });
 });

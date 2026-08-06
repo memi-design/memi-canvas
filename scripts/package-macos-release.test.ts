@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  assertSigningRequirement,
   artifactFileNames,
   createReleaseManifest,
   discoverReleaseBundle,
@@ -184,5 +185,32 @@ describe("macOS release packaging contract", () => {
     },
   ])("projects signing state without overstating notarization", (fixture) => {
     expect(projectSigningState(fixture)).toEqual(fixture.expected);
+  });
+
+  it("fails closed when configured release signing is incomplete", () => {
+    expect(() =>
+      assertSigningRequirement({
+        requireSigned: true,
+        signed: true,
+        notarized: false,
+      }),
+    ).toThrow(/signed and notarized/u);
+    expect(() =>
+      assertSigningRequirement({
+        requireSigned: true,
+        signed: false,
+        notarized: false,
+      }),
+    ).toThrow(/signed and notarized/u);
+  });
+
+  it("allows an explicitly unsigned preview when signing is not configured", () => {
+    expect(() =>
+      assertSigningRequirement({
+        requireSigned: false,
+        signed: false,
+        notarized: false,
+      }),
+    ).not.toThrow();
   });
 });
