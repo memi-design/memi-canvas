@@ -16,17 +16,27 @@ import {
   dependentNodeIds,
   nodeAuthority,
   provenanceFromSource,
-  replaceNode,
   uniqueNodeId,
   type Point,
   type ComponentInstanceBinding,
   type WorkbenchNode,
 } from "./model.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
+import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 
+export interface WorkbenchSemanticCommitOptions {
+  readonly selectedIds?: readonly string[];
+  readonly targetIds?: readonly string[];
+}
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
+  /** V3 production sink. It receives a compact receipt, never a scene diff. */
+  readonly commitIntentReceipt?: (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    options?: WorkbenchSemanticCommitOptions,
+  ) => void;
   readonly documentId: string;
   readonly getPastePoint?: () => Point | null;
   readonly nodes: readonly WorkbenchNode[];
@@ -290,6 +300,18 @@ function hierarchyOrderedNodes(
 export function createWorkbenchDocumentActions(
   context: DocumentActionContext,
 ): WorkbenchDocumentActions {
+  const commit = (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    nodes: readonly WorkbenchNode[],
+    options: WorkbenchSemanticCommitOptions = {},
+  ) => {
+    if (context.commitIntentReceipt !== undefined) {
+      context.commitIntentReceipt(label, receipt, options);
+      return;
+    }
+    context.commitScene(label, nodes, options);
+  };
   const clipboardInput = () => ({
     documentId: context.documentId,
     nodes: context.nodes,
@@ -316,7 +338,7 @@ export function createWorkbenchDocumentActions(
               ?.name ?? "selection"
           }`
         : `Cut ${result.deletedIds.length} layers`;
-    context.commitScene(label, result.nodes, {
+    commit(label, { kind: "delete", nodeIds: result.deletedIds }, result.nodes, {
       selectedIds: [],
       targetIds: result.deletedIds,
     });
@@ -331,8 +353,9 @@ export function createWorkbenchDocumentActions(
         return;
       }
       const count = result.pastedNodes.length;
-      context.commitScene(
+      commit(
         `Paste ${count === 1 ? result.pastedNodes[0]?.name ?? "layer" : `${count} layers`}`,
+        { kind: "paste", nodes: result.pastedNodes },
         result.nodes,
         {
           selectedIds: result.selectedIds,
@@ -344,8 +367,15 @@ export function createWorkbenchDocumentActions(
       commitPaste(eventPayload);
       return;
     }
+    // A Memi copy owns a validated in-session payload. Commit it immediately:
+    // native custom-MIME reads are permission-gated and must never turn an
+    // ordinary copy/paste action into an asynchronous no-op.
+    const sessionPayload = readCanvasSessionClipboard();
+    if (sessionPayload !== null) {
+      commitPaste(sessionPayload);
+      return;
+    }
     if (!canReadCanvasSystemClipboard()) {
-      commitPaste();
       return;
     }
     void readCanvasImageFromSystem().then((systemImage) => {
@@ -375,7 +405,7 @@ export function createWorkbenchDocumentActions(
     if (node === null) {
       return;
     }
-    context.commitScene("Paste image", [...context.nodes, node], {
+    commit("Paste image", { kind: "paste", nodes: [node] }, [...context.nodes, node], {
       selectedIds: [node.id],
       targetIds: [node.id],
     });
@@ -416,7 +446,7 @@ export function createWorkbenchDocumentActions(
       selectedNodes.length === 1
         ? `Duplicate ${selectedNodes[0]?.name ?? "selection"}`
         : `Duplicate ${selectedNodes.length} layers`;
-    context.commitScene(label, [...context.nodes, ...duplicates], {
+    commit(label, { kind: "paste", nodes: duplicates }, [...context.nodes, ...duplicates], {
       selectedIds: duplicates.map((node) => node.id),
       targetIds: duplicates.map((node) => node.id),
     });
@@ -456,7 +486,7 @@ export function createWorkbenchDocumentActions(
               ?.name ?? "selection"
           }`
         : `Delete ${deletableIds.length} layers`;
-    context.commitScene(label, remaining, {
+    commit(label, { kind: "delete", nodeIds: [...deletedIds] }, remaining, {
       selectedIds: [],
       targetIds: [...deletedIds],
     });
@@ -475,24 +505,19 @@ export function createWorkbenchDocumentActions(
     ) {
       return;
     }
-    context.commitScene(
+    const { source, ...withoutSource } = selectedNode;
+    const detached: WorkbenchNode = {
+      ...withoutSource,
+      frameContent:
+        selectedNode.frameContent ?? selectedNode.text ?? selectedNode.name,
+      kind: "DraftFrame",
+      provenance: provenanceFromSource(source),
+    };
+    commit(
       `Detach ${selectedNode.name}`,
-      replaceNode(context.nodes, selectedNode.id, (node) => {
-        const { source, ...withoutSource } = node;
-        if (source === undefined) {
-          return node;
-        }
-        return {
-          ...withoutSource,
-          kind: "DraftFrame",
-          provenance: provenanceFromSource(source),
-          frameContent: node.name,
-        };
-      }),
-      {
-        selectedIds: [selectedNode.id],
-        targetIds: [selectedNode.id],
-      },
+      { kind: "detach", node: detached },
+      context.nodes,
+      { selectedIds: [selectedNode.id], targetIds: [selectedNode.id] },
     );
     context.appendTrace(
       `Detached ${selectedNode.name} from ${nodeAuthority(selectedNode)}`,
@@ -588,8 +613,19 @@ export function createWorkbenchDocumentActions(
         : kind === "Frame"
           ? "Frame"
           : "Create component from";
-    context.commitScene(
+    commit(
       `${verb} ${roots.length} layers`,
+      {
+        kind: "group",
+        container: group,
+        // V3 stores child transforms relative to the new container, while the
+        // legacy preview remains world-positioned for the renderer.
+        children: roots.map((node) => ({
+          ...node,
+          parentId: containerId,
+          position: { x: node.position.x - minimumX, y: node.position.y - minimumY },
+        })),
+      },
       nextNodes,
       {
         selectedIds: [containerId],
@@ -629,13 +665,15 @@ export function createWorkbenchDocumentActions(
           ? "Lock"
           : "Unlock"
     } ${context.selectedNodeIds.length === 1 ? context.selectedNode?.name ?? "selection" : `${context.selectedNodeIds.length} layers`}`;
-    context.commitScene(
+    const nextNodes = context.nodes.map((node) =>
+      selected.has(node.id)
+        ? { ...node, [property]: nextValue }
+        : node,
+    );
+    commit(
       label,
-      context.nodes.map((node) =>
-        selected.has(node.id)
-          ? { ...node, [property]: nextValue }
-          : node,
-      ),
+      { kind: "style", nodes: nextNodes.filter((node) => selected.has(node.id)) },
+      nextNodes,
       { targetIds: [...selected] },
     );
     context.appendTrace(label, context.selectedNodeId ?? "canvas");
@@ -680,7 +718,23 @@ export function createWorkbenchDocumentActions(
         ? groups.get(groupIds[0] ?? "")?.name ?? "group"
         : `${groupIds.length} groups`
     }`;
-    context.commitScene(label, nextNodes, {
+    commit(label, {
+      kind: "batch",
+      receipts: [
+        {
+          kind: "reparent",
+          nodes: nextNodes.filter((node) => childSet.has(node.id)),
+          nextIndices: nextNodes
+            .filter((node) => childSet.has(node.id))
+            .map((node) =>
+              nextNodes
+                .filter((candidate) => candidate.parentId === node.parentId)
+                .findIndex((candidate) => candidate.id === node.id),
+            ),
+        },
+        { kind: "delete", nodeIds: groupIds },
+      ],
+    }, nextNodes, {
       selectedIds: childIds,
       targetIds: [...groupIds, ...childIds],
     });
@@ -711,7 +765,14 @@ export function createWorkbenchDocumentActions(
             ? "Bring forward"
             : "Send backward"
     } ${context.selectedNodeIds.length === 1 ? context.selectedNode?.name ?? "selection" : `${context.selectedNodeIds.length} layers`}`;
-    context.commitScene(label, nextNodes, {
+    const parentId = context.selectedNode?.parentId ?? null;
+    commit(label, {
+      kind: "order",
+      parentId,
+      orderedNodeIds: nextNodes
+        .filter((node) => node.parentId === parentId)
+        .map((node) => node.id),
+    }, nextNodes, {
       targetIds: context.selectedNodeIds,
     });
     context.appendTrace(

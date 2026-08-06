@@ -1,15 +1,17 @@
 import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import type { CaptureAdapterV1 } from "@memi/capture-import";
+import {
+  parseCaptureAdapterMetadataV1,
+  type CaptureAdapterV1,
+} from "@memi/capture-import";
 import {
   type BrowserLauncher,
   type ContentAddressedArtifactStore,
   type PortLease,
   type ProcessExecutionPolicy,
   type ProcessStarter,
-  ReactWebCaptureAdapter,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 import type { CaptureApplicationUnit } from "@memi/capture-platforms";
 import type { ImportApplicationV2 } from "@memi/protocol";
 
@@ -33,6 +35,28 @@ export interface ReactWebAdapterAuthority {
     url: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly loadAdapter?: () => Promise<{
+    readonly ReactWebCaptureAdapter: new (input: {
+      readonly applications: readonly ImportApplicationV2[];
+      readonly artifactStore: ContentAddressedArtifactStore;
+      readonly processRunner: ProcessStarter;
+      readonly processPolicy: ProcessExecutionPolicy;
+      readonly recipe: (
+        application: ImportApplicationV2,
+        port: number,
+      ) => {
+        readonly executable: string;
+        readonly args: readonly string[];
+        readonly cwd: string;
+      };
+      readonly portLease: PortLease;
+      readonly browserLauncher?: BrowserLauncher;
+      readonly waitForLoopback: (
+        url: string,
+        signal: AbortSignal,
+      ) => Promise<void>;
+    }) => CaptureAdapterV1;
+  }>;
 }
 
 function recipeArguments(
@@ -166,21 +190,62 @@ export function createReactWebCaptureAdapter(
     managedRootPath: managedRoot,
     applicationRoot,
   });
-  return new ReactWebCaptureAdapter({
-    applications: [canonicalAuthority.application],
-    artifactStore: canonicalAuthority.artifactStore,
-    processRunner: canonicalAuthority.processStarter,
-    processPolicy: processPolicy(canonicalAuthority),
-    recipe: (_application, port) => ({
-      executable: canonicalAuthority.executable,
-      args: recipeArguments(canonicalAuthority.unit, port),
-      cwd: canonicalAuthority.applicationRoot,
+  const loader = canonicalAuthority.loadAdapter ??
+    (async () => await import("@memi/capture-execution/react-web-adapter"));
+  let adapterPromise: Promise<CaptureAdapterV1> | null = null;
+  const resolveAdapter = (): Promise<CaptureAdapterV1> => {
+    adapterPromise ??= loader().then(({ ReactWebCaptureAdapter }) =>
+      new ReactWebCaptureAdapter({
+        applications: [canonicalAuthority.application],
+        artifactStore: canonicalAuthority.artifactStore,
+        processRunner: canonicalAuthority.processStarter,
+        processPolicy: processPolicy(canonicalAuthority),
+        recipe: (_application, port) => ({
+          executable: canonicalAuthority.executable,
+          args: recipeArguments(canonicalAuthority.unit, port),
+          cwd: canonicalAuthority.applicationRoot,
+        }),
+        portLease: canonicalAuthority.portLease,
+        ...(canonicalAuthority.browserLauncher === undefined
+          ? {}
+          : { browserLauncher: canonicalAuthority.browserLauncher }),
+        waitForLoopback:
+          canonicalAuthority.waitForLoopback ?? waitForLoopback,
+      }));
+    return adapterPromise;
+  };
+  const deferredAdapter: CaptureAdapterV1 = {
+    metadata: parseCaptureAdapterMetadataV1({
+      id: "playwright-react-web",
+      platform: "react-web",
+      version: "1.0.0",
+      capabilities: [
+        "discover",
+        "prepare",
+        "launch",
+        "capture",
+        "collect",
+        "cleanup",
+      ],
     }),
-    portLease: canonicalAuthority.portLease,
-    ...(canonicalAuthority.browserLauncher === undefined
-      ? {}
-      : { browserLauncher: canonicalAuthority.browserLauncher }),
-    waitForLoopback:
-      canonicalAuthority.waitForLoopback ?? waitForLoopback,
-  });
+    async discover(context) {
+      return await (await resolveAdapter()).discover(context);
+    },
+    async prepare(context, application, scenarios) {
+      return await (await resolveAdapter()).prepare(context, application, scenarios);
+    },
+    async launch(context, preparation) {
+      return await (await resolveAdapter()).launch(context, preparation);
+    },
+    async capture(context, launch, scenario) {
+      return await (await resolveAdapter()).capture(context, launch, scenario);
+    },
+    async collect(context, launch, capture) {
+      return await (await resolveAdapter()).collect(context, launch, capture);
+    },
+    async cleanup(context, launch) {
+      return await (await resolveAdapter()).cleanup(context, launch);
+    },
+  };
+  return Object.freeze(deferredAdapter);
 }

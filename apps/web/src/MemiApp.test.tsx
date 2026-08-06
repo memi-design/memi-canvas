@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ImportJobSnapshotSchemaV2,
   ImportPlanResultSchemaV1,
+  RuntimeCaptureScreenV1Schema,
   WorkspaceSessionSnapshotSchemaV1,
 } from "@memi/protocol";
 
@@ -16,9 +17,54 @@ import { whiteboardDocumentKey } from "./whiteboard/whiteboard-persistence.js";
 import {
   createProjectLibraryPersistence,
   createProjectLibraryState,
+  runtimeProjectIdForLocalProject,
 } from "./projects/project-library.js";
 import { TRUTHFUL_IMPORT_RESET_KEY } from "./projects/project-purge.js";
 import type { RuntimeClientV1 } from "./runtime/runtime-client.js";
+import { createEphemeralCanvasDocumentPersistence } from "./runtime/runtime-client-canvas-document-persistence.js";
+
+function memoryRuntimeClient() {
+  const persistence = createEphemeralCanvasDocumentPersistence();
+  let initializedIdentity: Parameters<typeof persistence.initialize>[0]["identity"] | undefined;
+  const canvasDocuments = {
+    async append(input: Parameters<typeof persistence.append>[0] extends never
+      ? never
+      : { append: Parameters<typeof persistence.append>[0] }) {
+      return { receipt: await persistence.append(input.append) };
+    },
+    async checkpoint(input: { snapshot: Parameters<typeof persistence.checkpoint>[0] }) {
+      await persistence.checkpoint(input.snapshot);
+      return { journal: await persistence.load(input.snapshot.identity) };
+    },
+    async initialize(input: { snapshot: Parameters<typeof persistence.initialize>[0] }) {
+      await persistence.initialize(input.snapshot);
+      initializedIdentity = input.snapshot.identity;
+      return { journal: await persistence.load(input.snapshot.identity) };
+    },
+    async load(input: { identity: Parameters<typeof persistence.load>[0] }) {
+      return { journal: await persistence.load(input.identity) };
+    },
+  };
+  const sessions = {
+    migrateLegacy: vi.fn(async () => ({
+      session: null,
+      status: "already-migrated" as const,
+    })),
+    restore: vi.fn(async () => ({ session: null })),
+    save: vi.fn(async ({ session }: { session: unknown }) => ({ session })),
+  };
+  return {
+    canvasDocuments,
+    sessions,
+    initializedCanvasDocumentIdentity: () => initializedIdentity,
+    loadCanvasDocument: persistence.load,
+  } as unknown as Pick<RuntimeClientV1, "canvasDocuments" | "sessions"> & {
+    readonly initializedCanvasDocumentIdentity: () =>
+      | Parameters<typeof persistence.initialize>[0]["identity"]
+      | undefined;
+    readonly loadCanvasDocument: typeof persistence.load;
+  };
+}
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -199,8 +245,9 @@ describe("Memi application journey", () => {
       }),
     }));
     const runtimeClient = {
+      ...memoryRuntimeClient(),
       sessions: { migrateLegacy, restore, save },
-    } as Pick<RuntimeClientV1, "sessions">;
+    } as Pick<RuntimeClientV1, "sessions" | "canvasDocuments">;
 
     render(
       <MemiApp
@@ -220,7 +267,7 @@ describe("Memi application journey", () => {
     await waitFor(() => {
       expect(restore).toHaveBeenCalledWith({
         projectId: expect.stringMatching(/^prj_[0-9A-HJKMNP-TV-Z]{26}$/u),
-        documentId: "document-local-runtime-local-design",
+        documentId: expect.stringMatching(/^doc_[0-9A-HJKMNP-TV-Z]{26}$/u),
       });
     });
   });
@@ -315,9 +362,9 @@ describe("Memi application journey", () => {
     const list = vi.fn(async () => ({ jobs: [listedCommitted] }));
     const get = vi.fn(async () => ({ job: committed }));
     const runtimeClient = {
+      ...memoryRuntimeClient(),
       imports: { get, list },
-      sessions: {},
-    } as unknown as Pick<RuntimeClientV1, "sessions"> &
+    } as unknown as Pick<RuntimeClientV1, "sessions" | "canvasDocuments"> &
       Partial<Pick<RuntimeClientV1, "imports">>;
 
     render(
@@ -353,7 +400,7 @@ describe("Memi application journey", () => {
     expect(screen.queryByText(/Buzzr/iu)).toBeNull();
   });
 
-  it("runs the reset once and preserves projects created afterward", () => {
+  it("runs the reset once and preserves projects created afterward", async () => {
     const storage = memoryStorage();
     createProjectLibraryPersistence(storage).save(
       createProjectLibraryState([
@@ -390,7 +437,7 @@ describe("Memi application journey", () => {
       screen.getByRole("button", { name: "Create design project" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Back to projects" }),
+      await screen.findByRole("button", { name: "Back to projects" }),
     );
     first.unmount();
 
@@ -464,7 +511,7 @@ describe("Memi application journey", () => {
     ).toBeNull();
   });
 
-  it("creates separate editable design and whiteboard files", () => {
+  it("creates separate editable design and whiteboard files", async () => {
     const projectIds = ["local-design-one", "local-board-one"];
     const storage = memoryStorage();
     render(
@@ -479,14 +526,14 @@ describe("Memi application journey", () => {
       screen.getByRole("button", { name: "Create design project" }),
     );
     expect(
-      screen.getByRole("heading", { name: "Untitled design 1" }),
+      await screen.findByRole("heading", { name: "Untitled design 1" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("region", { name: "Infinite canvas" }),
+      await screen.findByRole("region", { name: "Infinite canvas" }),
     ).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Back to projects" }),
+      await screen.findByRole("button", { name: "Back to projects" }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: "Create whiteboard project" }),
@@ -499,7 +546,7 @@ describe("Memi application journey", () => {
     ).toBeTruthy();
   });
 
-  it("permanently deletes a project and its owned canvas recovery", () => {
+  it("permanently deletes a project and its owned canvas recovery", async () => {
     const storage = memoryStorage();
     render(
       <MemiApp
@@ -517,7 +564,7 @@ describe("Memi application journey", () => {
       "owned autosave",
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Back to projects" }),
+      await screen.findByRole("button", { name: "Back to projects" }),
     );
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /Open Untitled design 1/ }),
@@ -537,12 +584,14 @@ describe("Memi application journey", () => {
     );
   });
 
-  it("imports a bounded local Figma export into an editable durable canvas", () => {
+  it("imports a bounded local Figma export through the V3 journal without a legacy scene autosave", async () => {
     const storage = memoryStorage();
+    const runtimeClient = memoryRuntimeClient();
     render(
       <MemiApp
         idFactory={() => "figma-checkout"}
         now={() => "2026-07-28T22:04:00.000Z"}
+        runtimeClient={runtimeClient}
         storage={storage}
       />,
     );
@@ -559,19 +608,62 @@ describe("Memi application journey", () => {
     );
 
     expect(
-      screen.getByRole("heading", { level: 1, name: "Checkout system" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: "Checkout / Mobile on canvas",
-      }),
+      await screen.findByRole("heading", { level: 1, name: "Checkout system" }),
     ).toBeTruthy();
     expect(storage.values.has("memi.project-library.v1")).toBe(true);
     expect(
       [...storage.values.keys()].some((key) =>
         key.startsWith("memi.canvas.autosave.v1:"),
       ),
-    ).toBe(true);
+    ).toBe(false);
+    const projectId = runtimeProjectIdForLocalProject("figma-checkout");
+    const identity = runtimeClient.initializedCanvasDocumentIdentity();
+    expect(identity?.projectId).toBe(projectId);
+    const journal = identity === undefined
+      ? null
+      : await runtimeClient.loadCanvasDocument(identity);
+    expect(
+      journal?.snapshot.document.projectId,
+    ).toBe(projectId);
+  });
+
+  it("reopens a local Figma import from the same V3 journal when no native runtime is available", async () => {
+    const storage = memoryStorage();
+    render(
+      <MemiApp
+        idFactory={() => "figma-ephemeral"}
+        now={() => "2026-07-28T22:04:00.000Z"}
+        storage={storage}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Import from Figma" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Local JSON export" }));
+    fireEvent.change(screen.getByLabelText("Figma JSON export"), {
+      target: { value: figmaExport },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Import local Figma JSON" }),
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "Checkout system" });
+    fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Open Checkout system/u }),
+    );
+
+    await waitFor(() => {
+      const layersHeader = screen.getByText("Layers").parentElement;
+      expect(layersHeader?.textContent).toBe("Layers2");
+      expect(
+        screen.getByRole("treeitem", { name: "Route inventory" }),
+      ).toBeTruthy();
+    });
+    expect(
+      [...storage.values.keys()].some((key) =>
+        key.startsWith("memi.canvas.autosave.v1:"),
+      ),
+    ).toBe(false);
   });
 
   it("streams an importing project before opening its editable runtime reconstruction", async () => {
@@ -611,9 +703,10 @@ describe("Memi application journey", () => {
         {
           dimensions: { height: 800, scale: 1, width: 1280 },
           fixtureFingerprint: hash,
-          geometryArtifactId: null,
-          hierarchyArtifactId: null,
+          geometryArtifactId: "art_01J00000000000000000000002",
+          hierarchyArtifactId: "art_01J00000000000000000000003",
           id: "art_01J00000000000000000000000",
+          reconstructionArtifactId: "art_01J00000000000000000000004",
           scenarioId: "csc_01J00000000000000000000000",
           screenshotArtifactId: "art_01J00000000000000000000000",
           screenshotHash: hash,
@@ -685,6 +778,55 @@ describe("Memi application journey", () => {
       stage: "save" as const,
       state: "committed" as const,
       updatedAt: "2026-07-29T22:04:00.000Z",
+    });
+    const reconstruction = RuntimeCaptureScreenV1Schema.parse({
+      app: {
+        appVersion: "1.0.0",
+        buildRevision: revision,
+        environment: "simulator",
+        productId: "northstar-web",
+      },
+      artifact: {
+        alt: "Northstar Home runtime capture",
+        artifactId: terminalJob.artifacts[0]!.screenshotArtifactId,
+        hash,
+        height: 800,
+        kind: "image/png",
+        src: "/imports/artifacts/northstar-home.png",
+        width: 1280,
+      },
+      authority: "local_capture",
+      binding: {
+        coverageCellId: "northstar:home:default:desktop",
+        normalizedPath: "/",
+        routeId: "/",
+        sourceAnchor: "src/pages/Home.tsx#Home",
+        sourceContentHash: hash,
+        stateId: "default",
+        viewport: { height: 800, name: "mobile", scale: 1, width: 1280 },
+      },
+      captureId: terminalJob.artifacts[0]!.id,
+      capturedAt: "2026-07-29T22:04:00.000Z",
+      evidence: {
+        accessibilitySnapshotRef: "artifacts/northstar-home.a11y.json",
+        captureMethod: "ios-simulator-screenshot",
+        componentIds: [],
+        label: "Local capture",
+        sourceAnchors: ["src/pages/Home.tsx#Home"],
+        truthLabel: "Local capture",
+        verifier: "automated",
+      },
+      layers: [],
+      repository: {
+        dirty: false,
+        dirtyFileFingerprint: hash,
+        revision,
+        rootPath: "/Projects/northstar",
+        sourceFingerprint: hash,
+      },
+      schemaVersion: 1,
+      screenId: "northstar-home",
+      screenName: "Home",
     });
     const repositoryCaptureRuntime = {
       cancel: vi.fn(),
@@ -797,6 +939,7 @@ describe("Memi application journey", () => {
         const artifactReference = {
           alt: "Northstar Home runtime capture",
           capturedAt: "2026-07-29T22:04:00.000Z",
+          reconstruction,
           sourceUrl: "http://127.0.0.1:4173/",
           src: "/imports/artifacts/art_01J00000000000000000000000.png",
         };
@@ -827,6 +970,7 @@ describe("Memi application journey", () => {
         now={() => "2026-07-29T22:04:00.000Z"}
         repositoryCaptureRuntime={repositoryCaptureRuntime}
         repositoryImporter={importer}
+        runtimeClient={memoryRuntimeClient()}
         storage={storage}
       />,
     );
@@ -848,15 +992,10 @@ describe("Memi application journey", () => {
     expect(screen.getByText("Syncing")).toBeTruthy();
     await waitFor(() => {
       expect(
-        screen.queryByRole("heading", { name: "Northstar" }) ??
-          screen.queryByRole("alert"),
+        screen.getByRole("heading", { name: "Northstar" }),
       ).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
     });
-    expect(screen.queryByRole("alert")).toBeNull();
-
-    expect(
-      await screen.findByRole("heading", { name: "Northstar" }),
-    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Home on canvas" }),
     ).toBeTruthy();
@@ -960,6 +1099,7 @@ describe("Memi application journey", () => {
         now={() => "2026-07-31T12:00:00.000Z"}
         repositoryCaptureRuntime={repositoryCaptureRuntime}
         repositoryImporter={vi.fn()}
+        runtimeClient={memoryRuntimeClient()}
         storage={memoryStorage()}
       />,
     );
@@ -1023,7 +1163,7 @@ describe("Memi application journey", () => {
     ).toBeTruthy();
   });
 
-  it("deletes a project from the active library through the card menu", () => {
+  it("deletes a project from the active library through the card menu", async () => {
     const storage = memoryStorage();
     render(
       <MemiApp
@@ -1037,7 +1177,7 @@ describe("Memi application journey", () => {
       screen.getByRole("button", { name: "Create design project" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Back to projects" }),
+      await screen.findByRole("button", { name: "Back to projects" }),
     );
     fireEvent.contextMenu(
       screen.getByRole("button", {
@@ -1207,7 +1347,7 @@ describe("Memi application journey", () => {
     ).toBe("medium");
   });
 
-  it("applies saved global defaults to a newly opened authoring workspace", () => {
+  it("applies saved global defaults to a newly opened authoring workspace", async () => {
     const storage = memoryStorage();
     render(
       <MemiApp
@@ -1233,7 +1373,7 @@ describe("Memi application journey", () => {
     );
 
     expect(
-      (screen.getByRole("combobox", {
+      (await screen.findByRole("combobox", {
         name: "Agent harness",
       }) as HTMLSelectElement).value,
     ).toBe("claude-code");

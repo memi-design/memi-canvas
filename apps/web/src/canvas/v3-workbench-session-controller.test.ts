@@ -8,9 +8,14 @@ import {
   type CanvasDocumentJournalV3,
   type CanvasDocumentV3PersistencePort,
 } from "@memi/protocol";
-import { createCanvasDocumentV3 } from "@memi/canvas-document";
+import {
+  applyCanvasOperationV3,
+  createCanvasDocumentV3,
+  prepareCanvasOperationV3,
+} from "@memi/canvas-document";
 
 import { createLegacyWorkbenchProjection } from "./legacy-workbench-projection.js";
+import { workspaceSessionFromWorkbenchState } from "./workspace-session-live-state.js";
 import {
   V3WorkbenchSessionController,
 } from "./v3-workbench-session-controller.js";
@@ -97,6 +102,36 @@ function workspace(document = seed()) {
       inspectorCollapsed: false,
     },
   });
+}
+
+function documentWithSecondPage() {
+  const document = seed();
+  const secondPageId = "pag_01J00000000000000000000001";
+  return {
+    document: applyCanvasOperationV3(
+      document,
+      prepareCanvasOperationV3(document, {
+        id: "opn_01J00000000000000000000003",
+        actor: "human",
+        actorId: "local-user",
+        occurredAt: "2026-08-01T17:59:00.000Z",
+        label: "Create second page",
+        action: {
+          type: "page.define",
+          payload: {
+            pageId: secondPageId,
+            next: {
+              id: secondPageId,
+              kind: "design",
+              name: "Page 2",
+              rootIds: [],
+            },
+          },
+        },
+      }),
+    ),
+    secondPageId,
+  } as const;
 }
 
 describe("V3WorkbenchSessionController", () => {
@@ -280,6 +315,113 @@ describe("V3WorkbenchSessionController", () => {
     expect(
       restarted.getSnapshot().authority?.getSnapshot().document.nodesById[nodeId],
     ).toMatchObject({ name: "Rectangle" });
+
+    const renderer = restarted.getRendererSnapshot(document.pageIds[0]!);
+    expect(renderer).toMatchObject({
+      canRedo: false,
+      canUndo: true,
+      revision: 1,
+      selection: { selectedIds: [nodeId] },
+    });
+    expect(renderer.nodes).toEqual([
+      expect.objectContaining({ id: nodeId, name: "Rectangle" }),
+    ]);
+    expect(Object.isFrozen(renderer)).toBe(true);
+    expect(Object.isFrozen(renderer.nodes)).toBe(true);
+
+    const restoredAuthority = restarted.getSnapshot().authority;
+    if (restoredAuthority === null) {
+      throw new Error("Restarted V3 authority must be ready.");
+    }
+    await restoredAuthority.undo({
+      actor: "human",
+      actorId: "local-user",
+      id: "opn_01J00000000000000000000001",
+      occurredAt: "2026-08-01T18:01:00.000Z",
+    });
+    expect(restoredAuthority.getSnapshot()).toMatchObject({
+      canRedo: true,
+      canUndo: false,
+      document: { revision: 2 },
+      selection: { selectedIds: [] },
+    });
+    const restartedAfterUndo = new V3WorkbenchSessionController({
+      persistence,
+      source: { kind: "seed", document },
+      workspace: restarted.getSnapshot().workspace,
+    });
+    await restartedAfterUndo.open();
+    const authorityAfterUndo = restartedAfterUndo.getSnapshot().authority;
+    if (authorityAfterUndo === null) {
+      throw new Error("Restarted V3 redo authority must be ready.");
+    }
+    expect(authorityAfterUndo.getSnapshot()).toMatchObject({
+      canRedo: true,
+      canUndo: false,
+      selection: { selectedIds: [] },
+    });
+    await authorityAfterUndo.redo({
+      actor: "human",
+      actorId: "local-user",
+      id: "opn_01J00000000000000000000002",
+      occurredAt: "2026-08-01T18:02:00.000Z",
+    });
+    expect(authorityAfterUndo.getSnapshot()).toMatchObject({
+      canRedo: false,
+      canUndo: true,
+      document: { revision: 3 },
+      selection: { selectedIds: [nodeId] },
+    });
+  });
+
+  it("keeps the active V3 page across a workspace restart", async () => {
+    const { document, secondPageId } = documentWithSecondPage();
+    const persistence = memoryPort();
+    const baseWorkspace = workspace(document);
+    const initialWorkspace = workspaceSessionFromWorkbenchState(
+      baseWorkspace,
+      {
+        activePageId: secondPageId,
+        activity: baseWorkspace.activity,
+        camera: {
+          x: baseWorkspace.camera.x,
+          y: baseWorkspace.camera.y,
+          zoom: baseWorkspace.camera.zoom,
+        },
+        documentRevision: document.revision,
+        history: { undo: [], redo: [] },
+        panels: baseWorkspace.panels,
+        selection: {
+          anchorId: null,
+          editingId: null,
+          focusedId: null,
+          selectedIds: [],
+        },
+        viewportSize: {
+          width: baseWorkspace.camera.viewportWidth,
+          height: baseWorkspace.camera.viewportHeight,
+        },
+      },
+    );
+    expect(initialWorkspace.activePageId).toBe(secondPageId);
+    const first = new V3WorkbenchSessionController({
+      persistence,
+      source: { kind: "seed", document },
+      workspace: initialWorkspace,
+    });
+    await first.open();
+
+    const restarted = new V3WorkbenchSessionController({
+      persistence,
+      source: { kind: "seed", document },
+      workspace: first.getSnapshot().workspace,
+    });
+    await restarted.open();
+
+    expect(restarted.getSnapshot()).toMatchObject({
+      status: "ready",
+      workspace: { activePageId: secondPageId },
+    });
   });
 
   it("surfaces persistence-open failure as a retryable error snapshot", async () => {

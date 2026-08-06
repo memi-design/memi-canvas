@@ -120,6 +120,9 @@ async function fixture(
   const artifactStore = new ContentAddressedArtifactStore(
     join(appDataRoot, "artifacts"),
   );
+  const testBrowserLauncher = {
+    launch: vi.fn(async () => ({}) as never),
+  };
   const ports = await createNativeCapturePorts({
     appDataRoot,
     managedWorktreeRoot,
@@ -146,6 +149,7 @@ async function fixture(
       },
       clearTimer: vi.fn(),
     },
+    testBrowserLauncher,
   });
   return {
     appDataRoot,
@@ -165,6 +169,7 @@ async function fixture(
       xcrun,
       xcuiRunner,
     },
+    testBrowserLauncher,
   };
 }
 

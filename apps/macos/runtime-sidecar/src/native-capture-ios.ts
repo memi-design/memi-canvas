@@ -18,16 +18,16 @@ import {
   type NativeBuildConfiguration,
   type NativeCommandPort,
   type NativeCommandResult,
+  type PortLease,
   type ProcessCommandRule,
   type ProcessArgumentRule,
   type ProcessExecutionPolicy,
   type ProcessRecipe,
   type ProcessStarter,
-  type PortLease,
   sandboxProcessRecipe,
   SwiftUIXCUITestCaptureAdapter,
   type SwiftUIXCUITestPort,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 import type {
   CaptureApplicationUnit,
   ExpoIOSCaptureConfiguration,

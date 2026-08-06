@@ -8,6 +8,11 @@ import {
   type AgentPatchApplication,
   type AgentPatchReview,
 } from "./agent-patch.js";
+import {
+  agentPatchUsesLegacyNodeIds,
+  agentPatchV3Receipt,
+  legacyAgentPatchV3NodeId,
+} from "./agent-patch-v3-receipt.js";
 import type {
   CanvasRuntimePortV1,
   CanvasRuntimeRestorePreview,
@@ -17,6 +22,7 @@ import type { WorkbenchNode } from "./model.js";
 import type {
   WorkbenchHistoryActions,
 } from "./workbench-history-actions.js";
+import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import type { WorkspaceDockTab } from "./workspace-dock.js";
 import type { PreviewSession } from "../preview/preview-session.js";
 
@@ -27,9 +33,16 @@ type AppendTrace = (
 ) => void;
 
 export interface WorkbenchAgentReviewActionsContext {
+  readonly agentPatchBaseNodes?: readonly WorkbenchNode[];
+  readonly agentPatchLegacyDocumentId?: string;
   readonly agentPatchReview: AgentPatchReview | null;
   readonly appendTrace: AppendTrace;
   readonly canonicalDocumentRevision: number;
+  readonly commitIntentReceipt?: (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    options?: { readonly selectedIds?: readonly string[] },
+  ) => Promise<void> | void;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   readonly documentNodes: readonly WorkbenchNode[];
   readonly documentRevision: number;
@@ -56,7 +69,7 @@ export interface WorkbenchAgentReviewActionsContext {
 export interface WorkbenchAgentReviewActions {
   readonly applyApprovedAgentPatch: () => Promise<void>;
   readonly applyReviewedAgentPatch:
-    () => AgentPatchApplication | null;
+    () => Promise<AgentPatchApplication | null>;
   readonly approveAgentPatch: () => Promise<void>;
   readonly confirmRuntimeCheckpointRestore: () => Promise<void>;
   readonly rejectPendingAgentPatch: () => void;
@@ -77,7 +90,7 @@ export function createWorkbenchAgentReviewActions(
 ): WorkbenchAgentReviewActions {
   const targetId = () => context.selectedNodeId ?? "canvas";
 
-  const applyReviewedAgentPatch = () => {
+  const applyReviewedAgentPatch = async () => {
     const review = context.agentPatchReview;
     if (
       review === null ||
@@ -86,33 +99,46 @@ export function createWorkbenchAgentReviewActions(
     ) {
       return null;
     }
-    const applyingReview: AgentPatchReview = Object.freeze({
-      ...review,
-      message: `Applying against revision ${review.currentRevision}.`,
-      status: "applying",
-    });
-    context.setAgentPatchReview(applyingReview);
     try {
-      const mutation = context.commitScene(
-        `Apply agent patch ${review.patch.id}`,
-        review.patch.proposedNodes,
-        {
-          actor: "agent",
-          targetIds: review.patch.targetIds,
-        },
+      if (context.commitIntentReceipt === undefined) {
+        throw new Error("V3 semantic operation receipts are required.");
+      }
+      const patchUsesLegacyIds = agentPatchUsesLegacyNodeIds(
+        review.patch.targetIds,
+        context.documentNodes,
       );
-      const nextReview: AgentPatchReview = Object.freeze({
+      const legacyDocumentId = context.agentPatchLegacyDocumentId;
+      const resolveNodeId =
+        patchUsesLegacyIds && legacyDocumentId !== undefined
+          ? (nodeId: string) => legacyAgentPatchV3NodeId(
+              legacyDocumentId,
+              nodeId,
+            )
+          : (nodeId: string) => nodeId;
+      const receipt = agentPatchV3Receipt(
+        review.patch,
+        patchUsesLegacyIds
+          ? context.agentPatchBaseNodes ?? context.documentNodes
+          : context.documentNodes,
+        resolveNodeId,
+      );
+      await context.commitIntentReceipt(
+        `Apply agent patch ${review.patch.id}`,
+        receipt,
+        { selectedIds: review.patch.targetIds.map(resolveNodeId) },
+      );
+      const appliedReview: AgentPatchReview = Object.freeze({
         ...review,
-        currentRevision: mutation.revision,
-        message: `Applied at revision ${mutation.revision}.`,
+        currentRevision: context.documentRevision + 1,
+        message: `Applied at revision ${context.documentRevision + 1}.`,
         status: "applied",
       });
-      context.setAgentPatchReview(nextReview);
-      return { review: nextReview, trace: null };
+      context.setAgentPatchReview(appliedReview);
+      return { review: appliedReview, trace: null };
     } catch (error) {
       const failedReview: AgentPatchReview = Object.freeze({
         ...review,
-        message: `Failed without changing the document: ${failureMessage(error)}`,
+        message: `Agent patch blocked: ${failureMessage(error)}`,
         status: "failed",
       });
       context.setAgentPatchReview(failedReview);
@@ -127,7 +153,7 @@ export function createWorkbenchAgentReviewActions(
     }
     const runtimeProposal = context.runtimeSnapshot?.proposal;
     if (context.runtimePort === undefined) {
-      applyReviewedAgentPatch();
+      await applyReviewedAgentPatch();
       return;
     }
     if (
@@ -177,7 +203,7 @@ export function createWorkbenchAgentReviewActions(
         currentRevision: context.canonicalDocumentRevision,
         runId: snapshot.runId,
       });
-      applyReviewedAgentPatch();
+      await applyReviewedAgentPatch();
     } catch (error) {
       context.appendTrace(
         `Demo apply blocked: ${failureMessage(error)}`,
@@ -313,45 +339,11 @@ export function createWorkbenchAgentReviewActions(
     if (context.runtimePort === undefined || preview === null) {
       return;
     }
-    const checkpoint = preview.checkpoint;
-    try {
-      if (
-        context.canonicalDocumentRevision !==
-        preview.currentDocumentRevision
-      ) {
-        throw new Error(
-          "The canvas changed after the restore preview was reviewed.",
-        );
-      }
-      const restoredDocument = context.commitScene(
-        `Restore checkpoint ${checkpoint.id}`,
-        checkpoint.documentNodes,
-        {
-          actor: "system",
-          selectedIds: checkpoint.selectedNodeIds,
-          targetIds: checkpoint.selectedNodeIds,
-        },
-      );
-      const result = await context.runtimePort.restore({
-        currentDocumentNodes: restoredDocument.nodes,
-        currentDocumentRevision: restoredDocument.revision,
-        previewId: preview.id,
-        projectId: context.persistenceProjectId,
-      });
-      context.appendTrace(
-        `Restored and verified ${checkpoint.id} without replaying effects.`,
-        checkpoint.selectedNodeIds.at(-1) ?? "canvas",
-        DEMO_HARNESS,
-      );
-      context.setRestorePreview(null);
-      context.setRuntimeSnapshot(result.snapshot);
-    } catch (error) {
-      context.appendTrace(
-        `Checkpoint restore failed: ${failureMessage(error)}`,
-        targetId(),
-        DEMO_HARNESS,
-      );
-    }
+    context.appendTrace(
+      "Checkpoint restore blocked: V3 semantic operation receipts are required.",
+      targetId(),
+      DEMO_HARNESS,
+    );
   };
 
   const rollbackAppliedAgentPatch = () => {
@@ -360,17 +352,8 @@ export function createWorkbenchAgentReviewActions(
     if (review?.status !== "applied" || snapshot === null) {
       return;
     }
-    context.commitScene(
-      `Roll back agent patch ${review.patch.id}`,
-      snapshot.envelope.documentNodes,
-      {
-        actor: "human",
-        selectedIds: snapshot.envelope.selectedNodeIds,
-        targetIds: review.patch.targetIds,
-      },
-    );
     context.appendTrace(
-      `Rolled back applied canvas draft ${review.patch.id}; runtime evidence remains available.`,
+      `Rollback blocked for ${review.patch.id}: V3 semantic operation receipts are required.`,
       targetId(),
       DEMO_HARNESS,
     );

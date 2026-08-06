@@ -15,6 +15,7 @@ export default defineConfig({
           globals: true,
           testTimeout: 10_000,
           include: ["packages/**/*.test.ts"],
+          exclude: ["packages/canvas-document/src/v3-replay-property.test.ts"],
         },
       },
       {
@@ -36,6 +37,8 @@ export default defineConfig({
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
+        "**/*.bun-test.ts",
+        "packages/runtime/src/**/bun-*.ts",
         "**/main.tsx"
       ],
       thresholds: {

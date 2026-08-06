@@ -16,63 +16,33 @@ import {
   type CaptureScenarioV2,
   type ImportApplicationV2,
 } from "@memi/protocol";
-import { chromium } from "playwright";
 
 import {
   ContentAddressedArtifactStore,
   type StoredArtifact,
 } from "./artifact-store.js";
+import type {
+  BrowserLauncher,
+  BrowserLike,
+  PortLease,
+  ProcessRunnerLike,
+} from "./browser-capture-types.js";
+export type {
+  BrowserLauncher,
+  BrowserLike,
+  BrowserPageLike,
+  BrowserPageOptions,
+  PortLease,
+  ProcessStarter,
+  RuntimePageEvidence,
+} from "./browser-capture-types.js";
 import { CaptureExecutionError } from "./executor.js";
 import type {
   ProcessExecutionPolicy,
-  ProcessGroupRunner,
   ProcessRecipe,
   RunningProcessGroup,
 } from "./process-policy.js";
 import { verifyStableFrames } from "./stability.js";
-
-export interface RuntimePageEvidence {
-  readonly visibleTextLength: number;
-  readonly elementCount: number;
-  readonly errorBoundary: boolean;
-  readonly splashScreen: boolean;
-  readonly hierarchy: unknown;
-  readonly geometry: unknown;
-}
-
-export interface BrowserPageLike {
-  goto(
-    url: string,
-    options: Readonly<{
-      waitUntil: "domcontentloaded";
-      timeout: number;
-    }>,
-  ): Promise<unknown>;
-  waitForSelector(
-    selector: string,
-    options: Readonly<{ state: "visible"; timeout: number }>,
-  ): Promise<unknown>;
-  addStyleTag(options: Readonly<{ content: string }>): Promise<unknown>;
-  screenshot(): Promise<Uint8Array>;
-  url(): string;
-  collectEvidence(): Promise<RuntimePageEvidence>;
-  close(): Promise<void>;
-}
-
-export interface BrowserPageOptions {
-  readonly viewport: Readonly<{ width: number; height: number }>;
-  readonly deviceScaleFactor: number;
-  readonly allowedOrigin: string;
-}
-
-export interface BrowserLike {
-  newPage(options: BrowserPageOptions): Promise<BrowserPageLike>;
-  close(): Promise<void>;
-}
-
-export interface BrowserLauncher {
-  launch(): Promise<BrowserLike>;
-}
 
 export const HELIUM_EXECUTABLE =
   "/Applications/Helium.app/Contents/MacOS/Helium";
@@ -94,23 +64,10 @@ export function resolveHeliumExecutable(
   return HELIUM_EXECUTABLE;
 }
 
-export interface PortLease {
-  acquire(signal: AbortSignal): Promise<number>;
-  release(port: number): Promise<void>;
-}
-
-export interface ProcessStarter {
-  start(
-    recipe: ProcessRecipe,
-    policy: ProcessExecutionPolicy,
-    signal: AbortSignal,
-  ): RunningProcessGroup;
-}
-
 export interface ReactWebCaptureAdapterOptions {
   readonly applications: readonly ImportApplicationV2[];
   readonly artifactStore: ContentAddressedArtifactStore;
-  readonly processRunner: Pick<ProcessGroupRunner, "start"> | ProcessStarter;
+  readonly processRunner: ProcessRunnerLike;
   readonly processPolicy: ProcessExecutionPolicy;
   readonly recipe: (
     application: ImportApplicationV2,
@@ -345,14 +302,15 @@ async function abortable<Value>(
   ]);
 }
 
-export function createPlaywrightBrowserLauncher(
-  executablePath = resolveHeliumExecutable(),
+function createPlaywrightBrowserLauncherForExecutable(
+  executablePath: string,
 ): BrowserLauncher {
-  if (executablePath !== HELIUM_EXECUTABLE) {
-    throw new Error("Browser capture requires the approved Helium executable.");
-  }
   return {
     async launch(): Promise<BrowserLike> {
+      // Web capture is optional for the native-first runtime. Keeping the
+      // Playwright import inside the web-launch path prevents an otherwise
+      // unused browser bundle from delaying or blocking sidecar startup.
+      const { chromium } = await import("playwright");
       const browser = await chromium.launch({
         executablePath,
         headless: true,
@@ -469,6 +427,24 @@ export function createPlaywrightBrowserLauncher(
       };
     },
   };
+}
+
+/** Production capture is always hard-pinned to the approved Helium binary. */
+export function createPlaywrightBrowserLauncher(): BrowserLauncher {
+  return createPlaywrightBrowserLauncherForExecutable(resolveHeliumExecutable());
+}
+
+/**
+ * Test-only seam for CI's Playwright-managed browser. The runtime rejects this
+ * path outside Vitest, so production cannot substitute an arbitrary browser.
+ */
+export function createPlaywrightBrowserLauncherForTest(
+  executablePath: string,
+): BrowserLauncher {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Test browser launcher is unavailable outside test execution.");
+  }
+  return createPlaywrightBrowserLauncherForExecutable(executablePath);
 }
 
 export class ReactWebCaptureAdapter implements CaptureAdapterV1 {

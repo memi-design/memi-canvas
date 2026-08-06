@@ -2,6 +2,7 @@ import {
   WorkspaceSessionDraftSchemaV1,
   type CanvasDocumentV3,
   type CanvasDocumentV3PersistencePort,
+  type CanvasPageId,
   type WorkspaceSessionDraftV1,
 } from "@memi/protocol";
 import type { CanvasDocumentV3PersistencePolicy } from "@memi/canvas-document";
@@ -12,7 +13,8 @@ import {
   type LegacyWorkbenchV3MigrationOptions,
 } from "./canonical-workbench-authority-v3.js";
 import type { LegacyWorkbenchProjection } from "./legacy-workbench-projection.js";
-import type { SelectionState } from "./model.js";
+import type { SelectionState, WorkbenchNode } from "./model.js";
+import { projectCanvasDocumentV3ToWorkbench } from "./canvas-v3-workbench-projection.js";
 import { workspaceSessionFromCanvasDocumentV3 } from "./workspace-session-controller.js";
 
 type SessionListener = () => void;
@@ -65,6 +67,20 @@ export type V3WorkbenchSessionSnapshot =
   | V3WorkbenchSessionLoadingSnapshot
   | V3WorkbenchSessionReadySnapshot
   | V3WorkbenchSessionErrorSnapshot;
+
+/**
+ * Read-only V3 document projection for the legacy renderer.
+ *
+ * This is deliberately not a mutation boundary: renderer changes must travel
+ * through V3 semantic intents and the authority's durable journal.
+ */
+export interface V3WorkbenchRendererSnapshot {
+  readonly canRedo: boolean;
+  readonly canUndo: boolean;
+  readonly nodes: readonly WorkbenchNode[];
+  readonly revision: number;
+  readonly selection: SelectionState;
+}
 
 interface ResolvedV3WorkbenchSource {
   readonly document: CanvasDocumentV3;
@@ -199,6 +215,28 @@ export class V3WorkbenchSessionController {
 
   getSnapshot = (): V3WorkbenchSessionSnapshot => this.#snapshot;
 
+  getRendererSnapshot(
+    pageId: CanvasPageId,
+  ): V3WorkbenchRendererSnapshot {
+    const authority = this.#authority;
+    if (authority === null) {
+      throw new Error("Canvas V3 renderer projection requires a ready session.");
+    }
+    const snapshot = authority.getSnapshot();
+    return deepFreeze({
+      canRedo: snapshot.canRedo,
+      canUndo: snapshot.canUndo,
+      nodes: [...projectCanvasDocumentV3ToWorkbench(snapshot.document, pageId)],
+      revision: snapshot.document.revision,
+      selection: {
+        anchorId: snapshot.selection.anchorId,
+        editingId: snapshot.selection.editingId,
+        focusedId: snapshot.selection.focusedId,
+        selectedIds: [...snapshot.selection.selectedIds],
+      },
+    });
+  }
+
   subscribe = (listener: SessionListener): (() => void) => {
     this.#listeners.add(listener);
     return () => {
@@ -251,6 +289,9 @@ export class V3WorkbenchSessionController {
         document: resolved.document,
         persistence: this.#input.persistence,
         selection: resolved.selection,
+        ...(resolved.workspace.history === undefined
+          ? {}
+          : { history: resolved.workspace.history }),
         ...(this.#input.persistencePolicy === undefined
           ? {}
           : { persistencePolicy: this.#input.persistencePolicy }),
@@ -307,6 +348,7 @@ export class V3WorkbenchSessionController {
       this.#workspace,
       authoritySnapshot.document,
       authoritySnapshot.selection,
+      authority.getHistoryState(),
     );
     return freezeSnapshot({
       authority,

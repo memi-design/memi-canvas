@@ -6,7 +6,6 @@ import type {
 import type {
   CanvasWorkbenchProject,
   Point,
-  SceneState,
   WorkbenchNode,
 } from "./model.js";
 import type {
@@ -14,11 +13,16 @@ import type {
   PromptMode,
   ReasoningEffort,
 } from "./harness-config.js";
-import type { CanvasAutosave } from "./persistence.js";
 import type { AgentPatch } from "./agent-patch.js";
 import type { CanvasRuntimePortV1 } from "./canvas-runtime-port.js";
 import type { SelectionContextCapsuleV1 } from "./selection-context-capsule.js";
-import type { WorkspaceSessionDraftV1 } from "@memi/protocol";
+import type {
+  CanvasDocumentV3,
+  CanvasDocumentV3PersistencePort,
+  CanvasPageId,
+  WorkspaceSessionDraftV1,
+} from "@memi/protocol";
+import type { CanvasDocumentV3PersistencePolicy } from "@memi/canvas-document";
 import type { SelectionState } from "./model.js";
 import type { CanvasReconstructionReview } from "./reconstruction-review.js";
 
@@ -47,6 +51,7 @@ export interface CanvasAgentDefaults {
 }
 
 export interface CanvasWorkspaceSessionState {
+  readonly activePageId: NonNullable<WorkspaceSessionDraftV1["activePageId"]>;
   readonly activity: Readonly<
     Omit<
       WorkspaceSessionDraftV1["activity"],
@@ -57,12 +62,21 @@ export interface CanvasWorkspaceSessionState {
   };
   readonly camera: CanvasCamera;
   readonly documentRevision: number;
+  readonly history?: NonNullable<WorkspaceSessionDraftV1["history"]>;
   readonly panels: Readonly<WorkspaceSessionDraftV1["panels"]>;
   readonly selection: SelectionState;
   readonly viewportSize: {
     readonly height: number;
     readonly width: number;
   };
+}
+
+/** Durable authority supplied by the production runtime for a Canvas V3 session. */
+export interface CanvasWorkbenchV3Session {
+  readonly activePageId: CanvasPageId;
+  readonly document: CanvasDocumentV3;
+  readonly persistence: CanvasDocumentV3PersistencePort;
+  readonly persistencePolicy?: CanvasDocumentV3PersistencePolicy;
 }
 
 export interface CanvasWorkbenchProps {
@@ -74,19 +88,23 @@ export interface CanvasWorkbenchProps {
   readonly project: CanvasWorkbenchProject;
   readonly reconstructionReviews?: readonly CanvasReconstructionReview[];
   readonly runtimePort?: CanvasRuntimePortV1;
+  /**
+   * Required by the production integration. It remains optional temporarily
+   * so legacy isolated view tests can compile while the consumer migration
+   * lands; CanvasWorkbench itself must fail closed when it is absent.
+   */
+  readonly v3Session?: CanvasWorkbenchV3Session;
   readonly onHarnessChange?: (harnessId: string) => void;
   readonly onOpenInHelium?: (url: string) => void;
   readonly onOpenSourceInCode?: (sourcePath: string) => void;
   readonly onOpenSourceInCursor?: (sourcePath: string) => void;
   readonly onNavigatorModeChange?: (mode: NavigatorMode) => void;
   readonly onExit?: () => void;
-  readonly onSceneChange?: (scene: SceneState) => void;
   readonly onSendAgentContext?: (context: AgentSelectionContext) => void;
   readonly onWorkspaceSessionChange?: (
     state: CanvasWorkspaceSessionState,
   ) => void;
   readonly pageNavigation?: CanvasPageNavigation;
-  readonly persistence?: CanvasAutosave;
   readonly workspaceWarning?: string;
 }
 

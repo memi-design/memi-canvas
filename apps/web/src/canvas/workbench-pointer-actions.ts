@@ -27,17 +27,21 @@ import type {
   SelectionMarquee,
 } from "./CanvasWorkbench.types.js";
 import type { ProfessionalCanvasTool } from "./commands.js";
-import {
-  uniqueNodeId,
-  type Point,
-  type Size,
-  type WorkbenchNode,
-} from "./model.js";
+import type { Point, WorkbenchNode } from "./model.js";
 import {
   descendantNodeIds,
   duplicateWorkbenchSubtrees,
 } from "./workbench-document-actions.js";
+import {
+  authoredPathGeometry,
+  createdNodeGeometry,
+  createWorkbenchNode,
+  hasLockedAncestor,
+  type CreationTool,
+} from "./workbench-pointer-geometry.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
+import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
+import type { WorkbenchSemanticCommitOptions } from "./workbench-document-actions.js";
 
 interface PointerActionContext {
   readonly alignmentGuides: AlignmentGuides;
@@ -47,6 +51,12 @@ interface PointerActionContext {
     FrameStateScheduler<CanvasCamera> | null
   >;
   readonly commitPreview: WorkbenchHistoryActions["commitPreview"];
+  /** V3 production sink. Pointer gestures provide only their affected nodes. */
+  readonly commitIntentReceipt?: (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    options?: WorkbenchSemanticCommitOptions,
+  ) => void;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   readonly createRootNode: WorkbenchHistoryActions["createRootNode"];
   readonly gesture: MutableRefObject<PointerGesture | null>;
@@ -102,162 +112,36 @@ export interface WorkbenchPointerActions {
   ) => void;
 }
 
-type CreationTool = Exclude<
-  ProfessionalCanvasTool,
-  "select" | "pan" | "Scale"
->;
-
-function nodeKindForTool(tool: CreationTool): WorkbenchNode["kind"] {
-  return tool === "Pen" || tool === "Pencil" ? "Vector" : tool;
-}
-
-function defaultNodeSize(kind: WorkbenchNode["kind"]): Size {
-  return kind === "Text"
-    ? { width: 160, height: 32 }
-    : kind === "Rectangle" || kind === "Ellipse"
-      ? { width: 160, height: 120 }
-      : kind === "Line" || kind === "Arrow"
-        ? { width: 160, height: 24 }
-      : { width: 320, height: 240 };
-}
-
-function hasLockedAncestor(
-  node: WorkbenchNode,
-  nodes: readonly WorkbenchNode[],
-): boolean {
-  const nodesById = new Map(
-    nodes.map((candidate) => [candidate.id, candidate]),
-  );
-  let parentId = node.parentId;
-  while (parentId !== null) {
-    const parent = nodesById.get(parentId);
-    if (parent?.locked === true) {
-      return true;
-    }
-    parentId = parent?.parentId ?? null;
-  }
-  return false;
-}
-
-function createWorkbenchNode(
-  tool: CreationTool,
-  at: Point,
-  nodes: readonly WorkbenchNode[],
-  size = defaultNodeSize(nodeKindForTool(tool)),
-  centered = false,
-): WorkbenchNode {
-  const kind = nodeKindForTool(tool);
-  const ordinal = nodes.filter((node) => node.kind === kind).length + 1;
-  const name = `${tool} ${ordinal}`;
-  const path =
-    kind === "Line" || kind === "Arrow"
-      ? [
-          { x: 0, y: size.height / 2 },
-          { x: size.width, y: size.height / 2 },
-        ]
-      : kind === "Vector"
-        ? [
-            { x: 0, y: size.height },
-            { x: size.width * 0.4, y: 0 },
-            { x: size.width, y: size.height * 0.6 },
-          ]
-        : undefined;
-  return {
-    id: uniqueNodeId(nodes, `node-${kind.toLowerCase()}`),
-    kind,
-    name,
-    parentId: null,
-    position: centered
-      ? {
-          x: at.x - size.width / 2,
-          y: at.y - size.height / 2,
-        }
-      : at,
-    size,
-    locked: false,
-    hidden: false,
-    ...(path === undefined ? {} : { path }),
-    ...(kind === "Text"
-      ? { text: "Text" }
-      : kind === "Comment"
-        ? { text: "Comment" }
-        : {}),
-    ...(kind === "Text" ||
-    kind === "Rectangle" ||
-    kind === "Ellipse" ||
-    kind === "Frame" ||
-    kind === "Section" ||
-    kind === "Comment"
-      ? { fill: "white" }
-      : {}),
-    ...(kind === "Line" || kind === "Arrow" || kind === "Vector"
-      ? { stroke: "white" }
-      : {}),
-  };
-}
-
-function authoredPathGeometry(points: readonly Point[]): {
-  readonly path: readonly Point[];
-  readonly position: Point;
-  readonly size: Size;
-} {
-  const minimumX = Math.min(...points.map(({ x }) => x));
-  const minimumY = Math.min(...points.map(({ y }) => y));
-  const maximumX = Math.max(...points.map(({ x }) => x));
-  const maximumY = Math.max(...points.map(({ y }) => y));
-  return {
-    position: { x: minimumX, y: minimumY },
-    size: {
-      width: Math.max(1, maximumX - minimumX),
-      height: Math.max(1, maximumY - minimumY),
-    },
-    path: points.map(({ x, y }) => ({
-      x: x - minimumX,
-      y: y - minimumY,
-    })),
-  };
-}
-
-function createdNodeGeometry(
-  origin: Point,
-  current: Point,
-  constrain: boolean,
-  fromCenter: boolean,
-): { readonly position: Point; readonly size: Size } {
-  let deltaX = current.x - origin.x;
-  let deltaY = current.y - origin.y;
-  if (constrain) {
-    const dimension = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-    deltaX = (deltaX < 0 ? -1 : 1) * dimension;
-    deltaY = (deltaY < 0 ? -1 : 1) * dimension;
-  }
-  if (fromCenter) {
-    return {
-      position: {
-        x: origin.x - Math.abs(deltaX),
-        y: origin.y - Math.abs(deltaY),
-      },
-      size: {
-        width: Math.max(1, Math.abs(deltaX) * 2),
-        height: Math.max(1, Math.abs(deltaY) * 2),
-      },
-    };
-  }
-  return {
-    position: {
-      x: Math.min(origin.x, origin.x + deltaX),
-      y: Math.min(origin.y, origin.y + deltaY),
-    },
-    size: {
-      width: Math.max(1, Math.abs(deltaX)),
-      height: Math.max(1, Math.abs(deltaY)),
-    },
-  };
-}
-
 export function createWorkbenchPointerActions(
   context: PointerActionContext,
 ): WorkbenchPointerActions {
+  const commit = (
+    label: string,
+    receipt: WorkbenchIntentReceiptV3,
+    before: readonly WorkbenchNode[],
+    targetIds: readonly string[],
+    selectedIds?: readonly string[],
+  ) => {
+    if (context.commitIntentReceipt !== undefined) {
+      context.commitIntentReceipt(label, receipt, {
+        ...(selectedIds === undefined ? {} : { selectedIds }),
+        targetIds,
+      });
+      context.setPreviewNodes(null);
+      return;
+    }
+    context.commitPreview(label, before, targetIds);
+  };
+  const create = (label: string, node: WorkbenchNode) => {
+    if (context.commitIntentReceipt !== undefined) {
+      context.commitIntentReceipt(label, { kind: "create", nodes: [node] }, {
+        selectedIds: [node.id], targetIds: [node.id],
+      });
+      context.setPreviewNodes(null);
+      return;
+    }
+    context.createRootNode(label, node);
+  };
   const startMove: WorkbenchPointerActions["startMove"] = (
     node,
     event,
@@ -315,13 +199,12 @@ export function createWorkbenchPointerActions(
     }
     const duplicated = event.altKey;
     let gestureNodes = context.nodes;
-    let gestureIds = descendantNodeIds(
-      context.nodes,
-      movableRoots.map(({ id }) => id),
-    );
+    let gestureIds = movableRoots.map(({ id }) => id);
     let positions = Object.fromEntries(
       context.nodes
-        .filter(({ id }) => gestureIds.includes(id))
+        .filter(({ id }) =>
+          descendantNodeIds(context.nodes, gestureIds).includes(id),
+        )
         .map((candidate) => [candidate.id, candidate.position]),
     );
     if (duplicated) {
@@ -331,12 +214,17 @@ export function createWorkbenchPointerActions(
         { x: 0, y: 0 },
       );
       gestureNodes = [...context.nodes, ...copies];
-      gestureIds = copies.map((copy) => copy.id);
+      const copyIds = new Set(copies.map(({ id }) => id));
+      gestureIds = copies
+        .filter(
+          ({ parentId }) =>
+            parentId === null || !copyIds.has(parentId),
+        )
+        .map(({ id }) => id);
       positions = Object.fromEntries(
         copies.map((copy) => [copy.id, copy.position]),
       );
       context.setPreviewNodes(gestureNodes);
-      context.selectNodeIds(gestureIds);
     }
     context.gesture.current = {
       type: "move",
@@ -575,7 +463,11 @@ export function createWorkbenchPointerActions(
         (event.clientY - active.origin.y) / active.camera.zoom;
 
       if (active.type === "move") {
-        const movingNodes = active.nodeIds.flatMap((nodeId) => {
+        const previewIds = descendantNodeIds(
+          active.initialNodes,
+          active.nodeIds,
+        );
+        const movingNodes = previewIds.flatMap((nodeId) => {
           const node = active.initialNodes.find(
             ({ id }) => id === nodeId,
           );
@@ -592,9 +484,9 @@ export function createWorkbenchPointerActions(
           gridSize: canvasGridWorldSize(active.camera.zoom),
         });
         context.setAlignmentGuides(snap.guides);
-        const movableIds = new Set(active.nodeIds);
+        const movableIds = new Set(previewIds);
         context.setPreviewNodes(
-          context.nodes.map((node) => {
+          active.initialNodes.map((node) => {
             const position = active.positions[node.id];
             return !movableIds.has(node.id) || position === undefined
               ? node
@@ -648,7 +540,7 @@ export function createWorkbenchPointerActions(
               true,
             );
         context.suppressCanvasClick.current = true;
-        context.createRootNode(`Create ${node.name}`, node);
+        create(`Create ${node.name}`, node);
         context.appendTrace(`Created ${node.name}`, node.id);
         context.setTool("select");
         return;
@@ -659,12 +551,44 @@ export function createWorkbenchPointerActions(
           active.type === "move" && active.duplicated
             ? `Duplicate and move ${active.nodeName}`
             : `${active.type === "move" ? "Move" : "Resize"} ${active.nodeName}`;
-        context.commitPreview(
+        const targetIds = active.type === "move"
+          ? active.duplicated
+            ? descendantNodeIds(context.nodes, active.nodeIds)
+            : active.nodeIds
+          : [active.nodeId];
+        const affected = context.nodes.filter((node) =>
+          targetIds.includes(node.id),
+        );
+        const nodesById = new Map(
+          context.nodes.map((node) => [node.id, node]),
+        );
+        const durableAffected = affected.map((node) => {
+          if (node.parentId === null) {
+            return node;
+          }
+          const parent = nodesById.get(node.parentId);
+          return parent === undefined
+            ? node
+            : {
+                ...node,
+                position: {
+                  x: node.position.x - parent.position.x,
+                  y: node.position.y - parent.position.y,
+                },
+              };
+        });
+        commit(
           label,
+          active.type === "resize"
+            ? { kind: "resize", nodes: affected }
+            : active.duplicated
+              ? { kind: "paste", nodes: durableAffected }
+              : { kind: "move", nodes: durableAffected },
           active.initialNodes,
-          active.type === "move"
+          targetIds,
+          active.type === "move" && active.duplicated
             ? active.nodeIds
-            : [active.nodeId],
+            : undefined,
         );
         context.appendTrace(
           active.type === "move" && active.duplicated
@@ -706,7 +630,7 @@ export function createWorkbenchPointerActions(
       undefined,
       true,
     );
-    context.createRootNode(`Create ${node.name}`, node);
+    create(`Create ${node.name}`, node);
     context.setTool("select");
   };
 
@@ -806,21 +730,29 @@ export function createWorkbenchPointerActions(
         movableRoots.length === 1
           ? `Nudge ${movableRoots[0]?.name ?? "selection"}`
           : `Nudge ${movableRoots.length} layers`;
+      const nextNodes = context.nodes.map((node) =>
+        movableSet.has(node.id) && !node.locked
+          ? {
+              ...node,
+              position: {
+                x: node.position.x + offset.x,
+                y: node.position.y + offset.y,
+              },
+            }
+          : node,
+      );
+      if (context.commitIntentReceipt !== undefined) {
+        context.commitIntentReceipt(label, {
+          kind: "move",
+          nodes: nextNodes.filter((node) => movableSet.has(node.id)),
+        }, { targetIds: movableIds });
+      } else {
       context.commitScene(
         label,
-        context.nodes.map((node) =>
-          movableSet.has(node.id) && !node.locked
-            ? {
-                ...node,
-                position: {
-                  x: node.position.x + offset.x,
-                  y: node.position.y + offset.y,
-                },
-              }
-            : node,
-        ),
+        nextNodes,
         { targetIds: movableIds },
       );
+      }
     };
 
   void context.alignmentGuides;

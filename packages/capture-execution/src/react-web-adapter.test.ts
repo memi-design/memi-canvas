@@ -1,15 +1,18 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { chromium } from "playwright";
 import { describe, expect, it, vi } from "vitest";
 
 import { ContentAddressedArtifactStore } from "./artifact-store.js";
 import { executeCaptureScenario } from "./executor.js";
 import {
-  createPlaywrightBrowserLauncher,
+  createPlaywrightBrowserLauncherForTest,
+  HELIUM_EXECUTABLE,
   resolveHeliumExecutable,
   ReactWebCaptureAdapter,
   type BrowserLike,
@@ -20,6 +23,16 @@ import {
   jobFixture,
   scenarioFixture,
 } from "./test-fixtures.js";
+
+function hermeticBrowserLauncher() {
+  const playwrightExecutable = chromium.executablePath();
+  return createPlaywrightBrowserLauncherForTest(
+    process.env.MEMI_TEST_BROWSER_EXECUTABLE ??
+      (existsSync(playwrightExecutable)
+        ? playwrightExecutable
+        : HELIUM_EXECUTABLE),
+  );
+}
 
 async function listen(
   server: Server,
@@ -170,7 +183,7 @@ describe("ReactWebCaptureAdapter", () => {
   });
 
   it("uses real Playwright pixels and DOM geometry", async () => {
-    const browser = await createPlaywrightBrowserLauncher().launch();
+    const browser = await hermeticBrowserLauncher().launch();
     const page = await browser.newPage({
       viewport: { width: 320, height: 240 },
       deviceScaleFactor: 1,
@@ -279,7 +292,7 @@ describe("ReactWebCaptureAdapter", () => {
     });
     const capture = await listen(captureServer);
 
-    const browser = await createPlaywrightBrowserLauncher().launch();
+    const browser = await hermeticBrowserLauncher().launch();
     const page = await browser.newPage({
       viewport: { width: 320, height: 240 },
       deviceScaleFactor: 1,
@@ -338,7 +351,7 @@ describe("ReactWebCaptureAdapter", () => {
   ])(
     "rejects an unsafe browser capture authority %s",
     async (allowedOrigin) => {
-      const browser = await createPlaywrightBrowserLauncher().launch();
+      const browser = await hermeticBrowserLauncher().launch();
       try {
         await expect(
           browser.newPage({

@@ -14,6 +14,7 @@ import {
   invertCanvasOperationV3,
   migrateCanvasDocumentV2ToV3,
   prepareCanvasOperationV3,
+  revertCanvasOperationV3,
 } from "./v3.js";
 
 const ids = {
@@ -108,6 +109,27 @@ describe("CanvasDocumentV3 engine", () => {
     expect(created.revision).toBe(1);
     expect(create.inverseAction.type).toBe("node.delete");
 
+    const reverted = revertCanvasOperationV3(created, create);
+    expect(reverted.stateHash).toBe(empty.stateHash);
+    expect(() =>
+      revertCanvasOperationV3(
+        { ...created, operationCursor: null },
+        create,
+      ),
+    ).toThrow(/exact resulting/i);
+    expect(() =>
+      revertCanvasOperationV3(created, {
+        ...create,
+        expectedRevision: create.expectedRevision + 1,
+      }),
+    ).toThrow(/exact resulting/i);
+    expect(() =>
+      revertCanvasOperationV3(created, {
+        ...create,
+        resultingHash: `sha256:${"0".repeat(64)}`,
+      }),
+    ).toThrow(/exact resulting/i);
+
     const inverse = invertCanvasOperationV3(created, create, {
       id: ids.operation[1],
       actor: "human",
@@ -173,6 +195,45 @@ describe("CanvasDocumentV3 engine", () => {
     });
 
     expect(reorder.targetIds).toEqual([ids.page]);
+  });
+
+  it("records node renames as exact semantic operations", () => {
+    const empty = createCanvasDocumentV3({
+      id: ids.document,
+      projectId: ids.project,
+      initialPage: { id: ids.page, kind: "design", name: "Page 1" },
+    });
+    const create = prepareCanvasOperationV3(empty, {
+      id: ids.operation[0],
+      actor: "human",
+      actorId: "local-user",
+      occurredAt: "2026-08-02T12:00:00.000Z",
+      label: "Create hero surface",
+      action: {
+        type: "node.create",
+        payload: { node: node(), parentId: null, index: 0 },
+      },
+    });
+    const created = applyCanvasOperationV3(empty, create);
+    const rename = prepareCanvasOperationV3(created, {
+      id: ids.operation[1],
+      actor: "human",
+      actorId: "local-user",
+      occurredAt: "2026-08-02T12:00:01.000Z",
+      label: "Rename hero surface",
+      action: {
+        type: "node.name",
+        payload: { nodeId: ids.node, next: "Renamed hero surface" },
+      },
+    });
+    const renamed = applyCanvasOperationV3(created, rename);
+
+    expect(rename.targetIds).toEqual([ids.node]);
+    expect(rename.inverseAction).toMatchObject({
+      type: "node.name",
+      payload: { prior: "Renamed hero surface", next: "Hero surface" },
+    });
+    expect(renamed.nodesById[ids.node]?.name).toBe("Renamed hero surface");
   });
 
   it("migrates V2 deterministically without losing hierarchy, components, or tokens", () => {

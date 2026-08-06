@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import type { CanvasWorkbenchProject, WorkbenchNode } from "./model.js";
 import { composeImportedMobileScreen } from "./imported-screen-composition.js";
 
@@ -119,8 +120,14 @@ function viewport(): HTMLElement {
 }
 
 describe("evidence-backed editable screen rendering", () => {
-  it("renders the editable reconstruction while evidence remains hidden", () => {
-    render(<CanvasWorkbench project={project} />);
+  it("renders the editable reconstruction while evidence remains hidden", async () => {
+    render(
+      <CanvasWorkbench
+        project={project}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
+      />,
+    );
+    await screen.findByRole("region", { name: "Infinite canvas" });
 
     expect(
       screen.queryByRole("img", { name: "Buzzr Games runtime" }),
@@ -138,19 +145,16 @@ describe("evidence-backed editable screen rendering", () => {
     expect(within(card as HTMLElement).getByText("MLB")).toBeTruthy();
   });
 
-  it("groups, context-selects, and transforms editable layers without changing evidence", () => {
-    const onSceneChange = vi.fn();
+  it("groups, context-selects, and transforms editable layers without changing evidence", async () => {
     render(
       <CanvasWorkbench
-        onSceneChange={onSceneChange}
         project={project}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
       />,
     );
+    await screen.findByRole("region", { name: "Infinite canvas" });
     const card = screen.getByRole("button", { name: "GameCard on canvas" });
     const title = screen.getByRole("button", { name: "Game title on canvas" });
-    const evidenceBefore = project.document.nodes.find(
-      ({ id }) => id === "capture-games",
-    );
 
     fireEvent.contextMenu(card, { clientX: 300, clientY: 240 });
     expect(
@@ -160,7 +164,7 @@ describe("evidence-backed editable screen rendering", () => {
     fireEvent.click(card);
     fireEvent.click(title, { shiftKey: true });
     fireEvent.keyDown(document, { key: "g", metaKey: true });
-    const group = screen.getByRole("button", { name: "Group 1 on canvas" });
+    const group = await screen.findByRole("button", { name: "Group 1 on canvas" });
     expect(
       screen
         .getByRole("button", { name: "GameCard on canvas" })
@@ -186,21 +190,24 @@ describe("evidence-backed editable screen rendering", () => {
       pointerId: 73,
     });
 
-    const latestNodes = onSceneChange.mock.calls.at(-1)?.[0]
-      .nodes as readonly WorkbenchNode[];
     expect(
-      latestNodes.find(({ id }) => id === "capture-games")?.position.x,
-    ).toBe(evidenceBefore?.position.x);
+      screen.queryByRole("button", {
+        name: "Games runtime reference on canvas",
+      }),
+    ).toBeNull();
     expect(
-      latestNodes.find(({ id }) => id === "capture-games"),
-    ).toMatchObject({ hidden: true, locked: true, parentId: null });
-    expect(
-      latestNodes.find(({ id }) => id === "game-card")?.position.x,
-    ).toBeGreaterThan(semanticNodes[0]!.position.x);
+      group.closest<HTMLElement>("[data-node-id]")?.style.left,
+    ).not.toBe("0px");
   });
 
-  it("edits the reconstruction and restores authored values on undo", () => {
-    render(<CanvasWorkbench project={project} />);
+  it("edits the reconstruction and restores authored values on undo", async () => {
+    render(
+      <CanvasWorkbench
+        project={project}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
+      />,
+    );
+    await screen.findByRole("region", { name: "Infinite canvas" });
     const card = screen.getByRole("button", {
       name: "GameCard on canvas",
     });
@@ -237,11 +244,13 @@ describe("evidence-backed editable screen rendering", () => {
     });
     fireEvent.blur(screen.getByLabelText("Text content"));
 
-    expect(within(title).getByText("Edited matchup")).toBeTruthy();
+    expect(await within(title).findByText("Edited matchup")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
-    expect(within(title).queryByText("Edited matchup")).toBeNull();
-    expect(within(title).getByText("Lakers vs Celtics")).toBeTruthy();
+    await waitFor(() => {
+      expect(within(title).queryByText("Edited matchup")).toBeNull();
+      expect(within(title).getByText("Lakers vs Celtics")).toBeTruthy();
+    });
   });
 });

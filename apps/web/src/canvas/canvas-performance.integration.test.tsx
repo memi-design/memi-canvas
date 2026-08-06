@@ -8,11 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas.js";
 import type { WhiteboardState } from "../whiteboard/whiteboard-model.js";
 
 describe("canvas performance integration", () => {
-  it("renders only visible workbench nodes while retaining selection", () => {
+  it("renders only visible workbench nodes while retaining selection", async () => {
     const project = {
       ...canvasWorkbenchFixture,
       selectedNodeId: "selected-offscreen",
@@ -41,11 +42,27 @@ describe("canvas performance integration", () => {
       },
     };
 
-    render(<CanvasWorkbench project={project} />);
-    const viewport = screen.getByRole("region", { name: "Infinite canvas" });
+    render(
+      <CanvasWorkbench
+        project={project}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
+      />,
+    );
+    const viewport = await screen.findByRole("region", { name: "Infinite canvas" });
+    for (let depth = 0; depth < 4; depth += 1) {
+      screen
+        .getAllByRole("treeitem")
+        .filter((item) => item.getAttribute("aria-expanded") === "false")
+        .forEach((item) => fireEvent.keyDown(item, { key: "ArrowRight" }));
+    }
+    fireEvent.click(
+      await screen.findByRole("treeitem", {
+        name: "Selected offscreen CodeFrame",
+      }),
+    );
 
     expect(
-      within(viewport).getByRole("button", {
+      await within(viewport).findByRole("button", {
         name: "Visible node on canvas",
       }),
     ).toBeTruthy();

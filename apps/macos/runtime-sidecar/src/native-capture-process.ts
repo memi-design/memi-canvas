@@ -33,7 +33,7 @@ import {
   type RunningProcessGroup,
   sandboxProcessRecipe,
   validateProcessRecipe,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 
 interface ChildProcessLike {
   readonly pid: number | undefined;

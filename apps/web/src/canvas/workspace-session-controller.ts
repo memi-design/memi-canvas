@@ -57,6 +57,10 @@ function draftFromSnapshot(
     documentId: snapshot.documentId,
     documentRevision: snapshot.documentRevision,
     sourceRevision: snapshot.sourceRevision,
+    ...(snapshot.activePageId === undefined
+      ? {}
+      : { activePageId: snapshot.activePageId }),
+    ...(snapshot.history === undefined ? {} : { history: snapshot.history }),
     selection: snapshot.selection,
     camera: snapshot.camera,
     panels: snapshot.panels,
@@ -204,6 +208,7 @@ export function workspaceSessionFromCanvasDocumentV3(
   session: WorkspaceSessionDraftV1,
   document: CanvasDocumentV3,
   selection: SelectionState,
+  history: WorkspaceSessionDraftV1["history"] = session.history,
 ): WorkspaceSessionDraftV1 {
   if (hashCanvasDocumentV3(document) !== document.stateHash) {
     throw new Error("Workspace CanvasDocumentV3 state hash is corrupt.");
@@ -235,10 +240,19 @@ export function workspaceSessionFromCanvasDocumentV3(
     }
   }
   const sourceRevision = v3SourceRevision(document, session.sourceRevision);
+  const boundedHistory = history ?? { undo: [], redo: [] };
+  const activePageId =
+    session.activePageId !== undefined &&
+    session.activePageId !== null &&
+    document.pagesById[session.activePageId] !== undefined
+      ? session.activePageId
+      : document.pageIds[0] ?? null;
   const next = {
     ...session,
     documentRevision: document.revision,
     sourceRevision,
+    activePageId,
+    history: boundedHistory,
     selection: {
       selectedIds,
       anchorId: selection.anchorId,

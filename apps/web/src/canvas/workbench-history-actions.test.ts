@@ -1,12 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  CanvasDocumentAppendReceiptV3Schema,
+  type CanvasDocumentIdentityV3,
+  type CanvasDocumentJournalV3,
+  type CanvasDocumentV3PersistencePort,
+} from "@memi/protocol";
+import { createCanvasDocumentV3 } from "@memi/canvas-document";
+
+import {
   createCanonicalWorkbenchAuthority,
   type CanonicalWorkbenchAuthority,
 } from "./canonical-workbench-authority.js";
+import {
+  CanonicalWorkbenchAuthorityV3,
+  migrateLegacyWorkbenchProjectionToV3,
+} from "./canonical-workbench-authority-v3.js";
+import { createLegacyWorkbenchProjection } from "./legacy-workbench-projection.js";
 import { createSelectionState, type WorkbenchNode } from "./model.js";
 import { createAuthoringSelectionTransaction } from "./authoring-selection.js";
-import { createWorkbenchHistoryActions } from "./workbench-history-actions.js";
+import {
+  createWorkbenchHistoryActions,
+} from "./workbench-history-actions.js";
+import { createV3WorkbenchHistoryActions } from "./workbench-v3-history-actions.js";
 
 function rectangle(id: string, x: number, y: number): WorkbenchNode {
   return {
@@ -34,6 +50,39 @@ function authority(nodes: readonly WorkbenchNode[]) {
       selectedNodeId: null,
     },
   });
+}
+
+function v3MemoryPort(): CanvasDocumentV3PersistencePort {
+  let journal: CanvasDocumentJournalV3 | null = null;
+  return {
+    load: vi.fn(async (_identity: CanvasDocumentIdentityV3) => journal),
+    initialize: vi.fn(async (snapshot) => {
+      journal = {
+        schemaVersion: 1,
+        kind: "canvas-document-v3-journal",
+        identity: snapshot.identity,
+        snapshot,
+        operations: [],
+        operationBytes: 0,
+      };
+    }),
+    append: vi.fn(async (request) => {
+      if (journal === null) throw new Error("journal not initialized");
+      journal = {
+        ...journal,
+        operations: [...journal.operations, request.operation],
+        operationBytes: journal.operationBytes + 1,
+      };
+      return CanvasDocumentAppendReceiptV3Schema.parse({
+        schemaVersion: 1,
+        identity: request.identity,
+        operationId: request.operation.id,
+        revision: request.operation.expectedRevision + 1,
+        stateHash: request.operation.resultingHash,
+      });
+    }),
+    checkpoint: vi.fn(async () => undefined),
+  };
 }
 
 function historyActions(
@@ -73,6 +122,136 @@ function historyActions(
 }
 
 describe("operation-native workbench history actions", () => {
+  it("adds and toggles nodes against the latest V3 selection", async () => {
+    const migration = migrateLegacyWorkbenchProjectionToV3(
+      createLegacyWorkbenchProjection({
+        nodes: [rectangle("card", 20, 30), rectangle("headline", 80, 90)],
+        revision: 0,
+        selectedNodeId: null,
+      }),
+      {
+        legacyDocumentId: "selection-document",
+        legacyProjectId: "selection-project",
+      },
+    );
+    const canonicalAuthority = await CanonicalWorkbenchAuthorityV3.open({
+      document: migration.document,
+      persistence: v3MemoryPort(),
+      selection: migration.selection,
+    });
+    const actions = createV3WorkbenchHistoryActions({
+      authority: canonicalAuthority,
+      actorId: "local-user",
+      createOperationId: () => "opn_01J00000000000000000000000",
+      now: () => "2026-08-02T12:00:00.000Z",
+    });
+    const cardId = migration.legacyReceipt.nodeIds.card!;
+    const headlineId = migration.legacyReceipt.nodeIds.headline!;
+
+    actions.selectNode(cardId, false);
+    actions.selectNode(headlineId, true);
+    expect(canonicalAuthority.getSnapshot().selection.selectedIds).toEqual([
+      cardId,
+      headlineId,
+    ]);
+
+    actions.selectNode(cardId, true);
+    expect(canonicalAuthority.getSnapshot().selection.selectedIds).toEqual([
+      headlineId,
+    ]);
+  });
+
+  it("commits renderer edits through V3 semantic operations and durable inverse history", async () => {
+    const document = createCanvasDocumentV3({
+      id: "doc_01J00000000000000000000000",
+      projectId: "prj_01J00000000000000000000000",
+      initialPage: {
+        id: "pag_01J00000000000000000000000",
+        kind: "design",
+        name: "Canvas",
+      },
+    });
+    const authority = await CanonicalWorkbenchAuthorityV3.open({
+      document,
+      persistence: v3MemoryPort(),
+      selection: createSelectionState([]),
+    });
+    const actions = createV3WorkbenchHistoryActions({
+      authority,
+      actorId: "local-user",
+      createOperationId: (() => {
+        let sequence = 0;
+        return () =>
+          `opn_01J0000000000000000000000${sequence++}`;
+      })(),
+      now: () => "2026-08-02T12:00:00.000Z",
+    });
+    const nodeId = "nod_01J00000000000000000000000";
+
+    await actions.commitSemanticAction({
+      action: {
+        type: "node.create",
+        payload: {
+          parentId: null,
+          index: 0,
+          node: {
+            id: nodeId,
+            pageId: document.pageIds[0]!,
+            kind: "rectangle",
+            name: "Card",
+            parentId: null,
+            childIds: [],
+            transform: { x: 24, y: 32, rotation: 0, scaleX: 1, scaleY: 1 },
+            geometry: { width: 160, height: 80 },
+            style: {
+              opacity: 1,
+              visible: true,
+              locked: false,
+              fills: [],
+              strokes: [],
+              cornerRadii: [0, 0, 0, 0],
+            },
+            layout: {
+              mode: "none",
+              gap: 0,
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              alignPrimary: "start",
+              alignCounter: "start",
+              wrap: false,
+              sizingHorizontal: "fixed",
+              sizingVertical: "fixed",
+            },
+            text: null,
+            content: null,
+            componentId: null,
+            instanceOverrides: {},
+            componentBinding: null,
+            provenance: null,
+            referenceBinding: null,
+            sourceAnchor: null,
+            sourceBinding: null,
+          },
+        },
+      },
+      label: "Create card",
+      selectionAfter: createSelectionState([nodeId]),
+    });
+
+    const undo = await actions.undoScene();
+    const redo = await actions.redoScene();
+
+    expect(undo).toMatchObject({ type: "node.delete" });
+    expect(redo).toMatchObject({ type: "node.create" });
+    expect(authority.getSnapshot()).toMatchObject({
+      canRedo: false,
+      canUndo: true,
+      document: { revision: 3 },
+      selection: { selectedIds: [nodeId] },
+    });
+    expect("commitActions" in actions).toBe(false);
+    expect(JSON.stringify(actions)).not.toContain("WorkbenchNode");
+  });
+
   it("updates a newly created root through the same operation gateway", () => {
     const canonicalAuthority = authority([]);
     const created = rectangle("new-card", 40, 50);

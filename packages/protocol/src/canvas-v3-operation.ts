@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { canonicalJson } from "@memi/canonical-json";
+
 import {
   ContentHashSchema,
   IsoTimestampSchema,
@@ -38,6 +40,7 @@ import {
 
 const indexSchema = z.number().int().nonnegative();
 const safeKey = z.string().trim().min(1).max(160);
+const nodeNameSchema = z.string().trim().min(1).max(512);
 
 function priorNext<Value extends z.ZodType>(value: Value) {
   return z.strictObject({ prior: value, next: value });
@@ -80,6 +83,7 @@ const NodeTransformActionV3Schema = nodeValueAction(
   "node.transform",
   CanvasTransformV2Schema,
 );
+const NodeNameActionV3Schema = nodeValueAction("node.name", nodeNameSchema);
 const NodeGeometryActionV3Schema = nodeValueAction(
   "node.geometry",
   CanvasGeometryV2Schema,
@@ -200,6 +204,7 @@ const singleActions = [
   NodeCreateActionV3Schema,
   NodeDeleteActionV3Schema,
   NodeTransformActionV3Schema,
+  NodeNameActionV3Schema,
   NodeGeometryActionV3Schema,
   NodeStyleActionV3Schema,
   NodeTextActionV3Schema,
@@ -242,6 +247,7 @@ export const CanvasActionTypeV3Schema = z.enum([
   "node.create",
   "node.delete",
   "node.transform",
+  "node.name",
   "node.geometry",
   "node.style",
   "node.text",
@@ -260,6 +266,49 @@ export const CanvasActionTypeV3Schema = z.enum([
   "atomic.batch",
 ]);
 export type CanvasActionTypeV3 = z.infer<typeof CanvasActionTypeV3Schema>;
+
+function exactInverseAction(
+  action: CanvasActionV3,
+): CanvasActionV3 {
+  if (action.type === "atomic.batch") {
+    return CanvasActionV3Schema.parse({
+      type: "atomic.batch",
+      payload: {
+        actions: [...action.payload.actions].reverse().map(exactInverseAction),
+      },
+    });
+  }
+  if (action.type === "node.create") {
+    return CanvasActionV3Schema.parse({
+      type: "node.delete",
+      payload: {
+        nodeId: action.payload.node.id,
+        prior: action.payload,
+      },
+    });
+  }
+  if (action.type === "node.delete") {
+    return CanvasActionV3Schema.parse({
+      type: "node.create",
+      payload: action.payload.prior,
+    });
+  }
+  return CanvasSingleActionV3Schema.parse({
+    ...action,
+    payload: {
+      ...action.payload,
+      prior: action.payload.next,
+      next: action.payload.prior,
+    },
+  });
+}
+
+function hasExactInverseAction(
+  action: CanvasActionV3,
+  inverseAction: CanvasActionV3,
+): boolean {
+  return canonicalJson(exactInverseAction(action)) === canonicalJson(inverseAction);
+}
 
 export const CanvasOperationV3Schema = z
   .strictObject({
@@ -290,6 +339,13 @@ export const CanvasOperationV3Schema = z
         message: "Operation type must match its forward action type.",
       });
     }
+    if (!hasExactInverseAction(operation.action, operation.inverseAction)) {
+      context.addIssue({
+        code: "custom",
+        path: ["inverseAction"],
+        message: "Operation inverse action must exactly reverse the forward action.",
+      });
+    }
     if (!hasUniqueValues(operation.targetIds)) {
       context.addIssue({
         code: "custom",
@@ -303,6 +359,7 @@ export type CanvasOperationV3 = z.infer<typeof CanvasOperationV3Schema>;
 type NodeValueIntentV3<
   Type extends
     | "node.transform"
+    | "node.name"
     | "node.geometry"
     | "node.style"
     | "node.text"
@@ -334,6 +391,7 @@ export type CanvasSingleActionIntentV3 =
       readonly payload: { readonly nodeId: string };
     }
   | NodeValueIntentV3<"node.transform", z.infer<typeof CanvasTransformV2Schema>>
+  | NodeValueIntentV3<"node.name", z.infer<typeof nodeNameSchema>>
   | NodeValueIntentV3<"node.geometry", z.infer<typeof CanvasGeometryV2Schema>>
   | NodeValueIntentV3<"node.style", z.infer<typeof CanvasStyleV2Schema>>
   | NodeValueIntentV3<"node.text", z.infer<typeof CanvasTextV2Schema>>

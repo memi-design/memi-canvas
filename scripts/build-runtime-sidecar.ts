@@ -2,7 +2,9 @@ import {
   access,
   chmod,
   copyFile,
+  cp,
   mkdir,
+  readFile,
   rename,
   rm,
   writeFile,
@@ -24,25 +26,6 @@ const entry = join(
   "main.ts",
 );
 const xcuiCaptureRoot = join(root, "apps", "macos", "xcui-capture");
-
-function quotedShellArgument(value: string): string {
-  if (value.length === 0 || value.includes("\0") || /[\r\n]/u.test(value)) {
-    throw new Error("Runtime launcher path is invalid.");
-  }
-  return `'${value.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function developmentRuntimeLauncher(
-  bunExecutable: string,
-  sourceEntry: string,
-): string {
-  return [
-    "#!/bin/sh",
-    "set -eu",
-    `exec ${quotedShellArgument(bunExecutable)} ${quotedShellArgument(sourceEntry)} "$@"`,
-    "",
-  ].join("\n");
-}
 
 async function executable(candidates: readonly string[]): Promise<string> {
   for (const candidate of candidates) {
@@ -106,28 +89,70 @@ if (target === undefined || !/^[a-z0-9_.-]+$/u.test(target)) {
 }
 await mkdir(outputRoot, { recursive: true });
 const output = join(outputRoot, `memi-canvas-runtime-${target}`);
+const runtimeBundleOutput = join(outputRoot, "memi-canvas-runtime");
+const bunBundleOutput = join(outputRoot, "memi-canvas-bun");
 const xcuiOutput = join(outputRoot, `memi-xcui-capture-${target}`);
 const temporaryRoot = join(root, ".memi-runtime-build");
 const temporaryOutput = (destination: string) =>
   join(temporaryRoot, `${basename(destination)}.${randomUUID()}.tmp`);
 const runtimeTemporaryOutput = temporaryOutput(output);
+const runtimeBundleTemporaryOutput = temporaryOutput(runtimeBundleOutput);
+const bunBundleTemporaryOutput = temporaryOutput(bunBundleOutput);
 const xcuiTemporaryOutput = temporaryOutput(xcuiOutput);
 await rm(temporaryRoot, { force: true, recursive: true });
 await mkdir(temporaryRoot, { recursive: true });
 try {
-  // Bun 1.3.11 on this macOS host can launch its interpreter normally but
-  // leaves every `bun build --compile` Mach-O stalled in dyld before any
-  // application code runs. Keep the dev sidecar as an executable launcher for
-  // the known-working interpreter and its checked-in source entrypoint. This
-  // keeps the native shell usable for the Expo import vertical slice without
-  // claiming that the launcher is a redistributable production artifact.
+  await mkdir(runtimeBundleTemporaryOutput, { recursive: true });
+  await capture(bun, [
+    "build",
+    "--target=bun",
+    // Playwright loads Chromium BiDi dynamically only for web capture. The
+    // native Expo path does not resolve it during sidecar startup, and Bun's
+    // bundler must not reject that optional runtime branch.
+    "--external=playwright",
+    "--external=chromium-bidi/*",
+    "--external=typescript",
+    "--outdir",
+    runtimeBundleTemporaryOutput,
+    entry,
+  ]);
+  await cp(
+    join(root, "node_modules", "typescript"),
+    join(runtimeBundleTemporaryOutput, "node_modules", "typescript"),
+    { recursive: true },
+  );
+  const bundledEntry = await readFile(
+    join(runtimeBundleTemporaryOutput, "main.js"),
+    "utf8",
+  );
+  for (const forbiddenPath of [root, homedir()]) {
+    if (bundledEntry.includes(forbiddenPath)) {
+      throw new Error(
+        "Packaged runtime sidecar contains a developer-machine path.",
+      );
+    }
+  }
+  await copyFile(bun, bunBundleTemporaryOutput);
+  await chmod(bunBundleTemporaryOutput, 0o755);
+  await signAndVerifyLocalExecutable(bunBundleTemporaryOutput);
   await writeFile(
     runtimeTemporaryOutput,
-    developmentRuntimeLauncher(resolve(bun), entry),
+    [
+      "#!/bin/sh",
+      "set -eu",
+      "directory=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)",
+      "resources=\"$directory/../Resources/runtime\"",
+      "if [ ! -x \"$resources/memi-canvas-bun\" ]; then resources=\"$directory\"; fi",
+      "exec \"$resources/memi-canvas-bun\" \"$resources/memi-canvas-runtime/main.js\" \"$@\"",
+      "",
+    ].join("\n"),
     { mode: 0o755 },
   );
   await chmod(runtimeTemporaryOutput, 0o755);
   await rename(runtimeTemporaryOutput, output);
+  await rm(runtimeBundleOutput, { force: true, recursive: true });
+  await rename(runtimeBundleTemporaryOutput, runtimeBundleOutput);
+  await rename(bunBundleTemporaryOutput, bunBundleOutput);
   if (process.env.MEMI_BUILD_XCUI === "1") {
     await capture("swift", [
       "build",
@@ -154,7 +179,7 @@ try {
     await rename(xcuiTemporaryOutput, xcuiOutput);
     console.log(`Built standalone XCUITest helper: ${xcuiOutput}`);
   }
-  console.log(`Built development runtime launcher: ${output}`);
+  console.log(`Built packaged runtime sidecar: ${output}`);
 } finally {
   await rm(temporaryRoot, { force: true, recursive: true });
 }

@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { WorkbenchNode } from "./model.js";
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import {
   ReconstructionReviewPanel,
   findSelectedReconstructionReview,
   projectDifferenceOverlayVisibility,
   type CanvasReconstructionReview,
 } from "./reconstruction-review.js";
+import { canonicalizeReconstructionReviewsV3 } from "./reconstruction-review-v3.js";
 
 const review: CanvasReconstructionReview = {
   confidenceByNodeId: {
@@ -169,20 +171,51 @@ describe("canvas reconstruction review", () => {
     ).toBeNull();
   });
 
-  it("wires the selected screen review and compare state into the workbench", () => {
+  it("resolves legacy review identities against the migrated V3 document", () => {
+    const project = {
+      ...canvasWorkbenchFixture,
+      document: { ...canvasWorkbenchFixture.document, nodes },
+      selectedNodeId: "child",
+    };
+    const session = createCanvasWorkbenchV3TestSession(project);
+    const canonical = canonicalizeReconstructionReviewsV3({
+      document: session.document,
+      legacyDocumentId: project.document.id,
+      pageId: session.activePageId,
+      reviews: [review],
+    })[0]!;
+
+    expect(session.document.nodesById[canonical.frameId]?.name).toBe("Home");
+    expect(session.document.nodesById[canonical.evidenceNodeId]?.name).toBe(
+      "Home evidence",
+    );
+    expect(
+      Object.keys(canonical.confidenceByNodeId).map(
+        (id) => session.document.nodesById[id]?.name,
+      ),
+    ).toEqual(["Continue"]);
+  });
+
+  it("wires the selected screen review and compare state into the workbench", async () => {
+    const project = {
+      ...canvasWorkbenchFixture,
+      selectedNodeId: "child",
+      document: {
+        ...canvasWorkbenchFixture.document,
+        nodes,
+      },
+    };
     render(
       <CanvasWorkbench
-        project={{
-          ...canvasWorkbenchFixture,
-          selectedNodeId: "child",
-          document: {
-            ...canvasWorkbenchFixture.document,
-            nodes,
-          },
-        }}
+        project={project}
         reconstructionReviews={[review]}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
       />,
     );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue on canvas" }),
+    );
+    await screen.findByRole("button", { name: "Show difference overlay" });
 
     expect(
       screen.getByRole("button", { name: "Show difference overlay" }),

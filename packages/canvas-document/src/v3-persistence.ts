@@ -104,6 +104,7 @@ export class CanvasDocumentV3PersistenceAdapter {
   readonly #identity: CanvasDocumentIdentityV3;
   readonly #operationBytes: number;
   readonly #operationCount: number;
+  readonly #operations: readonly CanvasOperationV3[];
   readonly #policy: ResolvedPersistencePolicy;
   readonly #port: CanvasDocumentV3PersistencePort;
   readonly document: CanvasDocumentV3;
@@ -113,6 +114,7 @@ export class CanvasDocumentV3PersistenceAdapter {
     readonly document: CanvasDocumentV3;
     readonly operationBytes: number;
     readonly operationCount: number;
+    readonly operations: readonly CanvasOperationV3[];
     readonly policy: ResolvedPersistencePolicy;
     readonly port: CanvasDocumentV3PersistencePort;
   }) {
@@ -120,6 +122,7 @@ export class CanvasDocumentV3PersistenceAdapter {
     this.document = input.document;
     this.#operationBytes = input.operationBytes;
     this.#operationCount = input.operationCount;
+    this.#operations = Object.freeze([...input.operations]);
     this.#policy = input.policy;
     this.#port = input.port;
     Object.freeze(this);
@@ -142,6 +145,7 @@ export class CanvasDocumentV3PersistenceAdapter {
         document: seed,
         operationBytes: 0,
         operationCount: 0,
+        operations: [],
         policy: resolvePolicy(policy),
         port,
       });
@@ -167,6 +171,7 @@ export class CanvasDocumentV3PersistenceAdapter {
       document,
       operationBytes: actualBytes,
       operationCount: journal.operations.length,
+      operations: journal.operations,
       policy: resolvePolicy(policy),
       port,
     });
@@ -174,6 +179,15 @@ export class CanvasDocumentV3PersistenceAdapter {
 
   get identity(): CanvasDocumentIdentityV3 {
     return this.#identity;
+  }
+
+  /**
+   * The durable, post-checkpoint operation tail. Consumers may rebuild
+   * in-memory affordances such as undo/redo from this immutable journal
+   * material; document mutation remains exclusively operation-driven.
+   */
+  get operations(): readonly CanvasOperationV3[] {
+    return this.#operations;
   }
 
   get snapshotRequired(): boolean {
@@ -211,6 +225,7 @@ export class CanvasDocumentV3PersistenceAdapter {
       document: next,
       operationBytes: this.#operationBytes + operationBytes(request.operation),
       operationCount: this.#operationCount + 1,
+      operations: [...this.#operations, request.operation],
       policy: this.#policy,
       port: this.#port,
     });
@@ -227,6 +242,7 @@ export class CanvasDocumentV3PersistenceAdapter {
       document: this.document,
       operationBytes: 0,
       operationCount: 0,
+      operations: [],
       policy: this.#policy,
       port: this.#port,
     });

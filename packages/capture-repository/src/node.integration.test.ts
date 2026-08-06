@@ -18,6 +18,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { prepareRepositoryCapture } from "./index.js";
 import { REPOSITORY_GIT_POLICY } from "./git.js";
 import { createNodeRepositoryPorts } from "./node.js";
+import {
+  createRepositoryGitSandboxProfile,
+  resolveTrustedAppleGitAuthority,
+} from "./node-process.js";
 
 const execFile = promisify(execFileCallback);
 const temporaryRoots: string[] = [];
@@ -42,6 +46,101 @@ afterEach(async () => {
 });
 
 describe("Node repository ports", () => {
+  it.skipIf(process.platform !== "darwin")(
+    "executes a fixed direct Apple Git through the sandbox without the xcode-select shim",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "memi-capture-repository-"));
+      temporaryRoots.push(root);
+      const source = join(root, "source");
+      const managed = join(root, "managed");
+      await mkdir(source);
+      await mkdir(managed);
+      await writeFile(join(source, "README.md"), "fixture\n");
+      await git(source, ["init"]);
+      await git(source, ["config", "user.email", "capture@example.invalid"]);
+      await git(source, ["config", "user.name", "Capture Test"]);
+      await git(source, ["add", "."]);
+      await git(source, ["commit", "-m", "fixture"]);
+
+      const authority = await resolveTrustedAppleGitAuthority();
+      const result = await createNodeRepositoryPorts({
+        managedRoot: managed,
+      }).process.runGit({
+        access: "source-read-only",
+        args: ["rev-parse", "HEAD"],
+        cwd: source,
+        executable: "git",
+        policy: REPOSITORY_GIT_POLICY,
+        signal: new AbortController().signal,
+      });
+
+      expect(authority.executable).not.toBe("/usr/bin/git");
+      expect(authority.executable).toMatch(
+        /^(?:\/Library\/Developer\/CommandLineTools\/usr\/bin\/git|\/Applications\/Xcode(?:_[0-9.]+(?:_[A-Za-z0-9.-]+)?)?\.app\/Contents\/Developer\/usr\/bin\/git)$/,
+      );
+      expect(authority.gitCorePath).toContain("/usr/libexec/git-core");
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toHaveLength(40);
+    },
+  );
+
+  it.skipIf(process.platform !== "darwin")(
+    "denies host reads outside the checkout and managed root while rev-parse still succeeds",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "memi-capture-repository-"));
+      temporaryRoots.push(root);
+      const source = join(root, "source");
+      const managed = join(root, "managed");
+      const hostOnlyFile = join(root, "host-only-secret.txt");
+      await mkdir(source);
+      await mkdir(managed);
+      await writeFile(join(source, "README.md"), "fixture\n");
+      await writeFile(hostOnlyFile, "must-not-be-readable\n");
+      await git(source, ["init"]);
+      await git(source, ["config", "user.email", "capture@example.invalid"]);
+      await git(source, ["config", "user.name", "Capture Test"]);
+      await git(source, ["add", "."]);
+      await git(source, ["commit", "-m", "fixture"]);
+
+      const authority = await resolveTrustedAppleGitAuthority();
+      const profile = createRepositoryGitSandboxProfile({
+        authority,
+        managedRoot: managed,
+        sourceRoot: source,
+      });
+      // Reuse the production read rules but substitute the executable solely
+      // for this proof: cat is allowed to start and must still be denied the
+      // host-only path by the sandbox's file-read policy.
+      const catProfile = profile.replace(
+        `(allow process-exec (literal "${authority.executable}"))`,
+        '(allow process-exec (literal "/bin/cat"))',
+      );
+
+      await expect(
+        execFile("/usr/bin/sandbox-exec", ["-p", catProfile, "/bin/cat", hostOnlyFile], {
+          encoding: "utf8",
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.not.stringContaining("must-not-be-readable"),
+      });
+
+      const result = await createNodeRepositoryPorts({
+        managedRoot: managed,
+      }).process.runGit({
+        access: "source-read-only",
+        args: ["rev-parse", "HEAD"],
+        cwd: source,
+        executable: "git",
+        policy: REPOSITORY_GIT_POLICY,
+        signal: new AbortController().signal,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toHaveLength(40);
+    },
+  );
+
   it("creates a contained clone while leaving the source checkout byte-identical", async () => {
     const root = await mkdtemp(join(tmpdir(), "memi-capture-repository-"));
     temporaryRoots.push(root);

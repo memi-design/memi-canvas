@@ -1,5 +1,5 @@
 import type { ImportPurgeAllResultV1 } from "@memi/protocol";
-import type { ArtifactReference } from "@memi/capture-execution";
+import type { ArtifactReference } from "@memi/capture-execution/core";
 
 interface RuntimeStartupRecoveryOptions {
   readonly purgeAuthority: {

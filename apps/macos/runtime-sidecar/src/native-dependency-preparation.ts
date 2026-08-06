@@ -24,7 +24,7 @@ import {
   type NativeDependencyPreparationPlan,
   type NativeDependencyPreparationPolicy,
   type ProcessExecutionPolicy,
-} from "@memi/capture-execution";
+} from "@memi/capture-execution/core";
 
 import { SANDBOX_EXECUTABLE } from "./native-capture-process.js";
 import {

@@ -12,8 +12,16 @@ import {
 } from "@memi/protocol";
 
 import type { RuntimeClientV1 } from "../runtime/runtime-client.js";
+import { createEphemeralCanvasDocumentPersistence } from "../runtime/runtime-client-canvas-document-persistence.js";
 import { LocalDesignConsumer } from "./LocalDesignConsumer.js";
 import type { ProjectRecord } from "./project-library.js";
+
+type CanvasDocumentsClient = RuntimeClientV1["canvasDocuments"];
+type CanvasDocumentOpenPayload = Parameters<CanvasDocumentsClient["open"]>[0];
+type CanvasDocumentLoadPayload = Parameters<CanvasDocumentsClient["load"]>[0];
+type CanvasDocumentInitializePayload = Parameters<CanvasDocumentsClient["initialize"]>[0];
+type CanvasDocumentAppendPayload = Parameters<CanvasDocumentsClient["append"]>[0];
+type CanvasDocumentCheckpointPayload = Parameters<CanvasDocumentsClient["checkpoint"]>[0];
 
 const project: ProjectRecord = {
   id: "local-design",
@@ -37,24 +45,8 @@ function createStorage() {
 }
 
 describe("LocalDesignConsumer workspace session", () => {
-  it("restores the locally chosen canvas harness for the same project", () => {
+  it("uses an explicit temporary V3 boundary in browser-only mode", async () => {
     const storage = createStorage();
-    const first = render(
-      <LocalDesignConsumer
-        onExit={() => {}}
-        project={project}
-        storage={storage}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Agent harness"), {
-      target: { value: "claude-code" },
-    });
-    expect(
-      (screen.getByLabelText("Agent harness") as HTMLSelectElement).value,
-    ).toBe("claude-code");
-    first.unmount();
-
     render(
       <LocalDesignConsumer
         onExit={() => {}}
@@ -63,9 +55,8 @@ describe("LocalDesignConsumer workspace session", () => {
       />,
     );
 
-    expect(
-      (screen.getByLabelText("Agent harness") as HTMLSelectElement).value,
-    ).toBe("claude-code");
+    expect(await screen.findByText(/changes are temporary/u)).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Infinite canvas" })).toBeTruthy();
   });
 
   it("restores and persists session metadata through the injected runtime while document recovery stays separate", async () => {
@@ -81,9 +72,49 @@ describe("LocalDesignConsumer workspace session", () => {
       status: "already-migrated" as const,
       session: null,
     }));
-    const runtimeClient = {
+    const canvasPersistence = createEphemeralCanvasDocumentPersistence();
+    const requireJournal = async (
+      identity: CanvasDocumentLoadPayload["identity"],
+    ) => {
+      const journal = await canvasPersistence.load(identity);
+      if (journal === null) {
+        throw new Error("Expected the test canvas journal to exist.");
+      }
+      return journal;
+    };
+    const runtimeClient: Pick<
+      RuntimeClientV1,
+      "sessions" | "canvasDocuments"
+    > = {
+      canvasDocuments: {
+        open: vi.fn(async ({ snapshot }: CanvasDocumentOpenPayload) => {
+          const existing = await canvasPersistence.load(snapshot.identity);
+          if (existing !== null) {
+            return { initialized: false, journal: existing };
+          }
+          await canvasPersistence.initialize(snapshot);
+          return {
+            initialized: true,
+            journal: await requireJournal(snapshot.identity),
+          };
+        }),
+        load: vi.fn(async ({ identity }: CanvasDocumentLoadPayload) => ({
+          journal: await canvasPersistence.load(identity),
+        })),
+        initialize: vi.fn(async ({ snapshot }: CanvasDocumentInitializePayload) => {
+          await canvasPersistence.initialize(snapshot);
+          return { journal: await requireJournal(snapshot.identity) };
+        }),
+        append: vi.fn(async ({ append }: CanvasDocumentAppendPayload) => ({
+          receipt: await canvasPersistence.append(append),
+        })),
+        checkpoint: vi.fn(async ({ snapshot }: CanvasDocumentCheckpointPayload) => {
+          await canvasPersistence.checkpoint(snapshot);
+          return { journal: await requireJournal(snapshot.identity) };
+        }),
+      },
       sessions: { migrateLegacy, restore, save },
-    } as Pick<RuntimeClientV1, "sessions">;
+    };
     const runtimeProjectId = ProjectIdSchema.parse(
       "prj_01J00000000000000000000000",
     );
@@ -106,7 +137,7 @@ describe("LocalDesignConsumer workspace session", () => {
     });
     expect(restore).toHaveBeenCalledWith({
       projectId: runtimeProjectId,
-      documentId: "document-local-local-design",
+      documentId: expect.stringMatching(/^doc_/u),
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Frame tool" }));
@@ -124,7 +155,7 @@ describe("LocalDesignConsumer workspace session", () => {
         sourceRevision: null,
       },
       projectId: runtimeProjectId,
-      documentId: "document-local-local-design",
+      documentId: expect.stringMatching(/^doc_/u),
       session: {
         documentRevision: 2,
       },

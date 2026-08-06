@@ -8,6 +8,12 @@ const PRODUCTION_EDITOR_MODULES = [
   "apps/web/src/canvas/workspace-dock.tsx",
   "apps/web/src/canvas/model.ts",
   "apps/web/src/canvas/canvas-runtime-port.ts",
+  "apps/web/src/canvas/workbench-agent-review-actions.ts",
+  "apps/web/src/canvas/workbench-document-actions.ts",
+  "apps/web/src/canvas/workbench-history-actions.ts",
+  "apps/web/src/canvas/workbench-inspector-v3-actions.ts",
+  "apps/web/src/canvas/workbench-pointer-actions.ts",
+  "apps/web/src/canvas/workbench-v3-intents.ts",
 ] as const;
 
 describe("production editor module boundaries", () => {
@@ -66,5 +72,25 @@ describe("production editor module boundaries", () => {
     );
     expect(main).toContain('search.get("runtime") === "demo"');
     expect(consumer).not.toContain("createDemoCanvasRuntimePort");
+  });
+
+  it("keeps browser SceneState autosave outside the production editor authority", async () => {
+    const [consumer, agentReview] = await Promise.all([
+      readFile("apps/web/src/projects/LocalDesignConsumer.tsx", "utf8"),
+      readFile(
+        "apps/web/src/canvas/workbench-agent-review-actions.ts",
+        "utf8",
+      ),
+    ]);
+
+    expect(consumer).not.toMatch(
+      /createCanvasAutosave|\bpersistence=\{persistence\}/u,
+    );
+    expect(consumer).toContain("migrateLegacyWorkspaceSession");
+    expect(consumer).toContain(
+      "createRuntimeClientCanvasDocumentPersistence",
+    );
+    expect(consumer).toContain("v3Session");
+    expect(agentReview).not.toContain("context.commitScene(");
   });
 });

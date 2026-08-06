@@ -80,6 +80,13 @@ export interface WorkbenchHistoryActions {
   readonly undoScene: () => void;
 }
 
+export {
+  createV3WorkbenchHistoryActions,
+  type V3SemanticWorkbenchAction,
+  type V3WorkbenchHistoryActionContext,
+  type V3WorkbenchHistoryActions,
+} from "./workbench-v3-history-actions.js";
+
 export function createWorkbenchHistoryActions(
   context: HistoryActionContext,
 ): WorkbenchHistoryActions {

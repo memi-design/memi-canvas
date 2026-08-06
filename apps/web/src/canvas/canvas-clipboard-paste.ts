@@ -49,6 +49,7 @@ export function pasteValidatedCanvasClipboard(
 ): CanvasClipboardPasteResult {
   const knownIds = new Set(nodes.map((node) => node.id));
   const pastedIdBySourceId = new Map<string, string>();
+  const rootIds = new Set(payload.rootIds);
   for (const node of payload.nodes) {
     pastedIdBySourceId.set(node.id, nextPastedId(knownIds, node.id));
   }
@@ -69,6 +70,9 @@ export function pasteValidatedCanvasClipboard(
     return {
       ...structuredClone(node),
       id: pastedIdBySourceId.get(node.id) as string,
+      // Name only pasted roots. Their descendants retain their component or
+      // layer names, while the visible copy has the familiar editor label.
+      ...(rootIds.has(node.id) ? { name: `${node.name} copy` } : {}),
       parentId:
         node.parentId === null
           ? null

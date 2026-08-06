@@ -41,7 +41,7 @@ import {
   FigmaImportDialog,
 } from "./imports/figma/FigmaImportDialog.js";
 import {
-  createFigmaCanvasProject,
+  createFigmaCanvasDocumentV3,
 } from "./imports/figma/figma-workbench.js";
 import { GlobalSettingsPanel } from "./settings/GlobalSettingsPanel.js";
 import {
@@ -53,19 +53,13 @@ import {
   type GlobalAgentSettingsStorage,
 } from "./settings/global-settings.js";
 import type { CanvasRuntimePortV1 } from "./canvas/canvas-runtime-port.js";
-import {
-  createCanvasAutosave,
-  type CanvasStorage,
-} from "./canvas/persistence.js";
-import { createSceneState } from "./canvas/model.js";
+import type { CanvasStorage } from "./canvas/persistence.js";
 import {
   RepositoryImportDialog,
 } from "./imports/repository/RepositoryImportDialog.js";
 import type { RepositoryImporter } from "./imports/repository/repository-import.js";
 import {
   createCapturedRepositoryCanvasProject,
-  createStreamingRepositoryCanvasProject,
-  type CaptureArtifactReference,
 } from "./imports/repository/repository-capture-workbench.js";
 import {
   repositoryProjectFromCommittedImport,
@@ -83,6 +77,14 @@ import {
 import type {
   RepositoryReconstructionArtifactLoader,
 } from "./imports/repository/repository-reconstruction-rehydration.js";
+import {
+  persistCommittedImportCanvasDocumentV3,
+} from "./imports/repository/committed-import-v3-hydration.js";
+import {
+  createEphemeralCanvasDocumentPersistence,
+  createRuntimeClientCanvasDocumentPersistence,
+  initializeCanvasDocumentV3Persistence,
+} from "./runtime/runtime-client-canvas-document-persistence.js";
 import {
   acceptsImportJobSnapshot,
   selectLatestImportJob,
@@ -115,7 +117,7 @@ export interface MemiAppProps {
   readonly repositoryCaptureRuntime?: RepositoryCaptureRuntime;
   readonly reconstructionArtifactLoader?:
     RepositoryReconstructionArtifactLoader;
-  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions"> &
+  readonly runtimeClient?: Pick<RuntimeClientV1, "sessions" | "canvasDocuments"> &
     Partial<Pick<RuntimeClientV1, "imports">>;
   readonly truthfulImportResetReady?: boolean;
 }
@@ -285,6 +287,9 @@ export function MemiApp({
   const [boundary] = useState(() =>
     persistenceBoundary(storage, truthfulImportResetReady));
   const [libraryStartup] = useState(() => initialLibrary(boundary));
+  const [figmaImportPersistence] = useState(() =>
+    createEphemeralCanvasDocumentPersistence(),
+  );
   const [figmaImportOpen, setFigmaImportOpen] = useState(false);
   const [repositoryImportOpen, setRepositoryImportOpen] = useState(false);
   const [repositoryImportJob, setRepositoryImportJob] =
@@ -399,17 +404,18 @@ export function MemiApp({
             manifest: repositoryRecord.manifest,
             projectId: project.id,
           });
+          await persistCommittedImportCanvasDocumentV3({
+            canvasProject,
+            job,
+            ...(reconstructionArtifactLoader === undefined
+              ? {}
+              : { loader: reconstructionArtifactLoader }),
+            record: repositoryRecord,
+            runtimeClient,
+          });
           const repositoryPersistence =
             createRepositoryProjectPersistence(durableStorage);
           if (!repositoryPersistence.save(project.id, repositoryRecord)) {
-            continue;
-          }
-          if (!createCanvasAutosave(durableStorage).save(
-              canvasProject,
-              createSceneState(canvasProject),
-              canvasProject.trace,
-            )) {
-            repositoryPersistence.remove(project.id);
             continue;
           }
           hydratedImportKeysRef.current.add(hydrationKey);
@@ -439,6 +445,7 @@ export function MemiApp({
   }, [
     boundary.storage,
     libraryStartup.ready,
+    reconstructionArtifactLoader,
     runtimeClient,
   ]);
 
@@ -486,17 +493,15 @@ export function MemiApp({
           agentSettings,
           activeProject.source.kind === "repository"
             ? activeProject.source.harnessId
-            : undefined,
+          : undefined,
         )}
+        {...(runtimeClient === undefined
+          ? { canvasDocumentPersistence: figmaImportPersistence }
+          : {})}
         onExit={closeProject}
         project={activeProject}
-        {...(runtimeClient === undefined
-          ? {}
-          : {
-              runtimeClient,
-              runtimeProjectId:
-                runtimeProjectIdForLocalProject(activeProject.id),
-            })}
+        runtimeProjectId={runtimeProjectIdForLocalProject(activeProject.id)}
+        {...(runtimeClient === undefined ? {} : { runtimeClient })}
         {...(runtimePort === undefined ? {} : { runtimePort })}
         {...(reconstructionArtifactLoader === undefined
           ? {}
@@ -637,17 +642,19 @@ export function MemiApp({
       {figmaImportOpen && homeStorage !== undefined ? (
         <FigmaImportDialog
           onClose={() => setFigmaImportOpen(false)}
-          onImport={(result) => {
+          onImport={async (result) => {
             const projectId = idFactory();
-            const project = createFigmaCanvasProject(result, projectId);
-            const saved = createCanvasAutosave(homeStorage).save(
-              project,
-              createSceneState(project),
-              project.trace,
+            const document = createFigmaCanvasDocumentV3(
+              result,
+              projectId,
+              runtimeProjectIdForLocalProject(projectId),
             );
-            if (!saved) {
-              return;
-            }
+            await initializeCanvasDocumentV3Persistence(
+              document,
+              runtimeClient === undefined
+                ? figmaImportPersistence
+                : createRuntimeClientCanvasDocumentPersistence(runtimeClient),
+            );
             dispatch(
               projectLibraryActions.createProject({
                 id: projectId,
@@ -702,10 +709,13 @@ export function MemiApp({
                   "No placeholder project was created.",
               );
             }
+            if (runtimeClient === undefined) {
+              throw new Error(
+                "Verified imports require the authenticated Canvas V3 runtime.",
+              );
+            }
             let projectId: string | undefined;
             let projectRegistered = false;
-            const artifactReferences =
-              new Map<string, CaptureArtifactReference>();
             const registerProject = (runtimeProjectId: string) => {
               if (projectId !== undefined && projectId !== runtimeProjectId) {
                 throw new Error(
@@ -760,34 +770,6 @@ export function MemiApp({
                 onMaterialize: (update) => {
                   if (!publishRepositoryImportJob(update.job)) return;
                   registerProject(update.projectId);
-                  update.addedArtifacts.forEach(({ artifact, reference }) => {
-                    artifactReferences.set(artifact.id, reference);
-                  });
-                  const streamingProject =
-                    createStreamingRepositoryCanvasProject({
-                      artifactReference: (artifact) => {
-                        const reference = artifactReferences.get(artifact.id);
-                        if (reference === undefined) {
-                          throw new Error(
-                            `Missing runtime evidence for ${artifact.id}.`,
-                          );
-                        }
-                        return reference;
-                      },
-                      harnessId: "deterministic-import",
-                      job: update.job,
-                      manifest,
-                      projectId: update.projectId,
-                    });
-                  if (!createCanvasAutosave(homeStorage).save(
-                      streamingProject,
-                      createSceneState(streamingProject),
-                      streamingProject.trace,
-                    )) {
-                    throw new Error(
-                      "The incremental import could not be saved safely.",
-                    );
-                  }
                   dispatch(
                     projectLibraryActions.setProjectLifecycle(
                       update.projectId,
@@ -824,30 +806,26 @@ export function MemiApp({
               );
               const repositoryPersistence =
                 createRepositoryProjectPersistence(homeStorage);
-              const canvasAutosave = createCanvasAutosave(homeStorage);
-              if (!repositoryPersistence.save(
-                  projectId,
-                  {
-                    capture: {
-                      artifactReferences: committedArtifactReferences,
-                      job: result.job,
-                    },
-                    harnessId: "deterministic-import",
-                    manifest,
-                  },
-                )) {
+              const repositoryRecord = {
+                capture: {
+                  artifactReferences: committedArtifactReferences,
+                  job: result.job,
+                },
+                harnessId: "deterministic-import" as const,
+                manifest,
+              };
+              await persistCommittedImportCanvasDocumentV3({
+                canvasProject,
+                job: result.job,
+                ...(reconstructionArtifactLoader === undefined
+                  ? {}
+                  : { loader: reconstructionArtifactLoader }),
+                record: repositoryRecord,
+                runtimeClient,
+              });
+              if (!repositoryPersistence.save(projectId, repositoryRecord)) {
                 throw new Error(
                   "The verified import could not be saved safely.",
-                );
-              }
-              if (!canvasAutosave.save(
-                  canvasProject,
-                  createSceneState(canvasProject),
-                  canvasProject.trace,
-                )) {
-                repositoryPersistence.remove(projectId);
-                throw new Error(
-                  "The captured canvas could not be saved safely.",
                 );
               }
               dispatch(

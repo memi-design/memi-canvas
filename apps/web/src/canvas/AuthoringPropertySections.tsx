@@ -20,6 +20,7 @@ import {
   type WorkbenchNode,
 } from "./model.js";
 import "./inspector-authoring.css";
+import type { WorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 
 type NodeUpdate = (node: WorkbenchNode) => WorkbenchNode;
 const HEX_PREFIX = "#";
@@ -37,6 +38,7 @@ export interface AuthoringPropertySectionsProps {
     transaction: AuthoringSelectionTransaction,
   ) => void;
   readonly selectedNodes?: readonly WorkbenchNode[];
+  readonly v3Actions?: WorkbenchInspectorV3Actions;
 }
 
 function fieldValue<T>(
@@ -203,6 +205,7 @@ export function AuthoringPropertySections({
   onPreview,
   onPreviewSelection,
   selectedNodes,
+  v3Actions,
 }: AuthoringPropertySectionsProps) {
   const authoringNodes =
     selectedNodes === undefined || selectedNodes.length === 0
@@ -212,6 +215,10 @@ export function AuthoringPropertySections({
   const selectionLabel =
     authoringNodes.length === 1 ? node.name : `${authoringNodes.length} layers`;
   const commitChange = (label: string, update: NodeUpdate) => {
+    if (v3Actions !== undefined) {
+      v3Actions.commit({ label, targetIds: authoringNodes.map(({ id }) => id), update });
+      return;
+    }
     if (onChangeSelection !== undefined) {
       onChangeSelection(
         createAuthoringSelectionTransaction(label, authoringNodes, update),
@@ -221,6 +228,10 @@ export function AuthoringPropertySections({
     onChange(label, update);
   };
   const previewChange = (label: string, update: NodeUpdate) => {
+    if (v3Actions !== undefined) {
+      v3Actions.preview({ label, targetIds: authoringNodes.map(({ id }) => id), update });
+      return;
+    }
     if (onPreviewSelection !== undefined) {
       onPreviewSelection(
         createAuthoringSelectionTransaction(label, authoringNodes, update),

@@ -4,7 +4,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::{BufReader, Read, Write},
-    os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{FileTypeExt, OpenOptionsExt, PermissionsExt},
+    },
     os::unix::{net::UnixStream, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -18,8 +21,13 @@ use tauri::{AppHandle, Manager, State};
 
 const MAX_RUNTIME_RPC_BYTES: usize = 262_144;
 const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
-const RUNTIME_SOCKET_NAME: &str = "runtime/runtime-v1.sock";
+const MAX_DARWIN_SOCKET_PATH_BYTES: usize = 103;
+// macOS limits Unix-domain socket addresses to roughly 104 bytes. Keep the
+// transport name deliberately short because the app-data root may already be
+// long (especially in isolated smoke-test and managed-user environments).
+const RUNTIME_SOCKET_NAME: &str = "r/s";
 const PLAN_INTEGRITY_FILE: &str = "runtime/plan-integrity-v1.key";
+const PACKAGED_RUNTIME_EXECUTABLE: &str = "memi-canvas-runtime";
 const RUNTIME_RPC_METHODS: &[&str] = &[
     "imports.plan",
     "imports.list",
@@ -431,6 +439,29 @@ fn canonical_runtime_file(path: PathBuf, label: &str) -> Result<PathBuf, String>
 /// bridge direct and explicit lets the debug macOS app exercise the truthful
 /// Expo import flow without a hidden rebuild or a second copy of Bun. A
 /// distributable runtime remains a separate release gate.
+fn packaged_runtime_sidecar_path(application_executable: &Path) -> Option<PathBuf> {
+    let macos_directory = application_executable.parent()?;
+    let contents_directory = macos_directory.parent()?;
+    (macos_directory.file_name()? == "MacOS" && contents_directory.file_name()? == "Contents")
+        .then(|| macos_directory.join(PACKAGED_RUNTIME_EXECUTABLE))
+}
+
+fn packaged_runtime_command() -> Result<Option<Command>, String> {
+    let application_executable = std::env::current_exe()
+        .map_err(|_| "Memi Canvas executable location is unavailable".to_owned())?;
+    let Some(candidate) = packaged_runtime_sidecar_path(&application_executable) else {
+        return Ok(None);
+    };
+    let runtime = canonical_runtime_file(candidate, "Packaged Memi runtime sidecar")?;
+    let mut command = Command::new(runtime);
+    command.current_dir(
+        application_executable
+            .parent()
+            .ok_or_else(|| "Memi Canvas executable directory is unavailable".to_owned())?,
+    );
+    Ok(Some(command))
+}
+
 fn local_development_runtime_command() -> Result<Command, String> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -450,6 +481,40 @@ fn local_development_runtime_command() -> Result<Command, String> {
     Ok(command)
 }
 
+fn runtime_command() -> Result<Command, String> {
+    packaged_runtime_command()?.map_or_else(local_development_runtime_command, Ok)
+}
+
+fn runtime_diagnostics_enabled(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("stderr"))
+}
+
+fn runtime_health_envelope() -> Value {
+    json!({
+        "schemaVersion": 1,
+        "requestId": "prq_00000000000000000000000000",
+        "correlationId": "cor_00000000000000000000000000",
+        "sentAt": "2026-08-02T00:00:00.000Z",
+        "method": "imports.list",
+        "payload": {},
+    })
+}
+
+fn runtime_socket_path(app_data: &Path) -> Result<PathBuf, String> {
+    let socket_path = app_data.join(RUNTIME_SOCKET_NAME);
+    if socket_path.as_os_str().as_bytes().len() > MAX_DARWIN_SOCKET_PATH_BYTES {
+        return Err("Memi storage path is too long for the private runtime transport".to_owned());
+    }
+    Ok(socket_path)
+}
+
+fn ensure_private_socket_parent(socket_path: &Path) -> Result<(), String> {
+    let parent = socket_path
+        .parent()
+        .ok_or_else(|| "Runtime socket parent is invalid".to_owned())?;
+    ensure_private_directory(parent)
+}
+
 pub(crate) fn start_runtime_bridge(
     app: &AppHandle,
     app_data: &Path,
@@ -463,7 +528,8 @@ pub(crate) fn start_runtime_bridge(
     ensure_private_directory(&worktree_root)?;
     let runtime_root = app_data.join("runtime");
     ensure_private_directory(&runtime_root)?;
-    let socket_path = app_data.join(RUNTIME_SOCKET_NAME);
+    let socket_path = runtime_socket_path(app_data)?;
+    ensure_private_socket_parent(&socket_path)?;
     if socket_path.exists() {
         let metadata = fs::symlink_metadata(&socket_path)
             .map_err(|_| "Stale runtime socket could not be inspected".to_owned())?;
@@ -475,7 +541,8 @@ pub(crate) fn start_runtime_bridge(
     }
     let token = random_runtime_token()?;
     let plan_key = plan_integrity_key(app_data)?;
-    let mut sidecar = local_development_runtime_command()?
+    let mut sidecar = runtime_command()?;
+    sidecar
         .env("MEMI_RUNTIME_TOKEN", &token)
         .env("MEMI_RUNTIME_SOCKET", &socket_path)
         .env("MEMI_RUNTIME_APP_DATA", app_data)
@@ -485,7 +552,14 @@ pub(crate) fn start_runtime_bridge(
     sidecar
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(
+            if runtime_diagnostics_enabled(std::env::var_os("MEMI_RUNTIME_DIAGNOSTICS").as_deref())
+            {
+                Stdio::inherit()
+            } else {
+                Stdio::null()
+            },
+        )
         .process_group(0);
     let child = sidecar
         .spawn()
@@ -493,6 +567,17 @@ pub(crate) fn start_runtime_bridge(
     let lifecycle = Arc::new(RuntimeLifecycle::new(child, socket_path.clone()));
     for _ in 0..3_000 {
         if runtime_socket_is_ready(&socket_path) {
+            if let Err(error) = exchange_runtime_rpc_with_lifecycle(
+                &socket_path,
+                &token,
+                runtime_health_envelope(),
+                &lifecycle,
+            ) {
+                lifecycle.shutdown();
+                return Err(format!(
+                    "Packaged runtime sidecar health check failed: {error}"
+                ));
+            }
             return Ok(RuntimeBridgeState {
                 token,
                 socket_path,
@@ -804,14 +889,19 @@ pub(crate) fn artifact_protocol_response(
 mod tests {
     use super::{
         artifact_http_response, artifact_path_for_id, constant_time_bearer_matches,
-        exchange_runtime_rpc_with_lifecycle, import_log_path_for_job, is_secret_key,
-        managed_worktree_root, plan_integrity_key, runtime_socket_is_ready,
-        validate_runtime_envelope, RuntimeLifecycle,
+        ensure_private_socket_parent, exchange_runtime_rpc_with_lifecycle, import_log_path_for_job,
+        is_secret_key, managed_worktree_root, packaged_runtime_sidecar_path, plan_integrity_key,
+        runtime_diagnostics_enabled, runtime_health_envelope, runtime_socket_is_ready,
+        runtime_socket_path, validate_runtime_envelope, RuntimeLifecycle,
     };
     use serde_json::json;
     use std::{
         fs,
-        os::unix::{fs::PermissionsExt, net::UnixListener, process::CommandExt},
+        os::unix::{
+            fs::{symlink, PermissionsExt},
+            net::UnixListener,
+            process::CommandExt,
+        },
         path::Path,
         process::{Command, Stdio},
         sync::Arc,
@@ -837,6 +927,55 @@ mod tests {
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
+    }
+
+    #[test]
+    fn runtime_socket_path_stays_private_and_within_the_darwin_address_limit() {
+        let root = Path::new(
+            "/private/var/folders/g3/pffjr_y96bq06blnkf72x_hw0000gn/T/memi-canvas-app-smoke-IL7naT",
+        );
+        let socket_path = runtime_socket_path(root).expect("bounded smoke path should resolve");
+
+        assert_eq!(socket_path, root.join("r/s"));
+        assert!(socket_path.starts_with(root));
+        assert!(socket_path.as_os_str().as_encoded_bytes().len() <= 103);
+    }
+
+    #[test]
+    fn runtime_socket_path_rejects_an_overlong_storage_root() {
+        let root = Path::new("/tmp").join("x".repeat(100));
+
+        assert_eq!(
+            runtime_socket_path(&root),
+            Err("Memi storage path is too long for the private runtime transport".to_owned())
+        );
+    }
+
+    #[test]
+    fn runtime_socket_parent_rejects_a_symlink_escape() {
+        let nonce = format!(
+            "{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = Path::new("/tmp").join(format!("memi-rt-root-{nonce}"));
+        let outside = Path::new("/tmp").join(format!("memi-rt-outside-{nonce}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, root.join("r")).unwrap();
+        let socket_path = runtime_socket_path(&root).unwrap();
+
+        assert_eq!(
+            ensure_private_socket_parent(&socket_path),
+            Err("Runtime storage must be a real directory".to_owned())
+        );
+
+        let _ = fs::remove_file(root.join("r"));
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]
@@ -947,6 +1086,46 @@ mod tests {
         assert!(runtime_socket_is_ready(&path));
         drop(listener);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn packaged_runtime_sidecar_is_a_sibling_of_the_bundled_app_executable() {
+        assert_eq!(
+            packaged_runtime_sidecar_path(Path::new(
+                "/Applications/Memi Canvas.app/Contents/MacOS/memi-canvas-macos",
+            )),
+            Some(
+                Path::new("/Applications/Memi Canvas.app/Contents/MacOS/memi-canvas-runtime",)
+                    .to_path_buf()
+            ),
+        );
+        assert_eq!(
+            packaged_runtime_sidecar_path(Path::new("/workspace/target/debug/memi-canvas-macos",)),
+            None,
+        );
+    }
+
+    #[test]
+    fn runtime_diagnostics_require_the_exact_opt_in_value() {
+        assert!(runtime_diagnostics_enabled(Some(std::ffi::OsStr::new(
+            "stderr"
+        ))));
+        assert!(!runtime_diagnostics_enabled(Some(std::ffi::OsStr::new(
+            "1"
+        ))));
+        assert!(!runtime_diagnostics_enabled(None));
+    }
+
+    #[test]
+    fn runtime_health_check_is_an_authenticated_read_only_import_request() {
+        assert_eq!(
+            validate_runtime_envelope(&runtime_health_envelope()),
+            Ok(super::RuntimeEnvelopeBinding {
+                request_id: "prq_00000000000000000000000000".to_owned(),
+                correlation_id: "cor_00000000000000000000000000".to_owned(),
+                method: "imports.list".to_owned(),
+            }),
+        );
     }
 
     #[test]

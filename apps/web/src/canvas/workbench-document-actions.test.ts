@@ -3,9 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearCanvasSessionClipboard,
   copyCanvasSelection,
-  createCanvasClipboardPayload,
-  MEMI_CANVAS_CLIPBOARD_MIME,
-  serializeCanvasClipboardFallback,
 } from "./canvas-clipboard.js";
 import type { WorkbenchNode } from "./model.js";
 import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
@@ -51,6 +48,7 @@ function actions(
   selectedNodeIds: readonly string[],
   getPastePoint: () => { readonly x: number; readonly y: number } | null =
     () => null,
+  commitIntentReceipt?: (label: string, receipt: any, options?: any) => void,
 ) {
   const appendTrace = vi.fn();
   const commitScene = vi.fn();
@@ -60,6 +58,7 @@ function actions(
     value: createWorkbenchDocumentActions({
       appendTrace,
       commitScene,
+      ...(commitIntentReceipt === undefined ? {} : { commitIntentReceipt }),
       documentId: "document",
       getPastePoint,
       nodes,
@@ -77,6 +76,67 @@ afterEach(() => {
 });
 
 describe("workbench hierarchy actions", () => {
+  it("emits an explicit V3 detach receipt without falling back to a scene commit", () => {
+    const source = {
+      ...frame("source-screen", null, 40, 60),
+      kind: "CodeFrame" as const,
+      source: {
+        coverageCellId: "default",
+        repositoryRevision: "buzzr@abc123",
+        routeId: "home",
+        sourceAnchor: "src/Home.tsx#Home",
+        stateId: "default",
+        viewport: { height: 844, name: "mobile" as const, width: 390 },
+      },
+    };
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions([source], [source.id], () => null, commitIntentReceipt);
+
+    value.detachSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Detach source-screen",
+      expect.objectContaining({
+        kind: "detach",
+        node: expect.objectContaining({
+          frameContent: "source-screen",
+          kind: "DraftFrame",
+          provenance: expect.objectContaining({ repositoryRevision: "buzzr@abc123" }),
+        }),
+      }),
+      expect.objectContaining({ selectedIds: [source.id], targetIds: [source.id] }),
+    );
+    expect(JSON.stringify(commitIntentReceipt.mock.calls)).not.toContain("node.replace");
+  });
+
+  it("emits a compact V3 group receipt with parent-relative child transforms", () => {
+    const a = rectangle("a", null, 100, 80);
+    const b = rectangle("b", null, 160, 120);
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions(
+      [a, b],
+      [a.id, b.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.groupSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Group 2 layers",
+      expect.objectContaining({
+        kind: "group",
+        children: expect.arrayContaining([
+          expect.objectContaining({ id: "a", position: { x: 0, y: 0 } }),
+          expect.objectContaining({ id: "b", position: { x: 60, y: 40 } }),
+        ]),
+      }),
+      expect.objectContaining({ targetIds: expect.arrayContaining(["a", "b"]) }),
+    );
+  });
+
   it("creates a selected editable Image node at the canvas cursor", () => {
     const anchor = rectangle("anchor", null, 40, 60);
     const bytes = Uint8Array.from(
@@ -198,33 +258,18 @@ describe("workbench hierarchy actions", () => {
     });
   });
 
-  it("prefers a current system clipboard payload over an older session payload", async () => {
+  it("commits the in-session payload synchronously before a delayed system read", () => {
     const sessionNode = rectangle("session", null, 0, 0);
-    const systemNode = rectangle("system", null, 80, 40);
-    const systemPayload = createCanvasClipboardPayload({
-      documentId: "system-document",
-      nodes: [systemNode],
-      selectedIds: [systemNode.id],
-    });
     copyCanvasSelection({
       documentId: "session-document",
       nodes: [sessionNode],
       selectedIds: [sessionNode.id],
     });
-    expect(systemPayload).not.toBeNull();
     vi.stubGlobal("navigator", {
       clipboard: {
         async read() {
-          return [
-            {
-              getType: async () =>
-                new Blob(
-                  [serializeCanvasClipboardFallback(systemPayload!)],
-                  { type: MEMI_CANVAS_CLIPBOARD_MIME },
-                ),
-              types: [MEMI_CANVAS_CLIPBOARD_MIME],
-            },
-          ];
+          await new Promise<void>(() => undefined);
+          return [];
         },
         async write() {
           return undefined;
@@ -235,11 +280,42 @@ describe("workbench hierarchy actions", () => {
 
     value.pasteSelection();
 
-    await vi.waitFor(() => {
-      expect(commitScene).toHaveBeenCalledTimes(1);
-    });
+    expect(commitScene).toHaveBeenCalledTimes(1);
     const pasted = commitScene.mock.calls[0]?.[1] as readonly WorkbenchNode[];
-    expect(pasted.map(({ id }) => id)).toEqual(["system-copy-1"]);
+    expect(pasted.map(({ id }) => id)).toEqual(["session-copy-1"]);
+  });
+
+  it("emits exactly one V3 paste receipt from the session fallback", () => {
+    const source = rectangle("Rectangle 1", null, 0, 0);
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions(
+      [source],
+      [source.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.copySelection();
+    value.pasteSelection();
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledTimes(1);
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste Rectangle 1 copy",
+      {
+        kind: "paste",
+        nodes: [
+          expect.objectContaining({
+            id: "Rectangle 1-copy-1",
+            name: "Rectangle 1 copy",
+          }),
+        ],
+      },
+      expect.objectContaining({
+        selectedIds: ["Rectangle 1-copy-1"],
+        targetIds: ["Rectangle 1-copy-1"],
+      }),
+    );
   });
 
   it("groups only siblings at their first stacking position and preserves world geometry", () => {

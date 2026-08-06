@@ -11,6 +11,9 @@ import {
   type WorkbenchNode,
 } from "./model.js";
 import { isSafeReferenceSourceUrl } from "./reference-security.js";
+import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
+
+export { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
 
 export const CANVAS_AUTOSAVE_MAX_BYTES = 3_145_728;
 export const CANVAS_AUTOSAVE_MAX_HISTORY_ENTRIES = 20;
@@ -448,46 +451,6 @@ export interface CanvasAutosave {
     scene: SceneState,
     trace: readonly WorkbenchTrace[],
   ): boolean;
-}
-
-function fnv1a64(value: string): string {
-  let hash = 0xcbf29ce484222325n;
-  for (const character of value) {
-    hash ^= BigInt(character.codePointAt(0) ?? 0);
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-  }
-  return hash.toString(16).padStart(16, "0");
-}
-
-export function canvasSourceFingerprint(
-  project: CanvasWorkbenchProject,
-): `fnv1a64:${string}` {
-  const sourceNodes = project.document.nodes
-    .filter(
-      (node) =>
-        node.source !== undefined ||
-        node.kind === "CodeFrame" ||
-        node.kind === "RoutePlaceholder" ||
-        node.kind === "ReferenceFrame" ||
-        node.component?.classification === "master",
-    )
-    .map((node) => ({
-      id: node.id,
-      kind: node.kind,
-      position: node.position,
-      size: node.size,
-      source: node.source,
-      reference: node.reference,
-      component: node.component,
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  return `fnv1a64:${fnv1a64(
-    JSON.stringify({
-      documentId: project.document.id,
-      revision: project.document.revision,
-      sourceNodes,
-    }),
-  )}`;
 }
 
 export function canvasAutosaveKey(documentId: string): string {

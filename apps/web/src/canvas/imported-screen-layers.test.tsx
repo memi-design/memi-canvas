@@ -8,11 +8,12 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import type {
   CanvasWorkbenchProject,
   WorkbenchNode,
 } from "./model.js";
-import { Layers } from "./parts.js";
+import { Layers, mergeExpansionIds } from "./layers-tree.js";
 
 const source = {
   coverageCellId: "games:mobile",
@@ -175,6 +176,18 @@ const project: CanvasWorkbenchProject = {
 };
 
 describe("screenshot-backed imported screen layers", () => {
+  it("keeps the existing expansion state reference when selection requirements are already open", () => {
+    const expanded = new Set(["product-flows", "feature-tabs", "route-games"]);
+
+    expect(
+      mergeExpansionIds(expanded, [
+        "product-flows",
+        "feature-tabs",
+        "route-games",
+      ]),
+    ).toBe(expanded);
+  });
+
   it("groups an editable provenance-linked reconstruction and detached evidence under its imported route", () => {
     render(
       <Layers
@@ -300,8 +313,21 @@ describe("screenshot-backed imported screen layers", () => {
     expect(onSelect).not.toHaveBeenCalledWith("capture-games");
   });
 
-  it("selects an editable semantic child in Inspector without moving the reference", () => {
-    render(<CanvasWorkbench project={project} />);
+  it("selects an editable semantic child in Inspector without moving the reference", async () => {
+    render(
+      <CanvasWorkbench
+        project={project}
+        v3Session={createCanvasWorkbenchV3TestSession(project)}
+      />,
+    );
+    await screen.findByRole("tree", { name: "Layers" });
+    for (let depth = 0; depth < 6; depth += 1) {
+      screen
+        .getAllByRole("treeitem")
+        .filter((item) => item.getAttribute("aria-expanded") === "false")
+        .forEach((item) => fireEvent.keyDown(item, { key: "ArrowRight" }));
+    }
+    await screen.findByRole("treeitem", { name: "Games CodeFrame" });
 
     const reference = screen
       .getByRole("button", {

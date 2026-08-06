@@ -1,25 +1,13 @@
-import {
-  type CSSProperties,
-  type MouseEvent,
-} from "react";
-
+import { type CSSProperties, type MouseEvent } from "react";
 import type { CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
 import { createEditorCommands } from "./commands.js";
-import {
-  canvasGridMetrics,
-  canvasPointFromViewport,
-  pointFromEvent,
-} from "./canvas-camera.js";
-import { resolveComponentInstance, replaceNode, type WorkbenchNode } from "./model.js";
+import { canvasGridMetrics, canvasPointFromViewport, pointFromEvent } from "./canvas-camera.js";
+import { resolveComponentInstance, type WorkbenchNode } from "./model.js";
 import { Inspector } from "./parts.js";
-import { canvasSourceFingerprint } from "./persistence.js";
-import {
-  canReadCanvasSystemClipboard,
-  hasCanvasSessionClipboard,
-  isCanvasNodeDeletable,
-} from "./canvas-clipboard.js";
+import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
+import { canReadCanvasSystemClipboard, hasCanvasSessionClipboard, isCanvasNodeDeletable } from "./canvas-clipboard.js";
 import { projectVisibleItems } from "./canvas-performance.js";
-import { createWorkbenchHistoryActions } from "./workbench-history-actions.js";
+import { useWorkbenchV3SessionBridge } from "./workbench-v3-session-bridge.js";
 import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
 import { createWorkbenchPointerActions } from "./workbench-pointer-actions.js";
 import { createWorkbenchCameraActions } from "./workbench-camera-actions.js";
@@ -29,16 +17,15 @@ import type { WorkspaceDockTab } from "./workspace-dock.js";
 import { createWorkbenchAgentPromptActions } from "./workbench-agent-prompt-actions.js";
 import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-actions.js";
 import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
-import {
-  EMPTY_RECONSTRUCTION_REVIEWS,
-  useReconstructionReviewWorkspace,
-} from "./reconstruction-review-workspace.js";
+import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
+import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
+import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
+import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
 import "./interactions.css";
 export type { AgentSelectionContext, CanvasAgentDefaults, CanvasWorkbenchProps } from "./CanvasWorkbench.types.js";
-// Atomic Design: organism — the complete canvas workbench collaboration surface.
 function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   const {
     agentDefaults,
@@ -58,19 +45,20 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   } = props;
   const {
     agentPatchReview,
+    activePageId,
     alignmentGuides,
     camera,
     cameraScheduler,
     canonicalAuthority,
     canonicalSnapshot,
     commandPaletteOpen,
-    commandSequence,
     commandTrace,
     contextMenu,
     dispatchPreview,
     displayHistory,
     gesture,
     harnessId,
+    historyAvailability,
     modelId,
     permissionPolicy,
     persistenceProject,
@@ -85,12 +73,12 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     scene,
     selection,
     selectionMarquee,
+    selectActivePage,
     selectedNodeIds,
     setAgentPatchReview,
     setAlignmentGuides,
     setCamera,
     setCommandPaletteOpen,
-    setCommandTrace,
     setContextMenu,
     setHarnessId,
     setModelId,
@@ -113,8 +101,35 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     viewportElement,
     viewportPointer,
     viewportSize,
+    v3SessionError,
+    v3SessionStatus,
     workspaceCollapsed, workspacePanels, workspaceSplitRatio, workspaceTab,
   } = useCanvasWorkbenchSessionState(props);
+  const v3Session = props.v3Session;
+  if (v3Session === undefined) {
+    return <div role="alert">Canvas V3 session is unavailable.</div>;
+  }
+  const pageContext = canvasPageContextV3({
+    activePageId,
+    legacyDocumentId: project.document.id,
+    navigation: pageNavigation,
+    onSelectPage: selectActivePage,
+    reviews: reconstructionReviews,
+    session: v3Session,
+    ...(canonicalAuthority === null
+      ? {}
+      : { authoritativeDocument: canonicalAuthority.getSnapshot().document }),
+  });
+  const { commitIntentReceipt, history: v3History, redoScene: redoV3, undoScene: undoV3 } =
+    useWorkbenchV3SessionBridge({
+      authority: canonicalAuthority,
+      session: pageContext.session,
+      onFailure: (message) => setTrace((current) => [
+        ...current,
+        { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
+      ]),
+    });
+  const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;
   const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
     scene.nodes.filter(({ id }) => id === nodeId),
@@ -128,9 +143,9 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     workspaceFiles,
   } = useReconstructionReviewWorkspace({
     nodes: scene.nodes,
-    pageNavigation,
+    pageNavigation: pageContext.navigation,
     project,
-    reviews: reconstructionReviews,
+    reviews: pageContext.reviews,
     selectedNodeId,
     selectedNodeIds,
   });
@@ -138,38 +153,53 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     canonicalSnapshot.nodes.filter(({ id }) => id === nodeId),
   );
   const inspectorSelectedNode = inspectorSelectedNodes.at(-1);
-  const resolvedSelectedNode =
+  const resolvedCanonicalSelectedNode =
     inspectorSelectedNode === undefined
       ? undefined
       : resolveComponentInstance(
           inspectorSelectedNode,
           canonicalSnapshot.nodes,
         );
+  const resolvedSelectedNode =
+    resolvedCanonicalSelectedNode === undefined
+      ? undefined
+      : projectLegacyComponentMasterIdV3(
+          resolvedCanonicalSelectedNode,
+          project.document.id,
+          project.document.nodes,
+        );
+  const inspectorV3Actions = createWorkbenchInspectorV3Actions({
+    commitIntentReceipt,
+    projectNodes: canonicalSnapshot.nodes,
+    setPreview: setPreviewNodes,
+  });
   const selectedHarness =
     project.harness.options.find((option) => option.id === harnessId) ??
     project.harness.options[0];
-
   const {
     appendTrace,
     commitPreview,
     commitScene,
-    commitSelectionTransaction,
     createRootNode,
     redoScene,
     selectNode,
     selectNodeIds,
     undoScene,
-  } = createWorkbenchHistoryActions({
-    authority: canonicalAuthority,
-    commandSequence,
-    nodes: scene.nodes,
-    selection,
-    selectedNodeIds,
-    setCommandTrace,
-    setPreviewNodes,
-    setTrace,
-    traceSequence,
-  });
+  } = {
+    appendTrace: (action: string, targetNodeId: string) => setTrace((current) => [...current, { id: `workbench-trace-${traceSequence.current++}`, action, targetNodeId }]),
+    commitPreview: unavailableMutation,
+    commitScene: unavailableMutation,
+    createRootNode: unavailableMutation,
+    redoScene: redoV3,
+    selectNode: (nodeId: string, additive: boolean) => {
+      suppressCanvasClick.current = false;
+      v3History?.selectNode(nodeId, additive);
+    },
+    selectNodeIds: (ids: readonly string[]) => {
+      v3History?.selectNodeIds(ids);
+    },
+    undoScene: undoV3,
+  };
   const {
     applyApprovedAgentPatch,
     approveAgentPatch,
@@ -180,10 +210,13 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     rollbackAppliedAgentPatch,
     verifyAppliedAgentPatch,
   } = createWorkbenchAgentReviewActions({
+    agentPatchBaseNodes: project.document.nodes,
+    agentPatchLegacyDocumentId: project.document.id,
     agentPatchReview,
     appendTrace,
     canonicalDocumentRevision:
       canonicalSnapshot.document.revision,
+    commitIntentReceipt,
     commitScene,
     documentNodes: scene.nodes,
     documentRevision: scene.revision,
@@ -200,44 +233,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     setWorkspaceCollapsed,
     setWorkspaceTab,
   });
-  const commitNodeChange = (
-    label: string,
-    update: (node: WorkbenchNode) => WorkbenchNode,
-  ) => {
-    if (selectedNode === undefined) {
-      return;
-    }
-    commitScene(
-      label,
-      replaceNode(scene.nodes, selectedNode.id, update),
-      { targetIds: [selectedNode.id] },
-    );
-  };
-  const previewNodeChange = (
-    update: (node: WorkbenchNode) => WorkbenchNode,
-  ) => {
-    if (inspectorSelectedNode === undefined) {
-      return;
-    }
-    setPreviewNodes(
-      replaceNode(
-        canonicalSnapshot.nodes,
-        inspectorSelectedNode.id,
-        update,
-      ),
-    );
-  };
-  const previewSelectionTransaction = (
-    transaction: Parameters<typeof commitSelectionTransaction>[0],
-  ) => {
-    const targetIds = new Set(transaction.targetIds);
-    setPreviewNodes(
-      canonicalSnapshot.nodes.map((current) =>
-        targetIds.has(current.id) ? transaction.update(current) : current,
-      ),
-    );
-  };
-
   const {
     handleViewportClick,
     handleViewportKeyDown,
@@ -254,6 +249,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     cameraScheduler,
     commitPreview,
     commitScene,
+    commitIntentReceipt,
     createRootNode,
     gesture,
     nodes: scene.nodes,
@@ -290,6 +286,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   } = createWorkbenchDocumentActions({
     appendTrace,
     commitScene,
+    commitIntentReceipt,
     documentId: project.document.id,
     getPastePoint: () =>
       viewportPointer.current === null
@@ -369,7 +366,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       const node = scene.nodes.find((candidate) => candidate.id === id);
       return node !== undefined && isCanvasNodeDeletable(node);
     });
-
   const activeNodeIds =
     gesture.current?.type === "move"
       ? gesture.current.nodeIds
@@ -410,7 +406,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     "--canvas-grid-minor-x": `${grid.minorX}px`,
     "--canvas-grid-minor-y": `${grid.minorY}px`,
   } as CSSProperties;
-
   const commands = createEditorCommands(
     {
       onCopySelection: copySelection,
@@ -440,10 +435,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         const selectableIds = scene.nodes
           .filter((node) => !node.hidden)
           .map((node) => node.id);
-        selectNodeIds(
-          selectableIds,
-          `Selected all ${selectableIds.length} visible layers`,
-        );
+        selectNodeIds(selectableIds);
       },
       onSelectProfessionalTool: setTool,
       onSelectTool: (nextTool) => setTool(nextTool),
@@ -457,8 +449,8 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     {
       canDeleteSelection,
       canDuplicateSelection: selectedNode !== undefined,
-      canRedo: scene.future.length > 0,
-      canUndo: scene.past.length > 0,
+      canRedo: historyAvailability.canRedo,
+      canUndo: historyAvailability.canUndo,
     },
   );
 
@@ -475,7 +467,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     setSelectionMarquee,
     spacePressed,
   });
-
   const contextNode =
     contextMenu === null
       ? undefined
@@ -532,6 +523,13 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           y: contextMenu.y,
         };
 
+  if (v3SessionStatus !== "ready") {
+    const message = v3SessionStatus === "error"
+      ? `Canvas V3 session failed: ${v3SessionError ?? "Unknown error."}`
+      : "Opening Canvas V3 session…";
+    return <div role="alert">{message}</div>;
+  }
+
   return (
     <CanvasWorkbenchView
       ariaLabel={`${project.title} canvas workbench`}
@@ -558,8 +556,8 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         activeTool: tool,
         activityOpen:
           workspaceTab === "runs" && !workspaceCollapsed,
-        canRedo: scene.future.length > 0,
-        canUndo: scene.past.length > 0,
+        canRedo: historyAvailability.canRedo,
+        canUndo: historyAvailability.canUndo,
         onActivityToggle: () => openWorkspaceTab("runs"),
         onFitAll: fitAll,
         onMenuToggle:
@@ -700,14 +698,15 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           <>
             <Inspector
               node={resolvedSelectedNode}
-              onChange={commitNodeChange}
-              onChangeSelection={commitSelectionTransaction}
+              onChange={unavailableMutation}
+              onChangeSelection={unavailableMutation}
               onDelete={deleteSelection}
               onDetach={detachSelection}
               onDuplicate={duplicateSelection}
-              onPreview={previewNodeChange}
-              onPreviewSelection={previewSelectionTransaction}
+              onPreview={unavailableMutation}
+              onPreviewSelection={unavailableMutation}
               selectedNodes={inspectorSelectedNodes}
+              v3Actions={inspectorV3Actions}
               {...(onOpenSourceInCode === undefined
                 ? {}
                 : { onOpenSource: onOpenSourceInCode })}
@@ -783,13 +782,10 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     />
   );
 }
-
-// Keyed template boundary: changing documents or imported source remounts the
-// editing session so one document can never autosave another document's scene.
+// Keyed boundary prevents one document from persisting another's editing session.
 export function CanvasWorkbench(props: CanvasWorkbenchProps) {
+  if (props.v3Session === undefined) return <div role="alert">Canvas V3 session is unavailable.</div>;
   const authorityProject = props.authorityProject ?? props.project;
-  const sessionKey = `${props.project.document.id}:${canvasSourceFingerprint(
-    authorityProject,
-  )}`;
+  const sessionKey = `${props.project.document.id}:${canvasSourceFingerprint(authorityProject)}`;
   return <CanvasWorkbenchSession key={sessionKey} {...props} />;
 }

@@ -17,6 +17,47 @@ function sameValues(
   );
 }
 
+function samePersistedSelection(
+  left: WorkspaceSessionDraftV1["selection"],
+  right: WorkspaceSessionDraftV1["selection"],
+): boolean {
+  return (
+    sameValues(left.selectedIds, right.selectedIds) &&
+    left.anchorId === right.anchorId &&
+    left.focusedNodeId === right.focusedNodeId &&
+    left.editingNodeId === right.editingNodeId
+  );
+}
+
+function sameHistory(
+  left: NonNullable<WorkspaceSessionDraftV1["history"]>,
+  right: NonNullable<WorkspaceSessionDraftV1["history"]>,
+): boolean {
+  return (
+    left.undo.length === right.undo.length &&
+    left.redo.length === right.redo.length &&
+    left.undo.every((entry, index) => {
+      const candidate = right.undo[index];
+      return (
+        candidate !== undefined &&
+        entry.operationId === candidate.operationId &&
+        samePersistedSelection(entry.selectionBefore, candidate.selectionBefore) &&
+        samePersistedSelection(entry.selectionAfter, candidate.selectionAfter)
+      );
+    }) &&
+    left.redo.every((entry, index) => {
+      const candidate = right.redo[index];
+      return (
+        candidate !== undefined &&
+        entry.operationId === candidate.operationId &&
+        entry.undoOperationId === candidate.undoOperationId &&
+        samePersistedSelection(entry.selectionBefore, candidate.selectionBefore) &&
+        samePersistedSelection(entry.selectionAfter, candidate.selectionAfter)
+      );
+    })
+  );
+}
+
 function boundedSelection(
   state: CanvasWorkspaceSessionState,
 ): WorkspaceSessionDraftV1["selection"] {
@@ -80,9 +121,12 @@ export function workspaceSessionFromWorkbenchState(
     viewportHeight: Math.max(1, Math.round(state.viewportSize.height)),
   };
   const panels = state.panels;
+  const history = state.history ?? session.history ?? { undo: [], redo: [] };
+  const activePageId = state.activePageId;
 
   if (
     session.documentRevision === documentRevision &&
+    session.activePageId === activePageId &&
     session.camera.x === camera.x &&
     session.camera.y === camera.y &&
     session.camera.zoom === camera.zoom &&
@@ -107,6 +151,7 @@ export function workspaceSessionFromWorkbenchState(
     session.activity.boundDocumentRevision ===
       activity.boundDocumentRevision &&
     session.activity.boundSourceRevision === activity.boundSourceRevision
+    && sameHistory(session.history ?? { undo: [], redo: [] }, history)
   ) {
     return session;
   }
@@ -114,10 +159,12 @@ export function workspaceSessionFromWorkbenchState(
   return WorkspaceSessionDraftSchemaV1.parse({
     ...session,
     documentRevision,
+    activePageId,
     selection,
     camera,
     panels,
     activity,
+    history,
   });
 }
 

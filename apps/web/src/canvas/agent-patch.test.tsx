@@ -14,6 +14,7 @@ import {
 } from "./agent-patch.js";
 import { CanvasWorkbench } from "./CanvasWorkbench.js";
 import { canvasWorkbenchFixture } from "./CanvasWorkbench.fixture.js";
+import { createCanvasWorkbenchV3TestSession } from "./canvas-workbench-v3-test-session.js";
 import {
   createSelectionState,
   createSceneState,
@@ -50,8 +51,12 @@ function patchAt(baseRevision = canvasWorkbenchFixture.document.revision) {
   });
 }
 
+async function waitForWorkbench(): Promise<void> {
+  await screen.findByRole("toolbar", { name: "Canvas tools" });
+}
+
 describe("agent patches", () => {
-  it("clones and deeply freezes proposed nodes and operations at receipt", () => {
+  it("clones and deeply freezes proposed nodes and operations at receipt", async () => {
     const proposed = proposedNodes();
     const patch = createAgentPatch({
       id: "patch-immutable",
@@ -79,7 +84,7 @@ describe("agent patches", () => {
     expect(Object.isFrozen(patch.operations[0])).toBe(true);
   });
 
-  it("applies a matching revision through the shared scene command adapter", () => {
+  it("applies a matching revision through the shared scene command adapter", async () => {
     const selection = createSelectionState(["node-campaign-card"]);
     const adapter = createSceneCommandAdapter({
       documentId: canvasWorkbenchFixture.document.id,
@@ -114,7 +119,7 @@ describe("agent patches", () => {
     ).toBe("Agent-refined campaign card");
   });
 
-  it("preserves a stale patch as an explicit conflict without dispatching", () => {
+  it("preserves a stale patch as an explicit conflict without dispatching", async () => {
     const selection = createSelectionState(["node-campaign-card"]);
     const adapter = createSceneCommandAdapter({
       documentId: canvasWorkbenchFixture.document.id,
@@ -137,7 +142,7 @@ describe("agent patches", () => {
     expect(adapter.getBus().getSnapshot().document.revision).toBe(7);
   });
 
-  it("rejects a review without mutating its frozen patch", () => {
+  it("rejects a review without mutating its frozen patch", async () => {
     const review = createAgentPatchReview(patchAt(), 7);
     const rejected = rejectAgentPatch(review);
 
@@ -149,16 +154,15 @@ describe("agent patches", () => {
 });
 
 describe("CanvasWorkbench agent patch review", () => {
-  it("shows matching patches in Runs and applies them only after approval", () => {
-    const onSceneChange = vi.fn();
-
+  it("shows matching patches in Runs and applies them only after approval", async () => {
     render(
       <CanvasWorkbench
         agentPatch={patchAt()}
-        onSceneChange={onSceneChange}
         project={canvasWorkbenchFixture}
+        v3Session={createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture)}
       />,
     );
+    await waitForWorkbench();
 
     const review = screen.getByRole("region", {
       name: "Agent patch review",
@@ -166,7 +170,6 @@ describe("CanvasWorkbench agent patch review", () => {
     expect(review.textContent).toContain("codex");
     expect(review.textContent).toContain("gpt-5.5");
     expect(review.textContent).toContain("Revision 7");
-    expect(onSceneChange.mock.calls.at(-1)?.[0].revision).toBe(7);
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -174,28 +177,25 @@ describe("CanvasWorkbench agent patch review", () => {
       }),
     );
 
-    expect(onSceneChange.mock.calls.at(-1)?.[0]).toMatchObject({
-      revision: 8,
-    });
     expect(
-      onSceneChange.mock.calls
-        .at(-1)?.[0]
-        .nodes.find(
-          ({ id }: WorkbenchNode) => id === "node-campaign-card",
-        )?.name,
-    ).toBe("Agent-refined campaign card");
+      await screen.findByRole("button", {
+        name: "Agent-refined campaign card on canvas",
+      }),
+    ).toBeTruthy();
     expect(within(review).getByRole("status").textContent).toMatch(
       /applied/i,
     );
   });
 
-  it("keeps stale patches reviewable, disables approval, and permits rejection", () => {
+  it("keeps stale patches reviewable, disables approval, and permits rejection", async () => {
     render(
       <CanvasWorkbench
         agentPatch={patchAt(6)}
         project={canvasWorkbenchFixture}
+        v3Session={createCanvasWorkbenchV3TestSession(canvasWorkbenchFixture)}
       />,
     );
+    await waitForWorkbench();
 
     const approve = screen.getByRole("button", {
       name: "Approve agent patch patch-campaign-1",

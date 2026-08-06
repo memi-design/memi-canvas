@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkspaceSessionDraft } from "@memi/protocol";
 
+import type { CanvasWorkspaceSessionState } from "./CanvasWorkbench.types.js";
 import { createSelectionState } from "./model.js";
 import {
   WorkspaceSessionLiveWriter,
@@ -9,8 +10,9 @@ import {
 
 const SOURCE_REVISION = "a".repeat(40);
 
-function liveState(x: number) {
+function liveState(x: number): CanvasWorkspaceSessionState {
   return {
+    activePageId: "page-2",
     activity: {
       activeRunId: "run-1",
       activeReviewId: "review-1",
@@ -21,6 +23,24 @@ function liveState(x: number) {
     },
     camera: { x, y: 80, zoom: 1.5 },
     documentRevision: 5,
+    history: {
+      redo: [],
+      undo: [{
+        operationId: "operation-1",
+        selectionAfter: {
+          selectedIds: ["node-1", "node-2"],
+          anchorId: "node-2",
+          focusedNodeId: "node-1",
+          editingNodeId: "node-2",
+        },
+        selectionBefore: {
+          selectedIds: [],
+          anchorId: null,
+          focusedNodeId: null,
+          editingNodeId: null,
+        },
+      }],
+    },
     panels: {
       layersWidth: 256,
       inspectorWidth: 360,
@@ -33,7 +53,7 @@ function liveState(x: number) {
       focusedId: "node-1",
     }),
     viewportSize: { height: 900, width: 1_440 },
-  } as const;
+  };
 }
 
 afterEach(() => {
@@ -55,7 +75,26 @@ describe("workspace session live state", () => {
     );
 
     expect(next).toMatchObject({
+      activePageId: "page-2",
       documentRevision: 5,
+      history: {
+        redo: [],
+        undo: [{
+          operationId: "operation-1",
+          selectionAfter: {
+            selectedIds: ["node-1", "node-2"],
+            anchorId: "node-2",
+            focusedNodeId: "node-1",
+            editingNodeId: "node-2",
+          },
+          selectionBefore: {
+            selectedIds: [],
+            anchorId: null,
+            focusedNodeId: null,
+            editingNodeId: null,
+          },
+        }],
+      },
       camera: {
         x: 44,
         y: 80,
