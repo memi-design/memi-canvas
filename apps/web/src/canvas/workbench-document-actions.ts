@@ -28,6 +28,14 @@ export interface WorkbenchSemanticCommitOptions {
   readonly selectedIds?: readonly string[];
   readonly targetIds?: readonly string[];
 }
+
+export interface WorkbenchLayerMove {
+  /** Final sibling slot after removing the moved node from its old position. */
+  readonly index: number;
+  readonly nodeId: string;
+  readonly parentId: string | null;
+}
+
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
@@ -54,6 +62,7 @@ export interface WorkbenchDocumentActions {
   readonly duplicateSelection: () => void;
   readonly frameSelection: () => void;
   readonly groupSelection: () => void;
+  readonly moveLayer: (move: WorkbenchLayerMove) => void;
   readonly orderSelection: (
     direction: "forward" | "backward" | "front" | "back",
   ) => void;
@@ -297,6 +306,98 @@ function hierarchyOrderedNodes(
   return orderedNodes;
 }
 
+const editableContainerKinds = new Set<WorkbenchNode["kind"]>([
+  "Component",
+  "DraftFrame",
+  "Frame",
+  "Group",
+  "Section",
+]);
+
+const sourceAuthorityKinds = new Set<WorkbenchNode["kind"]>([
+  "CodeFrame",
+  "ReferenceFrame",
+  "RoutePlaceholder",
+]);
+
+function hierarchyAllowsLayerMove(
+  node: WorkbenchNode,
+  nodesById: ReadonlyMap<string, WorkbenchNode>,
+): boolean {
+  const seen = new Set<string>();
+  let current: WorkbenchNode | undefined = node;
+  while (current !== undefined) {
+    if (
+      seen.has(current.id) ||
+      current.locked ||
+      current.source !== undefined ||
+      sourceAuthorityKinds.has(current.kind)
+    ) {
+      return false;
+    }
+    seen.add(current.id);
+    current =
+      current.parentId === null
+        ? undefined
+        : nodesById.get(current.parentId);
+  }
+  return true;
+}
+
+function wouldCreateHierarchyCycle(
+  nodeId: string,
+  parentId: string | null,
+  nodesById: ReadonlyMap<string, WorkbenchNode>,
+): boolean {
+  const seen = new Set<string>();
+  let currentId = parentId;
+  while (currentId !== null) {
+    if (currentId === nodeId || seen.has(currentId)) {
+      return true;
+    }
+    seen.add(currentId);
+    currentId = nodesById.get(currentId)?.parentId ?? null;
+  }
+  return false;
+}
+
+function nodesWithLayerPlacement(
+  nodes: readonly WorkbenchNode[],
+  move: WorkbenchLayerMove,
+): readonly WorkbenchNode[] {
+  const updated = nodes.map((node) =>
+    node.id === move.nodeId ? { ...node, parentId: move.parentId } : node,
+  );
+  const nodesById = new Map(updated.map((node) => [node.id, node]));
+  const childIdsByParent = new Map<string | null, string[]>();
+  for (const node of updated) {
+    const childIds = childIdsByParent.get(node.parentId) ?? [];
+    childIdsByParent.set(node.parentId, [...childIds, node.id]);
+  }
+  const targetSiblings = (childIdsByParent.get(move.parentId) ?? []).filter(
+    (id) => id !== move.nodeId,
+  );
+  childIdsByParent.set(move.parentId, [
+    ...targetSiblings.slice(0, move.index),
+    move.nodeId,
+    ...targetSiblings.slice(move.index),
+  ]);
+
+  const ordered: WorkbenchNode[] = [];
+  const visited = new Set<string>();
+  const visit = (id: string): void => {
+    if (visited.has(id)) return;
+    const node = nodesById.get(id);
+    if (node === undefined) return;
+    visited.add(id);
+    ordered.push(node);
+    for (const childId of childIdsByParent.get(id) ?? []) visit(childId);
+  };
+  for (const rootId of childIdsByParent.get(null) ?? []) visit(rootId);
+  for (const node of updated) visit(node.id);
+  return ordered;
+}
+
 export function createWorkbenchDocumentActions(
   context: DocumentActionContext,
 ): WorkbenchDocumentActions {
@@ -455,6 +556,79 @@ export function createWorkbenchDocumentActions(
         ? `Duplicated ${selectedNodes[0]?.name ?? "selection"}`
         : `Duplicated ${selectedNodes.length} layers`,
       duplicates.at(-1)?.id ?? "canvas",
+    );
+  };
+
+  const moveLayer = (move: WorkbenchLayerMove) => {
+    if (!Number.isInteger(move.index) || move.index < 0) return;
+    const nodesById = new Map(context.nodes.map((node) => [node.id, node]));
+    const node = nodesById.get(move.nodeId);
+    const parent =
+      move.parentId === null ? undefined : nodesById.get(move.parentId);
+    if (
+      node === undefined ||
+      !hierarchyAllowsLayerMove(node, nodesById) ||
+      (move.parentId !== null &&
+        (parent === undefined ||
+          !editableContainerKinds.has(parent.kind) ||
+          !hierarchyAllowsLayerMove(parent, nodesById))) ||
+      wouldCreateHierarchyCycle(node.id, move.parentId, nodesById)
+    ) {
+      return;
+    }
+    const targetSiblingIds = context.nodes
+      .filter(
+        (candidate) =>
+          candidate.parentId === move.parentId && candidate.id !== node.id,
+      )
+      .map(({ id }) => id);
+    if (move.index > targetSiblingIds.length) return;
+    const orderedNodeIds = [
+      ...targetSiblingIds.slice(0, move.index),
+      node.id,
+      ...targetSiblingIds.slice(move.index),
+    ];
+    if (node.parentId === move.parentId) {
+      const currentOrder = context.nodes
+        .filter((candidate) => candidate.parentId === move.parentId)
+        .map(({ id }) => id);
+      if (JSON.stringify(currentOrder) === JSON.stringify(orderedNodeIds)) {
+        return;
+      }
+      const nextNodes = nodesWithLayerPlacement(context.nodes, move);
+      commit(
+        `Reorder ${node.name}`,
+        { kind: "order", orderedNodeIds, parentId: move.parentId },
+        nextNodes,
+        { selectedIds: [node.id], targetIds: [node.id] },
+      );
+      context.appendTrace(`Reordered ${node.name} from Layers`, node.id);
+      return;
+    }
+
+    const parentPosition = parent?.position ?? { x: 0, y: 0 };
+    const localNode: WorkbenchNode = {
+      ...node,
+      parentId: move.parentId,
+      position: {
+        x: node.position.x - parentPosition.x,
+        y: node.position.y - parentPosition.y,
+      },
+    };
+    const nextNodes = nodesWithLayerPlacement(context.nodes, move);
+    commit(
+      `Move ${node.name} ${parent === undefined ? "to canvas" : `into ${parent.name}`}`,
+      { kind: "reparent", nextIndices: [move.index], nodes: [localNode] },
+      nextNodes,
+      {
+        selectedIds: [node.id],
+        targetIds:
+          parent === undefined ? [node.id] : [node.id, parent.id],
+      },
+    );
+    context.appendTrace(
+      `Moved ${node.name} ${parent === undefined ? "to canvas" : `into ${parent.name}`}`,
+      node.id,
     );
   };
 
@@ -790,6 +964,7 @@ export function createWorkbenchDocumentActions(
     duplicateSelection,
     frameSelection,
     groupSelection,
+    moveLayer,
     orderSelection,
     pasteImage,
     pasteSelection,
