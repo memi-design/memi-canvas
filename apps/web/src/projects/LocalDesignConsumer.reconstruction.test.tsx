@@ -1,6 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { ProjectIdSchema } from "@memi/protocol";
+
+import type { RuntimeClientV1 } from "../runtime/runtime-client.js";
+
 const fixture = vi.hoisted(() => {
   const artifactId = "art_01J00000000000000000000000";
   const reconstructionArtifactId =
@@ -32,8 +36,18 @@ const fixture = vi.hoisted(() => {
     harnessId: "deterministic-import",
     manifest: {},
   };
-  return { artifactId, reconstructionArtifactId, record, review };
+  return {
+    artifactId,
+    migrateLegacyWorkspaceSession: vi.fn(async () => "missing" as const),
+    reconstructionArtifactId,
+    record,
+    review,
+  };
 });
+
+vi.mock("../canvas/workspace-session-migration.js", () => ({
+  migrateLegacyWorkspaceSession: fixture.migrateLegacyWorkspaceSession,
+}));
 
 vi.mock("../canvas/CanvasWorkbench.js", () => ({
   CanvasWorkbench: ({ reconstructionReviews }: {
@@ -168,5 +182,42 @@ describe("LocalDesignConsumer reconstruction recovery", () => {
     expect([...storage.values.values()].join(" ")).not.toContain(
       "reconstructionReview",
     );
+  });
+
+  it("keeps one workspace-session controller while the open document object refreshes", async () => {
+    const restore = vi.fn(async () => ({ session: null }));
+    const runtimeClient = {
+      canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
+      sessions: {
+        migrateLegacy: vi.fn(),
+        restore,
+        save: vi.fn(),
+      },
+    } satisfies Pick<RuntimeClientV1, "canvasDocuments" | "sessions">;
+    const loader = vi.fn(async () => ({ schemaVersion: 1 }));
+
+    render(
+      <LocalDesignConsumer
+        onExit={() => {}}
+        project={project}
+        reconstructionArtifactLoader={loader}
+        runtimeClient={runtimeClient}
+        runtimeProjectId={ProjectIdSchema.parse(
+          "prj_01J00000000000000000000000",
+        )}
+        storage={createStorage()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Reconstruction count").textContent).toBe(
+        "1",
+      );
+    });
+    await waitFor(() => {
+      expect(restore).toHaveBeenCalled();
+    });
+    expect(fixture.migrateLegacyWorkspaceSession).toHaveBeenCalledTimes(1);
+    expect(restore).toHaveBeenCalledTimes(1);
   });
 });
