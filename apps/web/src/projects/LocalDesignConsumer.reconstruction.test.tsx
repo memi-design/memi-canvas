@@ -1,7 +1,11 @@
+import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ProjectIdSchema } from "@memi/protocol";
+import {
+  ProjectIdSchema,
+  type WorkspaceSessionDraftV1,
+} from "@memi/protocol";
 
 import type { RuntimeClientV1 } from "../runtime/runtime-client.js";
 
@@ -50,12 +54,21 @@ vi.mock("../canvas/workspace-session-migration.js", () => ({
 }));
 
 vi.mock("../canvas/CanvasWorkbench.js", () => ({
-  CanvasWorkbench: ({ reconstructionReviews }: {
+  CanvasWorkbench: ({
+    initialWorkspaceSession,
+    reconstructionReviews,
+  }: {
+    readonly initialWorkspaceSession?: WorkspaceSessionDraftV1;
     readonly reconstructionReviews?: readonly unknown[];
   }) => (
-    <output aria-label="Reconstruction count">
-      {reconstructionReviews?.length ?? 0}
-    </output>
+    <>
+      <output aria-label="Reconstruction count">
+        {reconstructionReviews?.length ?? 0}
+      </output>
+      <output aria-label="Workspace project">
+        {initialWorkspaceSession?.projectId ?? "none"}
+      </output>
+    </>
   ),
 }));
 
@@ -160,6 +173,17 @@ function createStorage() {
   };
 }
 
+function runtimeClient(restore: RuntimeClientV1["sessions"]["restore"]) {
+  return {
+    canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
+    sessions: {
+      migrateLegacy: vi.fn(),
+      restore,
+      save: vi.fn(),
+    },
+  } satisfies Pick<RuntimeClientV1, "canvasDocuments" | "sessions">;
+}
+
 describe("LocalDesignConsumer reconstruction recovery", () => {
   it("rehydrates review metadata from the artifact loader without persisting artifact bytes", async () => {
     const storage = createStorage();
@@ -186,27 +210,22 @@ describe("LocalDesignConsumer reconstruction recovery", () => {
 
   it("keeps one workspace-session controller while the open document object refreshes", async () => {
     const restore = vi.fn(async () => ({ session: null }));
-    const runtimeClient = {
-      canvasDocuments: {} as RuntimeClientV1["canvasDocuments"],
-      sessions: {
-        migrateLegacy: vi.fn(),
-        restore,
-        save: vi.fn(),
-      },
-    } satisfies Pick<RuntimeClientV1, "canvasDocuments" | "sessions">;
+    const client = runtimeClient(restore);
     const loader = vi.fn(async () => ({ schemaVersion: 1 }));
 
     render(
-      <LocalDesignConsumer
-        onExit={() => {}}
-        project={project}
-        reconstructionArtifactLoader={loader}
-        runtimeClient={runtimeClient}
-        runtimeProjectId={ProjectIdSchema.parse(
-          "prj_01J00000000000000000000000",
-        )}
-        storage={createStorage()}
-      />,
+      <StrictMode>
+        <LocalDesignConsumer
+          onExit={() => {}}
+          project={project}
+          reconstructionArtifactLoader={loader}
+          runtimeClient={client}
+          runtimeProjectId={ProjectIdSchema.parse(
+            "prj_01J00000000000000000000000",
+          )}
+          storage={createStorage()}
+        />
+      </StrictMode>,
     );
 
     await waitFor(() => {
@@ -219,5 +238,67 @@ describe("LocalDesignConsumer reconstruction recovery", () => {
     });
     expect(fixture.migrateLegacyWorkspaceSession).toHaveBeenCalledTimes(1);
     expect(restore).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks stale workspace state while the same document changes runtime identity", async () => {
+    const firstProjectId = ProjectIdSchema.parse(
+      "prj_01J00000000000000000000000",
+    );
+    const secondProjectId = ProjectIdSchema.parse(
+      "prj_01J00000000000000000000001",
+    );
+    const firstRestore = vi.fn(async () => ({ session: null }));
+    let resolveSecondRestore: (() => void) | undefined;
+    const secondRestore = vi.fn(
+      () =>
+        new Promise<{ readonly session: null }>((resolve) => {
+          resolveSecondRestore = () => resolve({ session: null });
+        }),
+    );
+    const storage = createStorage();
+    const loader = vi.fn(async () => ({ schemaVersion: 1 }));
+    const firstClient = runtimeClient(firstRestore);
+    const secondClient = runtimeClient(secondRestore);
+    const view = render(
+      <LocalDesignConsumer
+        onExit={() => {}}
+        project={project}
+        reconstructionArtifactLoader={loader}
+        runtimeClient={firstClient}
+        runtimeProjectId={firstProjectId}
+        storage={storage}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Workspace project").textContent).toBe(
+        firstProjectId,
+      );
+    });
+
+    view.rerender(
+      <LocalDesignConsumer
+        onExit={() => {}}
+        project={project}
+        reconstructionArtifactLoader={loader}
+        runtimeClient={secondClient}
+        runtimeProjectId={secondProjectId}
+        storage={storage}
+      />,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "Restoring workspace session" }),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(secondRestore).toHaveBeenCalledTimes(1);
+    });
+    resolveSecondRestore?.();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Workspace project").textContent).toBe(
+        secondProjectId,
+      );
+    });
+    expect(firstRestore).toHaveBeenCalledTimes(1);
   });
 });
