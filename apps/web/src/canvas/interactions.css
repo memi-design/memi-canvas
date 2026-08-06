@@ -103,6 +103,19 @@
     0 0 0 calc(4px * var(--canvas-inverse-zoom)) color-mix(in oklch, var(--accent) 88%, transparent);
 }
 
+.canvas-node[data-interaction-restriction="source-linked"][data-direct-manipulation="move"]
+  .canvas-node__selection-bounds,
+.canvas-node[data-interaction-restriction="source-linked"][data-direct-manipulation="resize"]
+  .canvas-node__selection-bounds {
+  box-shadow:
+    0 0 0 calc(1px * var(--canvas-inverse-zoom))
+      color-mix(in oklch, var(--studio-ink-primary) 96%, transparent),
+    0 0 0 calc(3px * var(--canvas-inverse-zoom))
+      color-mix(in oklch, var(--accent) 88%, transparent),
+    0 0 0 calc(6px * var(--canvas-inverse-zoom))
+      color-mix(in oklch, var(--accent-soft) 74%, transparent);
+}
+
 .canvas-node__selection-status {
   clip: rect(0 0 0 0);
   clip-path: inset(50%);
