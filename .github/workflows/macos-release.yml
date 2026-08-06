@@ -168,7 +168,7 @@ jobs:
           if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
             package_args+=(--require-signed)
           fi
-          npm exec vite-node -- "${package_args[@]}"
+          npm exec vite-node -- --script "${package_args[@]}"
 
       - name: Smoke the exact versioned app archive
         shell: bash

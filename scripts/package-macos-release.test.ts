@@ -34,13 +34,12 @@ afterEach(async () => {
 });
 
 describe("macOS release packaging contract", () => {
-  it("runs when vite-node passes the package script after its own entrypoint", () => {
+  it("runs when vite-node --script makes the package script its entrypoint", () => {
     const scriptPath = join(process.cwd(), "scripts", "package-macos-release.ts");
 
     expect(
       shouldRunPackageRelease([
         process.execPath,
-        join(process.cwd(), "node_modules", "vite-node", "vite-node.mjs"),
         scriptPath,
         "--tag",
         "v1.2.3",

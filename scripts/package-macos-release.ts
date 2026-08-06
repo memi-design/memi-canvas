@@ -337,9 +337,11 @@ async function packageRelease(): Promise<void> {
   process.stdout.write(`${JSON.stringify(manifest)}\n`);
 }
 
-if (
-  process.argv[1] !== undefined &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+export function shouldRunPackageRelease(argv: readonly string[]): boolean {
+  const modulePath = fileURLToPath(import.meta.url);
+  return argv.slice(1).some((argument) => resolve(argument) === modulePath);
+}
+
+if (shouldRunPackageRelease(process.argv)) {
   await packageRelease();
 }

@@ -55,5 +55,8 @@ describe("macOS release workflow contract", () => {
     expect(workflow).toContain('--run-attempt "${GITHUB_RUN_ATTEMPT}"');
     expect(workflow).toContain('--server-url "${GITHUB_SERVER_URL}"');
     expect(workflow).toContain("package_args+=(--require-signed)");
+    expect(workflow).toContain(
+      'npm exec vite-node -- --script "${package_args[@]}"',
+    );
   });
 });
