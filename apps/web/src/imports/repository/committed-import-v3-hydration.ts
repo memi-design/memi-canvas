@@ -24,6 +24,7 @@ import {
   rehydrateRepositoryProjectRecord,
   type RepositoryReconstructionArtifactLoader,
 } from "./repository-reconstruction-rehydration.js";
+import type { RepositoryReconstructionReview } from "./repository-reconstruction-review.js";
 
 const SCREEN_GAP = 96;
 const DEFAULT_COLUMNS = 5;
@@ -34,6 +35,9 @@ export interface CommittedImportCanvasHydrationV3Input {
   readonly pageId: string;
   readonly reconstructionsByArtifactId: Readonly<
     Record<string, RuntimeCaptureScreenV1>
+  >;
+  readonly reconstructionReviewsByArtifactId?: Readonly<
+    Record<string, RepositoryReconstructionReview>
   >;
 }
 
@@ -67,15 +71,24 @@ export async function persistCommittedImportCanvasDocumentV3(input: {
     );
   }
   const reconstructionsByArtifactId: Record<string, RuntimeCaptureScreenV1> = {};
+  const reconstructionReviewsByArtifactId: Record<
+    string,
+    RepositoryReconstructionReview
+  > = {};
   for (const artifact of input.job.artifacts) {
-    const reconstruction =
-      hydratedRecord.capture?.artifactReferences[artifact.id]?.reconstruction;
+    const reference = hydratedRecord.capture?.artifactReferences[artifact.id];
+    const reconstruction = reference?.reconstruction;
     if (reconstruction === undefined) {
       throw new Error(
         `Committed artifact ${artifact.id} has no editable reconstruction.`,
       );
     }
     reconstructionsByArtifactId[artifact.id] = reconstruction;
+    const reconstructionReview = reference?.reconstructionReview;
+    if (reconstructionReview !== undefined) {
+      reconstructionReviewsByArtifactId[artifact.id] =
+        reconstructionReview;
+    }
   }
   const document = createLocalDesignCanvasDocumentV3(
     input.canvasProject,
@@ -95,6 +108,7 @@ export async function persistCommittedImportCanvasDocumentV3(input: {
     job: input.job,
     pageId,
     reconstructionsByArtifactId,
+    reconstructionReviewsByArtifactId,
   });
 }
 
@@ -129,6 +143,33 @@ function verifiedArtifact(artifact: CaptureArtifactV2): boolean {
     artifact.verification.splashRejected &&
     artifact.verification.errorBoundaryRejected
   );
+}
+
+function reconstructionFidelity(
+  capture: RuntimeCaptureScreenV1,
+  review: RepositoryReconstructionReview | undefined,
+): Readonly<{
+  diffArtifactId: string | null;
+  maximumGeometryDelta: number | null;
+  ssim: number | null;
+  status: "verified" | "needs-review";
+}> | undefined {
+  if (review === undefined) return undefined;
+  const reviewedAllLayers =
+    capture.layers.length > 0 &&
+    capture.layers.every(
+      ({ semanticKey }) =>
+        review.confidenceBySemanticKey[semanticKey] !== undefined,
+    );
+  return Object.freeze({
+    diffArtifactId: review.fidelity.diffArtifactId,
+    maximumGeometryDelta: review.fidelity.maximumGeometryDelta,
+    ssim: review.fidelity.ssim,
+    status:
+      review.fidelity.status === "verified" && reviewedAllLayers
+        ? "verified"
+        : "needs-review",
+  });
 }
 
 function assertAuthority(
@@ -239,6 +280,10 @@ export async function hydrateCommittedImportCanvasDocumentV3(
     const capture = RuntimeCaptureScreenV1Schema.parse(
       input.reconstructionsByArtifactId[artifact.id],
     );
+    const fidelity = reconstructionFidelity(
+      capture,
+      input.reconstructionReviewsByArtifactId?.[artifact.id],
+    );
     assertAuthority(job, artifact, scenario, capture);
     const result = await materializeRuntimeCaptureV3(persistence, {
       evidenceArtifacts: {
@@ -254,6 +299,7 @@ export async function hydrateCommittedImportCanvasDocumentV3(
       manifest: capture,
       pageId: input.pageId,
       placement: placement(scenario, index),
+      ...(fidelity === undefined ? {} : { reconstructionFidelity: fidelity }),
     });
     persistence = result.persistence;
     plans.push(result.plan);
