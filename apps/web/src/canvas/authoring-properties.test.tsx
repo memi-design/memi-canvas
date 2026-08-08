@@ -68,6 +68,14 @@ async function commitNumber(label: string, value: string): Promise<void> {
   });
 }
 
+async function undoWhenReady(): Promise<void> {
+  const undo = screen.getByRole("button", { name: "Undo" });
+  await waitFor(() => expect(undo.getAttribute("aria-disabled")).toBe("false"));
+  await act(async () => {
+    fireEvent.click(undo);
+  });
+}
+
 async function renderWorkbench(): Promise<void> {
   render(
     <CanvasWorkbench
@@ -122,7 +130,7 @@ describe("professional authoring properties", () => {
     await commitNumber("Font size", "48");
     await waitFor(() => expect(text.style.fontSize).toBe("48px"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await undoWhenReady();
     await waitFor(() => expect(text.style.fontSize).toBe(""));
   });
 
@@ -239,6 +247,29 @@ describe("professional authoring properties", () => {
         .getByRole("button", { name: "Link corner radii" })
         .getAttribute("title"),
     ).toBe("Link corner radii");
+  });
+
+  it("authors layer blur and drop shadow as reversible style operations", async () => {
+    await renderWorkbench();
+    await selectCampaignCard();
+    const card = screen.getByRole("button", {
+      name: "Campaign card on canvas",
+    });
+
+    await commitNumber("Layer blur", "8");
+    await waitFor(() => expect(card.style.filter).toContain("blur(8px)"));
+    await undoWhenReady();
+    await waitFor(() => expect(card.style.filter).toBe(""));
+
+    await commitNumber("Shadow blur", "24");
+    await waitFor(() => expect(card.style.boxShadow).toContain("24px"));
+    await undoWhenReady();
+    await waitFor(() => expect(card.style.boxShadow).toBe(""));
+
+    await commitNumber("Shadow Y", "12");
+    await waitFor(() =>
+      expect(card.style.boxShadow).toContain("0px 12px 12px 0px"),
+    );
   });
 
   it("resynchronizes the corner mode when the selected node changes externally", async () => {

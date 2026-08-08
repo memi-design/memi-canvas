@@ -143,6 +143,9 @@ function style(node: WorkbenchNode): CanvasNodeV3["style"] {
   return {
     cornerRadii: node.cornerRadii === undefined ? [0, 0, 0, 0] : [...node.cornerRadii],
     fills: node.fill === undefined ? [] : [{ color: node.fill, type: "solid" }],
+    ...(node.effects === undefined
+      ? {}
+      : { effects: node.effects.map((effect) => ({ ...effect })) }),
     locked: node.locked,
     opacity: node.opacity ?? 1,
     ...(node.strokeAlign === undefined ? {} : { strokeAlign: node.strokeAlign }),

@@ -10,6 +10,7 @@ export interface SharedAuthoringProperties {
     readonly [number, number, number, number] | undefined
   >;
   readonly fill: SharedAuthoringValue<string | undefined>;
+  readonly effects: SharedAuthoringValue<WorkbenchNode["effects"]>;
   readonly gap: SharedAuthoringValue<number | undefined>;
   readonly height: SharedAuthoringValue<number>;
   readonly layoutMode: SharedAuthoringValue<
@@ -105,6 +106,7 @@ export function sharedAuthoringProperties(
 ): SharedAuthoringProperties {
   return {
     cornerRadii: sharedValue(nodes, (node) => node.cornerRadii),
+    effects: sharedValue(nodes, (node) => node.effects),
     fill: sharedValue(nodes, (node) => node.fill),
     gap: sharedValue(nodes, (node) => node.layout?.gap),
     height: sharedValue(nodes, (node) => node.size.height),

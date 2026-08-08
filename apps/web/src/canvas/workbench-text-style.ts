@@ -10,6 +10,7 @@ export type WorkbenchTextAppearance = Pick<
   | "letterSpacing"
   | "lineHeight"
   | "textAlign"
+  | "textAutoResize"
 >;
 
 type WorkbenchTextSource = Readonly<{
@@ -21,6 +22,7 @@ type WorkbenchTextSource = Readonly<{
   name: string;
   text?: string | undefined;
   textAlign?: WorkbenchNode["textAlign"] | undefined;
+  textAutoResize?: WorkbenchNode["textAutoResize"] | undefined;
 }>;
 
 export function canvasTextFromWorkbench(
@@ -28,7 +30,7 @@ export function canvasTextFromWorkbench(
   characters = node.text ?? node.name,
 ): CanvasTextV2 {
   return {
-    autoResize: "width-height",
+    autoResize: node.textAutoResize ?? "width-height",
     characters,
     ...(node.fontFamily === undefined
       ? {}
@@ -59,6 +61,7 @@ export function workbenchTextAppearance(
       : { letterSpacing: text.letterSpacing }),
     ...(text.lineHeight === undefined ? {} : { lineHeight: text.lineHeight }),
     ...(text.textAlign === undefined ? {} : { textAlign: text.textAlign }),
+    textAutoResize: text.autoResize,
   };
 }
 
@@ -72,6 +75,7 @@ export function textAppearanceChanged(
     left.fontWeight !== right.fontWeight ||
     left.letterSpacing !== right.letterSpacing ||
     left.lineHeight !== right.lineHeight ||
-    left.textAlign !== right.textAlign
+    left.textAlign !== right.textAlign ||
+    left.textAutoResize !== right.textAutoResize
   );
 }

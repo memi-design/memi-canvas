@@ -44,6 +44,12 @@ export interface RuntimeCaptureMaterializationV3Input {
   readonly manifest: RuntimeCaptureScreenV1;
   readonly pageId: string;
   readonly placement?: Readonly<{ x: number; y: number }>;
+  readonly reconstructionFidelity?: Readonly<{
+    diffArtifactId: string | null;
+    maximumGeometryDelta: number | null;
+    ssim: number | null;
+    status: "verified" | "needs-review";
+  }>;
 }
 
 export interface RuntimeCaptureMaterializationPlanV3 {
@@ -305,6 +311,9 @@ function layerNode(
             layer.style.lineHeight <= 0
               ? {}
               : { lineHeight: layer.style.lineHeight }),
+            ...(layer.style.textAlign === undefined
+              ? {}
+              : { textAlign: layer.style.textAlign }),
           }
         : null,
     transform: {
@@ -514,6 +523,27 @@ export function prepareRuntimeCaptureMaterializationV3(
     stableFrameHash: input.evidenceArtifacts.stableFrameHash,
     verified: input.evidenceArtifacts.verified,
   });
+  const reconstructionFidelity =
+    input.reconstructionFidelity === undefined
+      ? immutable({
+          diffArtifactId: null,
+          maximumGeometryDelta:
+            capture.reconstructionFidelity?.geometryWithinOnePoint === true
+              ? 1
+              : null,
+          ssim:
+            capture.reconstructionFidelity?.screenshotHiddenSsim ?? null,
+          status: "needs-review" as const,
+        })
+      : immutable({
+          diffArtifactId: ArtifactIdSchema.nullable().parse(
+            input.reconstructionFidelity.diffArtifactId,
+          ),
+          maximumGeometryDelta:
+            input.reconstructionFidelity.maximumGeometryDelta,
+          ssim: input.reconstructionFidelity.ssim,
+          status: input.reconstructionFidelity.status,
+        });
   const scale =
     capture.binding.viewport.scale ??
     capture.artifact.width / capture.binding.viewport.width;
@@ -641,16 +671,7 @@ export function prepareRuntimeCaptureMaterializationV3(
           confidenceByNodeId,
           editableRootIds: [frame.id],
           evidenceId: ids.evidenceId,
-          fidelity: {
-            diffArtifactId: null,
-            maximumGeometryDelta:
-              capture.reconstructionFidelity?.geometryWithinOnePoint === true
-                ? 1
-                : null,
-            ssim:
-              capture.reconstructionFidelity?.screenshotHiddenSsim ?? null,
-            status: "needs-review",
-          },
+          fidelity: reconstructionFidelity,
           id: ids.reconstructionId,
           pageId,
           schemaVersion: 1,
