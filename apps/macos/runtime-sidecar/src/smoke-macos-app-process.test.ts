@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
+  canonicalizeMacOsAppPath,
   findPackagedRuntimeSidecar,
   formatDirectChildDiagnostic,
   macOsVisibleWindowProbe,
@@ -27,6 +31,23 @@ const launcherRuntime = (pid: number, parentPid: number): ProcessRow => ({
 });
 
 describe("packaged macOS smoke process proof", () => {
+  it("canonicalizes an extracted app path before comparing child commands", async () => {
+    const actualRoot = await mkdtemp(join(tmpdir(), "memi-smoke-real-"));
+    const aliasRoot = `${actualRoot}-alias`;
+    const appPath = join(actualRoot, "Memi Canvas.app");
+    await mkdir(appPath);
+    await symlink(actualRoot, aliasRoot);
+
+    try {
+      await expect(
+        canonicalizeMacOsAppPath(join(aliasRoot, "Memi Canvas.app")),
+      ).resolves.toBe(await realpath(appPath));
+    } finally {
+      await rm(aliasRoot, { force: true });
+      await rm(actualRoot, { force: true, recursive: true });
+    }
+  });
+
   it("requests untruncated BSD ps command output before comparing bundle paths", () => {
     expect(macOsProcessListArguments()).toEqual([
       "-ww",
