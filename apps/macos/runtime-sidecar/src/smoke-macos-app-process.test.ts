@@ -10,6 +10,7 @@ import {
   macOsVisibleWindowProbe,
   macOsWindowDiagnosticProbe,
   macOsProcessListArguments,
+  resolveMacOsAppPath,
   type ProcessRow,
 } from "../../../../scripts/smoke-macos-app-process.js";
 
@@ -31,6 +32,25 @@ const launcherRuntime = (pid: number, parentPid: number): ProcessRow => ({
 });
 
 describe("packaged macOS smoke process proof", () => {
+  it("resolves the bundled app from an external Cargo target directory", () => {
+    expect(
+      resolveMacOsAppPath({
+        cargoTargetDirectory: "/Volumes/External/memi-target",
+        workingDirectory: "/workspace/memi-canvas",
+      }),
+    ).toBe(
+      "/Volumes/External/memi-target/debug/bundle/macos/Memi Canvas.app",
+    );
+  });
+
+  it("keeps the repository-local target as the default smoke path", () => {
+    expect(
+      resolveMacOsAppPath({ workingDirectory: "/workspace/memi-canvas" }),
+    ).toBe(
+      "/workspace/memi-canvas/apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+    );
+  });
+
   it("canonicalizes an extracted app path before comparing child commands", async () => {
     const actualRoot = await mkdtemp(join(tmpdir(), "memi-smoke-real-"));
     const aliasRoot = `${actualRoot}-alias`;
