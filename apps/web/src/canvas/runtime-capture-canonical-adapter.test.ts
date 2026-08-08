@@ -161,6 +161,7 @@ function capture(
           fontWeight: 500,
           lineHeight: 20,
           opacity: 1,
+          textAlign: "center",
           textColor: "#08090a",
         },
         zIndex: 3,
@@ -301,7 +302,7 @@ describe("runtime capture canonical adapter", () => {
         ],
         symbol: "SignInScreen",
       },
-      text: { characters: "Continue as guest" },
+      text: { characters: "Continue as guest", textAlign: "center" },
       transform: { x: 90, y: 14 },
     });
     expect(Object.isFrozen(snapshot.document)).toBe(true);
