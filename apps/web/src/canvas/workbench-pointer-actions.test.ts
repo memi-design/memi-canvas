@@ -189,7 +189,7 @@ describe("workbench pointer actions", () => {
           }),
           expect.objectContaining({
             name: "Welcome headline copy",
-            position: { x: 32, y: 32 },
+            position: { x: 1052, y: 242 },
           }),
         ],
       },
