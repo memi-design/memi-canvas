@@ -4,6 +4,7 @@ import {
   CanvasDocumentV2Schema,
   CanvasNodeV2Schema,
   CanvasOperationV2Schema,
+  CanvasStyleV2Schema,
   CanvasTextV2Schema,
   LegacyCanvasIdMappingReceiptV2Schema,
   SourceAnchorV2Schema,
@@ -71,6 +72,31 @@ describe("Canvas V2 protocol", () => {
     ).toBe(false);
     expect(
       CanvasTextV2Schema.safeParse({ ...appearance, fontWeight: 950 }).success,
+    ).toBe(false);
+  });
+
+  it("validates bounded visual effects without accepting invalid blur radii", () => {
+    const style = {
+      ...node.style,
+      effects: [
+        {
+          type: "drop-shadow",
+          color: "oklch(0% 0 0 / 32%)",
+          offsetX: 0,
+          offsetY: 12,
+          blur: 28,
+          spread: 0,
+        },
+        { type: "layer-blur", radius: 8 },
+      ],
+    };
+
+    expect(CanvasStyleV2Schema.safeParse(style).success).toBe(true);
+    expect(
+      CanvasStyleV2Schema.safeParse({
+        ...style,
+        effects: [{ type: "layer-blur", radius: -1 }],
+      }).success,
     ).toBe(false);
   });
 

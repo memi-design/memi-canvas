@@ -235,6 +235,26 @@ describe("professional authoring properties", () => {
     ).toBe("Link corner radii");
   });
 
+  it("authors layer blur and drop shadow as one reversible style operation", async () => {
+    await renderWorkbench();
+    await selectCampaignCard();
+
+    await commitNumber("Layer blur", "8");
+    await commitNumber("Shadow blur", "24");
+    await commitNumber("Shadow Y", "12");
+
+    const card = screen.getByRole("button", {
+      name: "Campaign card on canvas",
+    });
+    expect(card.style.filter).toContain("blur(8px)");
+    expect(card.style.boxShadow).toContain("24px");
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(card.style.boxShadow).toBe(""));
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(card.style.filter).toBe(""));
+  });
+
   it("resynchronizes the corner mode when the selected node changes externally", async () => {
     const onChange = vi.fn();
     const node = createSceneState(canvasWorkbenchFixture).nodes.find(
