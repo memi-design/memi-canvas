@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -295,6 +303,38 @@ async function fixture(
 }
 
 describe("ExpoGoCaptureAdapter", () => {
+  it("bridges external dependencies only for the managed capture lifecycle", async () => {
+    const dependencyParent = await mkdtemp(join(tmpdir(), "memi-expo-deps-"));
+    const dependencyRoot = join(dependencyParent, "node_modules");
+    await mkdir(join(dependencyRoot, "expo", "bin"), { recursive: true });
+    const target = await fixture({
+      metro: {
+        executable: "/opt/memi/npx",
+        args: ["expo", "start", "--dev-client", "--localhost"],
+        appId: "com.memi.capture",
+        routeAuthority: "expo-development-client-url",
+        scheme: "memi",
+      },
+      localDevelopmentMetroLaunch: {
+        executable: "/opt/memi/node",
+        cliPath: join(dependencyRoot, "expo", "bin", "cli"),
+        dependencyRoot,
+        environment: { NODE_PATH: dependencyRoot },
+      },
+    });
+
+    await target.adapter.prepare(target.context, application, [target.scenario]);
+
+    const bridgePath = join(target.root, "node_modules");
+    expect((await lstat(bridgePath)).isSymbolicLink()).toBe(true);
+    await expect(realpath(bridgePath)).resolves.toBe(await realpath(dependencyRoot));
+
+    await target.adapter.cleanup(target.context, null);
+
+    await expect(lstat(bridgePath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(dependencyRoot)).resolves.toMatchObject({});
+  });
+
   it("launches a declared development client through its verified local Expo CLI", async () => {
     const target = await fixture({
       metro: {
