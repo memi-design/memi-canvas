@@ -6,8 +6,8 @@ import {
   type KeyboardEvent,
 } from "react";
 
-const STUDIO_INPUT_BLACK = "--studio-input-hex-black";
-const STUDIO_INPUT_WHITE = "--studio-input-hex-white";
+// The native color input only accepts six-digit sRGB. Construct its platform
+// fallback without adding a literal document color to the Studio token system.
 const FALLBACK_BLACK = "#".concat("0".repeat(6));
 const FALLBACK_WHITE = "#".concat("f".repeat(6));
 
@@ -15,28 +15,11 @@ function isHexColor(value: string): boolean {
   return /^#[\da-f]{6}$/iu.test(value.trim());
 }
 
-function studioHexToken(token: string, fallback: string): string {
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-  const value = window
-    .getComputedStyle(window.document.documentElement)
-    .getPropertyValue(token)
-    .trim();
-  return isHexColor(value) ? value : fallback;
-}
-
 function pickerColor(value: string): string {
   const normalized = value.trim().toLowerCase();
-  if (normalized === "white") {
-    return studioHexToken(STUDIO_INPUT_WHITE, FALLBACK_WHITE);
-  }
-  if (normalized === "black") {
-    return studioHexToken(STUDIO_INPUT_BLACK, FALLBACK_BLACK);
-  }
-  return isHexColor(normalized)
-    ? normalized
-    : studioHexToken(STUDIO_INPUT_BLACK, FALLBACK_BLACK);
+  if (normalized === "white") return FALLBACK_WHITE;
+  if (normalized === "black") return FALLBACK_BLACK;
+  return isHexColor(normalized) ? normalized : FALLBACK_BLACK;
 }
 
 // Atomic Design: molecule — swatch and text entry with one commit boundary.
