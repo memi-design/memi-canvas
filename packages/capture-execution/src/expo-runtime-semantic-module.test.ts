@@ -17,6 +17,13 @@ describe("Expo runtime semantic module", () => {
     expect(module).toContain("pathname !== session.expectedRoute");
   });
 
+  it("binds runtime evidence to the unique managed readiness token", () => {
+    const module = expoRuntimeSemanticModule("a".repeat(40), "READY-TOKEN");
+
+    expect(module).toContain('const RUNTIME_TOKEN = "READY-TOKEN";');
+    expect(module).toContain("runtimeToken: RUNTIME_TOKEN");
+  });
+
   it("freezes continuous React Native loops in the managed capture runtime", () => {
     const module = expoRuntimeSemanticModule(
       "revision-1",
