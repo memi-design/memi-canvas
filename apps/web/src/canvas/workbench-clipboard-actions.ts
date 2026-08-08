@@ -202,12 +202,8 @@ export function createWorkbenchClipboardActions(
       commitPaste(eventPayload);
       return;
     }
-    const sessionPayload = readCanvasSessionClipboard();
-    if (sessionPayload !== null) {
-      commitPaste(sessionPayload);
-      return;
-    }
     if (!canReadCanvasSystemClipboard()) {
+      commitPaste(readCanvasSessionClipboard());
       return;
     }
     void readCanvasImageFromSystem().then((systemImage) => {

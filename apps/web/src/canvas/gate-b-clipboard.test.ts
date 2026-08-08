@@ -395,16 +395,18 @@ describe("Gate B native clipboard fallback receipt", () => {
     actions.pasteSelection();
 
     await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
-    expect(commitIntentReceipt).toHaveBeenCalledWith(
-      "Paste image",
-      {
-        kind: "paste",
-        nodes: [expect.objectContaining({
-          image: expect.objectContaining({ mimeType: "image/png" }),
-        })],
-      },
-      expect.objectContaining({ selectedIds: ["image-1"] }),
-    );
+    await vi.waitFor(() => {
+      expect(commitIntentReceipt).toHaveBeenCalledWith(
+        "Paste image",
+        {
+          kind: "paste",
+          nodes: [expect.objectContaining({
+            image: expect.objectContaining({ mimeType: "image/png" }),
+          })],
+        },
+        expect.objectContaining({ selectedIds: ["image-1"] }),
+      );
+    });
   });
 
   it("keeps the internal copy and reports when the native clipboard is unavailable", async () => {
