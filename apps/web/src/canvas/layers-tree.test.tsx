@@ -118,6 +118,13 @@ describe("Draft layers hierarchy", () => {
 
     const a = screen.getByRole("treeitem", { name: "A Rectangle" });
     expect(a.getAttribute("aria-keyshortcuts")).toContain("Alt+ArrowDown");
+    expect(
+      fireEvent.keyDown(a, { altKey: true, key: "ArrowUp" }),
+    ).toBe(false);
+    expect(
+      fireEvent.keyDown(a, { altKey: true, key: "ArrowRight" }),
+    ).toBe(false);
+    expect(onMove).not.toHaveBeenCalled();
     fireEvent.keyDown(a, { altKey: true, key: "ArrowDown" });
     expect(onMove).toHaveBeenLastCalledWith({
       index: 1,
