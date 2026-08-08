@@ -42,6 +42,7 @@ import {
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import type { WorkbenchSemanticCommitOptions } from "./workbench-document-actions.js";
+import { prepareWorkbenchMoveCommit } from "./workbench-drop-commit.js";
 
 interface PointerActionContext {
   readonly alignmentGuides: AlignmentGuides;
@@ -547,39 +548,40 @@ export function createWorkbenchPointerActions(
       }
       if (active.type === "move" || active.type === "resize") {
         context.suppressCanvasClick.current = true;
-        const label =
-          active.type === "move" && active.duplicated
-            ? `Duplicate and move ${active.nodeName}`
-            : `${active.type === "move" ? "Move" : "Resize"} ${active.nodeName}`;
-        const targetIds = active.type === "move"
-          ? active.duplicated
-            ? descendantNodeIds(context.nodes, active.nodeIds)
-            : active.nodeIds
-          : [active.nodeId];
-        const affected = context.nodes.filter((node) =>
-          targetIds.includes(node.id),
+        if (active.type === "move") {
+          const bounds =
+            context.viewportElement.current?.getBoundingClientRect();
+          const prepared = prepareWorkbenchMoveCommit({
+            gesture: active,
+            nodes: context.nodes,
+            pointer: {
+              x: event.clientX - (bounds?.left ?? 0),
+              y: event.clientY - (bounds?.top ?? 0),
+            },
+          });
+          commit(
+            prepared.label,
+            prepared.receipt,
+            active.initialNodes,
+            prepared.targetIds,
+            prepared.selectedIds,
+          );
+          context.appendTrace(
+            prepared.traceLabel,
+            active.nodeIds.at(-1) ?? "canvas",
+          );
+          return;
+        }
+        const affected = context.nodes.filter(
+          ({ id }) => id === active.nodeId,
         );
         commit(
-          label,
-          active.type === "resize"
-            ? { kind: "resize", nodes: affected }
-            : active.duplicated
-              ? { kind: "paste", nodes: affected }
-              : { kind: "move", nodes: affected },
+          `Resize ${active.nodeName}`,
+          { kind: "resize", nodes: affected },
           active.initialNodes,
-          targetIds,
-          active.type === "move" && active.duplicated
-            ? active.nodeIds
-            : undefined,
+          [active.nodeId],
         );
-        context.appendTrace(
-          active.type === "move" && active.duplicated
-            ? `Duplicated and moved ${active.nodeName}`
-            : `${active.type === "move" ? "Moved" : "Resized"} ${active.nodeName}`,
-          active.type === "move"
-            ? active.nodeIds.at(-1) ?? "canvas"
-            : active.nodeId,
-        );
+        context.appendTrace(`Resized ${active.nodeName}`, active.nodeId);
       }
     };
 

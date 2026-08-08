@@ -351,6 +351,7 @@ export interface WorkbenchNode {
 export interface WorkbenchHierarchyState {
   readonly hidden: boolean;
   readonly locked: boolean;
+  readonly sourceLinked: boolean;
 }
 
 export function workbenchHierarchyStates(
@@ -365,18 +366,27 @@ export function workbenchHierarchyStates(
       return existing;
     }
     if (resolving.has(node.id)) {
-      return { hidden: node.hidden, locked: node.locked };
+      return {
+        hidden: node.hidden,
+        locked: node.locked,
+        sourceLinked:
+          node.source !== undefined || node.component?.source !== undefined,
+      };
     }
     resolving.add(node.id);
     const parent =
       node.parentId === null ? undefined : nodesById.get(node.parentId);
     const parentState =
       parent === undefined
-        ? { hidden: false, locked: false }
+        ? { hidden: false, locked: false, sourceLinked: false }
         : resolve(parent);
     const state = {
       hidden: node.hidden || parentState.hidden,
       locked: node.locked || parentState.locked,
+      sourceLinked:
+        node.source !== undefined ||
+        node.component?.source !== undefined ||
+        parentState.sourceLinked,
     };
     resolving.delete(node.id);
     states.set(node.id, state);
