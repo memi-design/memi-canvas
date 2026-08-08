@@ -34,4 +34,16 @@ describe("workbench node reservation", () => {
     rerender({ nodes: canonical, revision: 2 });
     expect(result.current.get()).toEqual(canonical);
   });
+
+  it("invalidates delayed work when the owning canvas unmounts", () => {
+    const { result, unmount } = renderHook(() =>
+      useWorkbenchNodeReservation([rectangle("card")], 1, "page-a"),
+    );
+    const scope = result.current.getScope();
+    expect(result.current.isScopeCurrent(scope)).toBe(true);
+
+    unmount();
+
+    expect(result.current.isScopeCurrent(scope)).toBe(false);
+  });
 });
