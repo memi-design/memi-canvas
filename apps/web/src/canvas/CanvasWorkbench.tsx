@@ -7,7 +7,6 @@ import { Inspector } from "./parts.js";
 import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
 import { canReadCanvasSystemClipboard, hasCanvasSessionClipboard, isCanvasNodeDeletable } from "./canvas-clipboard.js";
 import { projectVisibleItems } from "./canvas-performance.js";
-import { useWorkbenchV3SessionBridge } from "./workbench-v3-session-bridge.js";
 import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
 import { createWorkbenchPointerActions } from "./workbench-pointer-actions.js";
 import { createWorkbenchCameraActions } from "./workbench-camera-actions.js";
@@ -20,9 +19,8 @@ import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
 import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
-import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
-import { createWorkbenchPageV3 } from "./workbench-page-actions-v3.js";
 import { workbenchInteractionFeedback } from "./workbench-interaction-feedback.js";
+import { useWorkbenchPageSessionV3 } from "./use-workbench-page-session-v3.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -111,39 +109,20 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   if (v3Session === undefined) {
     return <div role="alert">Canvas V3 session is unavailable.</div>;
   }
-  const reportV3Failure = (message: string) => setTrace((current) => [
-    ...current,
-    { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
-  ]);
-  const createPage = () => {
-    if (canonicalAuthority === null) {
-      reportV3Failure("Canvas V3 is still opening; page was not created.");
-      return;
-    }
-    void createWorkbenchPageV3(canonicalAuthority)
-      .then(selectActivePage)
-      .catch((error: unknown) => reportV3Failure(
-        error instanceof Error ? error.message : "Canvas page creation failed.",
-      ));
-  };
-  const pageContext = canvasPageContextV3({
+  const {
+    commitIntentReceipt, history: v3History, pageContext,
+    redoScene: redoV3, undoScene: undoV3,
+  } = useWorkbenchPageSessionV3({
     activePageId,
+    authority: canonicalAuthority,
     legacyDocumentId: project.document.id,
     navigation: pageNavigation,
-    onCreatePage: createPage,
-    onSelectPage: selectActivePage,
     reviews: reconstructionReviews,
+    selectActivePage,
     session: v3Session,
-    ...(canonicalAuthority === null
-      ? {}
-      : { authoritativeDocument: canonicalAuthority.getSnapshot().document }),
+    setTrace,
+    traceSequence,
   });
-  const { commitIntentReceipt, history: v3History, redoScene: redoV3, undoScene: undoV3 } =
-    useWorkbenchV3SessionBridge({
-      authority: canonicalAuthority,
-      session: pageContext.session,
-      onFailure: reportV3Failure,
-    });
   const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;
   const selectedNodes = selectedNodeIds.flatMap((nodeId) =>
