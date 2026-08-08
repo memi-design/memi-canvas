@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   realpath,
+  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -16,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { jobFixture } from "../../../../packages/capture-execution/src/test-fixtures.js";
 import {
+  createSimulatorScreenshotStagingRoot,
   createExpoGoCaptureAdapter,
   localDevelopmentMetroLaunch,
   readSettledEvidenceFile,
@@ -78,6 +80,19 @@ function spawnFixture(
 }
 
 describe("native Expo Go capture integration", () => {
+  it("stages simulator screenshots in private internal temporary storage", async () => {
+    const stagingRoot = await createSimulatorScreenshotStagingRoot();
+
+    try {
+      expect(stagingRoot).toMatch(
+        /^\/private\/tmp\/design\.memi\.canvas-capture-[^/]+$/u,
+      );
+      expect(await realpath(stagingRoot)).toBe(stagingRoot);
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true });
+    }
+  });
+
   it("waits for a completed simulator screenshot file without sampling a new frame", async () => {
     const read = vi.fn()
       .mockResolvedValueOnce(new Uint8Array([1]))
