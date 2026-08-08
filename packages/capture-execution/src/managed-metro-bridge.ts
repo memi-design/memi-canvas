@@ -32,6 +32,8 @@ export type PreparedManagedMetroBridge = Readonly<ManagedMetroBridgeMetadataV1>;
 
 const BRIDGE_RELATIVE_ROOT = ".memi/capture/metro-bridge";
 const ENTRY_RELATIVE_PATH = "./.memi-capture-entry.js";
+const CONFIG_BACKUP_RELATIVE_PATH =
+  ".memi-capture-original-metro-config.cjs";
 
 function hash(value: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -205,7 +207,7 @@ export async function prepareManagedMetroBridge(
   const entryPath = join(projectRoot, ENTRY_RELATIVE_PATH);
   const originalConfigPath = await optionalBaseConfig(projectRoot);
   const configPath = originalConfigPath ?? managedMetroConfigPath(projectRoot);
-  const configBackupPath = join(bridgeRoot, "original-metro-config.cjs");
+  const configBackupPath = join(projectRoot, CONFIG_BACKUP_RELATIVE_PATH);
   for (const path of [
     bridgeRoot,
     metadataPath,
@@ -226,6 +228,14 @@ export async function prepareManagedMetroBridge(
   } catch (error) {
     if (!isMissing(error)) throw error;
   }
+  if (originalConfigPath !== null) {
+    try {
+      await lstat(configBackupPath);
+      throw new Error("Managed Metro backup already exists in the project.");
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+  }
   const originalPackage = await readFile(packagePath, "utf8");
   const originalConfig = originalConfigPath === null
     ? null
@@ -239,10 +249,12 @@ export async function prepareManagedMetroBridge(
   let packagePatched = false;
   let configPatched = false;
   let entryCreated = false;
+  let configBackupCreated = false;
   try {
     await atomicWrite(packageBackupPath, originalPackage);
     if (originalConfig !== null) {
       await atomicWrite(configBackupPath, originalConfig);
+      configBackupCreated = true;
     }
     await atomicWrite(
       entryPath,
@@ -291,6 +303,10 @@ export async function prepareManagedMetroBridge(
     }
     if (entryCreated) await rm(entryPath, { force: true });
     await rm(`${entryPath}.tmp`, { force: true });
+    if (configBackupCreated) {
+      await rm(configBackupPath, { force: true });
+    }
+    await rm(`${configBackupPath}.tmp`, { force: true });
     await rm(bridgeRoot, { recursive: true, force: true });
     throw error;
   }
@@ -331,6 +347,9 @@ export async function restoreManagedMetroBridge(
   }
   await atomicWrite(prepared.packagePath, originalPackage);
   await rm(prepared.entryPath, { force: true });
+  if (prepared.configExisted) {
+    await rm(prepared.configBackupPath, { force: true });
+  }
   await rm(dirname(prepared.packageBackupPath), {
     recursive: true,
     force: true,
