@@ -1,12 +1,41 @@
 import { describe, expect, it } from "vitest";
 
 import { canvasWorkbenchFixture } from "../canvas/CanvasWorkbench.fixture.js";
+import { createRepositoryCanvasProject } from "../imports/repository/repository-workbench.js";
 import { createLocalDesignCanvasDocumentV3 } from "./local-design-canvas-v3.js";
 
 describe("local design Canvas V3 identity", () => {
   it("seeds imported journals with a separate source-backed library page", () => {
+    const repositoryProject = createRepositoryCanvasProject(
+      {
+        schemaVersion: 1,
+        projectName: "Imported product",
+        rootPath: "/tmp/imported-product",
+        revision: "revision-1",
+        platform: "react-native-expo",
+        dirty: false,
+        files: [],
+        screens: [],
+        components: [
+          {
+            id: "button",
+            name: "Button",
+            sourcePath: "components/Button.tsx",
+          },
+        ],
+        tokens: [
+          {
+            id: "tokens",
+            name: "Tokens",
+            sourcePath: "src/theme/tokens.ts",
+          },
+        ],
+      },
+      "imported-product",
+      "deterministic-import",
+    );
     const document = createLocalDesignCanvasDocumentV3(
-      canvasWorkbenchFixture,
+      repositoryProject,
       undefined,
       "imported",
     );
