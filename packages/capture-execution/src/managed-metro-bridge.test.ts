@@ -57,6 +57,12 @@ describe("managed Metro bridge", () => {
     expect(prepared.configPath).toBe(
       join(await realpath(projectRoot), "metro.config.js"),
     );
+    expect(prepared.configBackupPath).toBe(
+      join(
+        await realpath(projectRoot),
+        ".memi-capture-original-metro-config.cjs",
+      ),
+    );
     expect(managedMetroConfigPath(await realpath(projectRoot))).toBe(
       prepared.configPath,
     );
@@ -81,8 +87,38 @@ describe("managed Metro bridge", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(join(projectRoot, ".memi-capture-entry.js")))
       .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      lstat(join(projectRoot, ".memi-capture-original-metro-config.cjs")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(join(projectRoot, ".memi/keep.txt"), "utf8"))
       .resolves.toBe("project state\n");
+  });
+
+  it("never overwrites an existing project-root Metro backup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "memi-metro-backup-collision-"));
+    const projectRoot = join(root, "managed-project");
+    const dependencyRoot = join(root, "source-dependencies");
+    await mkdir(projectRoot, { recursive: true });
+    await mkdir(dependencyRoot, { recursive: true });
+    await writeFile(
+      join(projectRoot, "package.json"),
+      '{"main":"expo-router/entry"}\n',
+    );
+    await writeFile(join(projectRoot, "metro.config.js"), "module.exports = {};\n");
+    await writeFile(
+      join(projectRoot, ".memi-capture-original-metro-config.cjs"),
+      "project owned\n",
+    );
+
+    await expect(prepareManagedMetroBridge({
+      projectRoot,
+      dependencyRoot,
+      entryPoint: "expo-router/entry",
+    })).rejects.toThrow(/Metro backup already exists/i);
+    await expect(readFile(
+      join(projectRoot, ".memi-capture-original-metro-config.cjs"),
+      "utf8",
+    )).resolves.toBe("project owned\n");
   });
 
   it("never overwrites an existing project-root capture entry", async () => {
