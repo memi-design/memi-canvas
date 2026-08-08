@@ -7,9 +7,11 @@ import {
 import { CanvasPageIdSchema } from "@memi/protocol";
 
 import {
+  MEMI_CANVAS_CLIPBOARD_MIME,
   clearCanvasSessionClipboard,
   createCanvasClipboardPayload,
   pasteCanvasClipboard,
+  serializeCanvasClipboardFallback,
   type CanvasClipboardPayload,
 } from "./canvas-clipboard.js";
 import type { Point, WorkbenchNode } from "./model.js";
@@ -364,6 +366,47 @@ describe("Gate B clipboard placement", () => {
 });
 
 describe("Gate B native clipboard fallback receipt", () => {
+  it("prefers a fresh native Memi payload over an older in-session node copy", async () => {
+    const stale = rectangle("stale", { x: 40, y: 80 });
+    const fresh = payload([rectangle("fresh", { x: 160, y: 180 })]);
+    const read = vi.fn(async () => [{
+      getType: async () => new Blob(
+        [serializeCanvasClipboardFallback(fresh)],
+        { type: MEMI_CANVAS_CLIPBOARD_MIME },
+      ),
+      types: [MEMI_CANVAS_CLIPBOARD_MIME],
+    }]);
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [stale],
+      selectedNode: stale,
+      selectedNodeId: stale.id,
+      selectedNodeIds: [stale.id],
+    });
+    actions.copySelection();
+
+    actions.pasteSelection();
+
+    await vi.waitFor(() => {
+      expect(commitIntentReceipt).toHaveBeenCalledWith(
+        "Paste fresh copy",
+        {
+          kind: "paste",
+          nodes: [expect.objectContaining({ id: "fresh-copy-1" })],
+        },
+        expect.objectContaining({ selectedIds: ["fresh-copy-1"] }),
+      );
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("prefers a fresh system PNG over an older in-session node copy", async () => {
     const bytes = Uint8Array.from(
       atob(
@@ -407,6 +450,56 @@ describe("Gate B native clipboard fallback receipt", () => {
         expect.objectContaining({ selectedIds: ["image-1"] }),
       );
     });
+  });
+
+  it("falls back to the latest PNG after native clipboard content disappears", async () => {
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    const read = vi.fn()
+      .mockResolvedValueOnce([{
+        getType: async () => new Blob([bytes], { type: "image/png" }),
+        types: ["image/png"],
+      }])
+      .mockResolvedValue([]);
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const stale = rectangle("stale", { x: 40, y: 80 });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [stale],
+      selectedNode: stale,
+      selectedNodeId: stale.id,
+      selectedNodeIds: [stale.id],
+    });
+    actions.copySelection();
+    actions.pasteSelection();
+    await vi.waitFor(() => expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste image",
+      expect.anything(),
+      expect.anything(),
+    ));
+    commitIntentReceipt.mockClear();
+
+    actions.pasteSelection();
+
+    await vi.waitFor(() => expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste image",
+      {
+        kind: "paste",
+        nodes: [expect.objectContaining({ id: "image-2" })],
+      },
+      expect.objectContaining({ selectedIds: ["image-2"] }),
+    ));
+    expect(read).toHaveBeenCalledTimes(3);
   });
 
   it("keeps the internal copy and reports when the native clipboard is unavailable", async () => {
