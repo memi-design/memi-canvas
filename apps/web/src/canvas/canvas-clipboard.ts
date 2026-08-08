@@ -14,6 +14,7 @@ import {
 } from "./canvas-clipboard-image.js";
 import { pasteValidatedCanvasClipboard } from "./canvas-clipboard-paste.js";
 import { canvasClipboardComponentBindingSchema } from "./canvas-clipboard-component-schema.js";
+import { canvasReferenceBindingSchema } from "./reference-binding-schema.js";
 
 export {
   CANVAS_CLIPBOARD_MAX_IMAGE_BYTES,
@@ -109,26 +110,6 @@ const sourceBindingSchema = sourceProvenanceSchema
       .strict(),
   })
   .strict();
-const referenceBindingSchema = z
-  .object({
-    src: z
-      .string()
-      .min(1)
-      .max(4_096)
-      .regex(/^\/imports\/[a-z0-9/_\-.]+$/u),
-    alt: z.string().trim().min(1).max(2_048),
-    authority: z.string().trim().min(1).max(256),
-    appVersion: z.string().trim().min(1).max(128),
-    capturedAt: z.iso.datetime(),
-    sourceUrl: z.url().max(8_192),
-    captureId: safeText(2_048).optional(),
-    contentHash: safeText(512).optional(),
-    sourceRevision: safeText(2_048).optional(),
-    accessibilitySnapshotRef: safeText(2_048).optional(),
-    sourceAnchors: z.array(safeText(2_048)).max(1_024).optional(),
-    componentIds: z.array(safeText(2_048)).max(1_024).optional(),
-  })
-  .strict();
 const embeddedImageSchema = z
   .object({
     alt: z.string().trim().min(1).max(4_096),
@@ -199,7 +180,7 @@ const workbenchNodeSchema = z
     strokeWeight: z.number().finite().nonnegative().optional(),
     source: sourceBindingSchema.optional(),
     provenance: sourceProvenanceSchema.optional(),
-    reference: referenceBindingSchema.optional(),
+    reference: canvasReferenceBindingSchema.optional(),
     component: canvasClipboardComponentBindingSchema.optional(),
     frameContent: z.string().max(65_536).optional(),
     semanticBaseline: z.string().max(65_536).optional(),
