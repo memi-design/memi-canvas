@@ -391,7 +391,8 @@ describe("ExpoGoCaptureAdapter", () => {
         args: ["expo", "start", "--dev-client", "--localhost"],
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
-        scheme: "example",
+        scheme: "exp+example",
+        routeScheme: "example",
       },
     });
     await mkdir(join(target.root, "app"), { recursive: true });
@@ -466,7 +467,8 @@ describe("ExpoGoCaptureAdapter", () => {
         args: ["expo", "start", "--dev-client", "--localhost"],
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
-        scheme: "example",
+        scheme: "exp+example",
+        routeScheme: "example",
       },
     });
     expect(target.adapter.metadata.id).toBe("expo-development-client-ios");
@@ -498,14 +500,14 @@ describe("ExpoGoCaptureAdapter", () => {
           args: expect.arrayContaining([
             "openurl",
             "MEMI-SIMULATOR-1",
-            "example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000",
+            "exp+example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000",
           ]),
         }),
         expect.objectContaining({
           args: expect.arrayContaining([
             "openurl",
             "MEMI-SIMULATOR-1",
-            "example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000%2F--%2Fdashboard%3Ftab%3Dfollowing",
+            "exp+example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000%2F--%2Fdashboard%3Ftab%3Dfollowing",
           ]),
         }),
       ]),

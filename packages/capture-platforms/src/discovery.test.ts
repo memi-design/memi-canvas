@@ -435,7 +435,7 @@ describe("capture-platform discovery", () => {
         kind: "expo-ios",
         runtime: "development-client",
         bundleId: "com.example.client",
-        scheme: "exp+development-client-app",
+        scheme: "example",
         nativeBuild: null,
         metro: {
           executable: "npx",
@@ -498,7 +498,7 @@ describe("capture-platform discovery", () => {
         kind: "expo-ios",
         runtime: "development-client",
         bundleId: "com.example.selectedclient",
-        scheme: "exp+selected-client",
+        scheme: "selected-client",
         nativeBuild: null,
         metro: {
           executable: "npx",
