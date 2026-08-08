@@ -559,31 +559,13 @@ export function createWorkbenchPointerActions(
         const affected = context.nodes.filter((node) =>
           targetIds.includes(node.id),
         );
-        const nodesById = new Map(
-          context.nodes.map((node) => [node.id, node]),
-        );
-        const durableAffected = affected.map((node) => {
-          if (node.parentId === null) {
-            return node;
-          }
-          const parent = nodesById.get(node.parentId);
-          return parent === undefined
-            ? node
-            : {
-                ...node,
-                position: {
-                  x: node.position.x - parent.position.x,
-                  y: node.position.y - parent.position.y,
-                },
-              };
-        });
         commit(
           label,
           active.type === "resize"
             ? { kind: "resize", nodes: affected }
             : active.duplicated
-              ? { kind: "paste", nodes: durableAffected }
-              : { kind: "move", nodes: durableAffected },
+              ? { kind: "paste", nodes: affected }
+              : { kind: "move", nodes: affected },
           active.initialNodes,
           targetIds,
           active.type === "move" && active.duplicated

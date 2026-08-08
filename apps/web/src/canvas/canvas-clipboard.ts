@@ -1,12 +1,13 @@
 import { z } from "zod";
 
-import type { WorkbenchNode } from "./model.js";
+import type { Point, WorkbenchNode } from "./model.js";
 import {
   browserClipboard,
   browserClipboardItem,
   CANVAS_CLIPBOARD_MAX_IMAGE_BYTES,
   CANVAS_CLIPBOARD_MAX_IMAGE_DIMENSION,
   clearCanvasSessionImage,
+  isValidCanvasClipboardImage,
   type CanvasClipboardPasteData,
   type CanvasSystemClipboardDependencies,
 } from "./canvas-clipboard-image.js";
@@ -80,19 +81,23 @@ const layoutSchema = z
   .strict();
 const sourceProvenanceSchema = z
   .object({
+    captureState: z.enum(["captured", "placeholder"]).optional(),
     repositoryRevision: safeText(512),
     repositoryDirty: z.boolean().optional(),
     dirtyFileFingerprint: safeText(512).optional(),
     sourceFingerprint: safeText(512).optional(),
     sourceContentHash: safeText(512).optional(),
     sourceAnchor: safeText(4_096),
-    routeId: safeText(512),
-    stateId: safeText(512),
-    coverageCellId: safeText(512),
+    routeId: safeText(512).nullable(),
+    stateId: safeText(512).nullable(),
+    coverageCellId: safeText(512).nullable(),
   })
   .strict();
 const sourceBindingSchema = sourceProvenanceSchema
   .extend({
+    routeId: safeText(512),
+    stateId: safeText(512),
+    coverageCellId: safeText(512),
     viewport: z
       .object({
         name: z.enum(["desktop", "tablet", "mobile"]),
@@ -296,6 +301,17 @@ const workbenchNodeSchema = z
         path: ["image"],
       });
     }
+    if (
+      node.kind === "Image" &&
+      node.image !== undefined &&
+      !isValidCanvasClipboardImage(node.image)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Image metadata must match verified PNG content.",
+        path: ["image"],
+      });
+    }
     if (node.kind !== "Image" && node.image !== undefined) {
       context.addIssue({
         code: "custom",
@@ -372,6 +388,10 @@ export interface CanvasClipboardCutResult {
   readonly nodes: readonly WorkbenchNode[];
   readonly payload: CanvasClipboardPayload;
 }
+
+export type CanvasClipboardPlacement =
+  | { readonly kind: "offset"; readonly offset?: number }
+  | { readonly kind: "cursor"; readonly point: Point };
 
 let sessionClipboardFallback: string | null = null;
 
@@ -670,16 +690,46 @@ export function clearCanvasSessionClipboard(): void {
 export function pasteCanvasClipboard(
   nodes: readonly WorkbenchNode[],
   payload: CanvasClipboardPayload | null = readCanvasSessionClipboard(),
+  placement: CanvasClipboardPlacement = { kind: "offset" },
 ): CanvasClipboardPasteResult | null {
   const validated = payload === null ? null : validatedPayload(payload);
   if (validated === null) {
     return null;
   }
+  const translation = canvasClipboardTranslation(validated, placement);
+  if (translation === null) {
+    return null;
+  }
   return pasteValidatedCanvasClipboard(
     nodes,
     validated,
-    CANVAS_CLIPBOARD_OFFSET,
+    translation,
   );
+}
+
+function canvasClipboardTranslation(
+  payload: CanvasClipboardPayload,
+  placement: CanvasClipboardPlacement,
+): Point | null {
+  if (placement.kind === "offset") {
+    const offset = placement.offset ?? CANVAS_CLIPBOARD_OFFSET;
+    return Number.isFinite(offset) ? { x: offset, y: offset } : null;
+  }
+  if (!Number.isFinite(placement.point.x) || !Number.isFinite(placement.point.y)) {
+    return null;
+  }
+  const roots = payload.rootIds.flatMap((id) => {
+    const node = payload.nodes.find((candidate) => candidate.id === id);
+    return node === undefined ? [] : [node];
+  });
+  const left = Math.min(...roots.map(({ position }) => position.x));
+  const top = Math.min(...roots.map(({ position }) => position.y));
+  const right = Math.max(...roots.map((node) => node.position.x + node.size.width));
+  const bottom = Math.max(...roots.map((node) => node.position.y + node.size.height));
+  return {
+    x: placement.point.x - (left + right) / 2,
+    y: placement.point.y - (top + bottom) / 2,
+  };
 }
 
 export function isCanvasNodeDeletable(node: WorkbenchNode): boolean {

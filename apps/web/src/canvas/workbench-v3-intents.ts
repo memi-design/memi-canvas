@@ -308,7 +308,9 @@ function createActions(
   document: CanvasDocumentV3,
   pageId: CanvasPageId,
   nodes: readonly WorkbenchNode[],
+  positions: "local" | "absolute",
 ): readonly CanvasSingleActionIntentV3[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const pending = [...nodes];
   const actions: CanvasSingleActionIntentV3[] = [];
   const indices = new Map<string | null, number>();
@@ -323,7 +325,17 @@ function createActions(
     if (index < 0) throw new Error("Workbench create receipt contains a cyclic or missing parent.");
     const [node] = pending.splice(index, 1);
     if (node === undefined) continue;
-    const canvasNode = toCanvasNode(document, pageId, node);
+    const parentPosition = node.parentId === null || positions === "local"
+      ? { x: 0, y: 0 }
+      : nodesById.get(node.parentId)?.position ??
+        absolutePosition(document, canvasId(document, pageId, node.parentId));
+    const canvasNode = toCanvasNode(document, pageId, {
+      ...node,
+      position: {
+        x: node.position.x - parentPosition.x,
+        y: node.position.y - parentPosition.y,
+      },
+    });
     if (document.nodesById[canvasNode.id] !== undefined) throw new Error(`Canvas V3 workbench create would duplicate ${node.id}.`);
     actions.push({ type: "node.create", payload: { index: nextIndex(canvasNode.parentId), node: canvasNode, parentId: canvasNode.parentId } });
   }
@@ -539,7 +551,14 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
       },
     ]));
   }
-  if (receipt.kind === "create" || receipt.kind === "paste") return freeze(asIntent(createActions(document, pageId, receipt.nodes)));
+  if (receipt.kind === "create" || receipt.kind === "paste") {
+    return freeze(asIntent(createActions(
+      document,
+      pageId,
+      receipt.nodes,
+      receipt.kind === "paste" ? "absolute" : "local",
+    )));
+  }
   if (receipt.kind === "move") {
     return freeze(asIntent(moveActions(document, pageId, receipt.nodes)));
   }

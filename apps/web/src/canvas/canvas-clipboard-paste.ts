@@ -4,6 +4,7 @@ import type {
 } from "./canvas-clipboard.js";
 import type {
   ComponentInstanceBinding,
+  Point,
   WorkbenchNode,
 } from "./model.js";
 
@@ -45,7 +46,7 @@ function destinationMasterId(
 export function pasteValidatedCanvasClipboard(
   nodes: readonly WorkbenchNode[],
   payload: CanvasClipboardPayload,
-  offset: number,
+  translation: Point,
 ): CanvasClipboardPasteResult {
   const knownIds = new Set(nodes.map((node) => node.id));
   const pastedIdBySourceId = new Map<string, string>();
@@ -78,8 +79,8 @@ export function pasteValidatedCanvasClipboard(
           ? null
           : pastedIdBySourceId.get(node.parentId) ?? null,
       position: {
-        x: node.position.x + offset,
-        y: node.position.y + offset,
+        x: node.position.x + translation.x,
+        y: node.position.y + translation.y,
       },
       ...(pastedComponent === undefined
         ? {}

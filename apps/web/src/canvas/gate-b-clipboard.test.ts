@@ -396,4 +396,40 @@ describe("Gate B native clipboard fallback receipt", () => {
       );
     });
   });
+
+  it("abandons a delayed native read after the initiating canvas scope changes", async () => {
+    let resolveRead!: (items: readonly never[]) => void;
+    const read = vi.fn(() => new Promise<readonly never[]>((resolve) => {
+      resolveRead = resolve;
+    }));
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    let scope = "page-a";
+    let nodes: readonly WorkbenchNode[] = [];
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodeReservation: {
+        get: () => nodes,
+        getScope: () => scope,
+        isScopeCurrent: (candidate) => candidate === scope,
+        set: (next) => { nodes = next; },
+      },
+      nodes,
+      selectedNode: undefined,
+      selectedNodeId: null,
+      selectedNodeIds: [],
+    });
+
+    actions.pasteSelection();
+    scope = "page-b";
+    resolveRead([]);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+
+    expect(commitIntentReceipt).not.toHaveBeenCalled();
+  });
 });

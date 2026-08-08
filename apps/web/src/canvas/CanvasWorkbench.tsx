@@ -19,6 +19,7 @@ import { createWorkbenchAgentReviewActions } from "./workbench-agent-review-acti
 import { useWorkbenchGlobalInput } from "./useWorkbenchGlobalInput.js";
 import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "./reconstruction-review-workspace.js";
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
+import { useWorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
 import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
 import "./workbench.css";
@@ -135,6 +136,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     scene.nodes.filter(({ id }) => id === nodeId),
   );
   const selectedNode = selectedNodes.at(-1);
+  const nodeReservation = useWorkbenchNodeReservation(scene.nodes, scene.revision, `${v3SessionStatus}:${activePageId}`);
   const {
     inspectorReview,
     navigableNodes: navigableSceneNodes,
@@ -268,7 +270,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     viewportElement,
     viewportPointer,
   });
-
   const {
     copySelection,
     createComponentFromSelection,
@@ -293,11 +294,11 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         ? null
         : canvasPointFromViewport(camera, viewportPointer.current),
     nodes: scene.nodes,
+    nodeReservation,
     selectedNode,
     selectedNodeId,
     selectedNodeIds,
   });
-
   const { sendAgentContext, switchHarness } =
     createWorkbenchAgentPromptActions({
       appendTrace,
@@ -340,12 +341,10 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     viewportElement,
     viewportSize,
   });
-
   const openWorkspaceTab = (tab: WorkspaceDockTab) => {
     setWorkspaceCollapsed(false);
     setWorkspaceTab(tab);
   };
-
   const openNodeContextMenu = (
     node: WorkbenchNode,
     event: MouseEvent<HTMLButtonElement>,
@@ -355,7 +354,12 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     if (!selectedNodeIds.includes(node.id)) {
       selectNodeIds([node.id]);
     }
+    const bounds = viewportElement.current?.getBoundingClientRect();
+    const viewportPoint = bounds === undefined
+      ? viewportPointer.current ?? { x: event.clientX, y: event.clientY }
+      : { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
     setContextMenu({
+      canvasPoint: canvasPointFromViewport(camera, viewportPoint),
       nodeId: node.id,
       x: event.clientX,
       y: event.clientY,
@@ -515,9 +519,12 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
           })(),
           onOrder: orderSelection,
           onPaste: pasteSelection,
+          onPasteAtCursor: () => pasteSelection(undefined, {
+            kind: "cursor",
+            point: contextMenu.canvasPoint,
+          }),
           onToggleLock: () => toggleSelectionProperty("locked"),
-          onToggleVisibility: () =>
-            toggleSelectionProperty("hidden"),
+          onToggleVisibility: () => toggleSelectionProperty("hidden"),
           onUngroup: ungroupSelection,
           x: contextMenu.x,
           y: contextMenu.y,

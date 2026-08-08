@@ -716,7 +716,7 @@ test("creates and groups shapes without any product fixture", async ({
   await copyMenu.getByRole("menuitem", { name: /^Copy/u }).click();
   await rectangle.click({ button: "right" });
   const pasteMenu = page.getByRole("menu", { name: "Canvas selection actions" });
-  await pasteMenu.getByRole("menuitem", { name: /^Paste/u }).click();
+  await pasteMenu.getByRole("menuitem", { name: "Paste at cursor" }).click();
   const pastedRectangle = page.getByRole("button", {
     name: "Rectangle 1 copy on canvas",
   });

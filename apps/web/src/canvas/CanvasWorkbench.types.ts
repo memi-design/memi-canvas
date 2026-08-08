@@ -173,6 +173,7 @@ export interface SelectionMarquee {
 }
 
 export interface CanvasContextMenuState {
+  readonly canvasPoint: Point;
   readonly nodeId: string;
   readonly x: number;
   readonly y: number;

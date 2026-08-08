@@ -855,7 +855,7 @@ describe("CanvasWorkbench clipboard integration", () => {
     expect(within(menu).getByRole("menuitem", { name: /Cut/ })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: /Copy/ })).toBeTruthy();
     expect(
-      within(menu).getByRole("menuitem", { name: /Paste/ }).hasAttribute(
+      within(menu).getByRole("menuitem", { name: /^Paste ⌘V$/ }).hasAttribute(
         "disabled",
       ),
     ).toBe(true);

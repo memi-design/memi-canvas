@@ -11,6 +11,7 @@ import {
   compileWorkbenchIntentReceiptV3,
   type WorkbenchIntentReceiptV3,
 } from "./workbench-v3-intents.js";
+import { projectCanvasDocumentV3ToWorkbench } from "./canvas-v3-workbench-projection.js";
 import type { WorkbenchNode } from "./model.js";
 
 const ids = {
@@ -238,7 +239,9 @@ describe("workbench V3 semantic intent receipts", () => {
       kind: "Frame",
       size: { height: 240, width: 320 },
     };
-    const photo = rectangle("photo", frame.id, 16, 24);
+    // Workbench nodes use absolute canvas positions; V3 stores this child
+    // relative to its parent and must project it back to the same point.
+    const photo = rectangle("photo", frame.id, 36, 54);
     const { action, document: next } = applyReceipt(document(), {
       kind: "paste",
       nodes: [frame, photo],
@@ -252,6 +255,8 @@ describe("workbench V3 semantic intent receipts", () => {
     expect(createdFrame?.childIds).toEqual([createdPhoto?.id]);
     expect(createdPhoto?.parentId).toBe(createdFrame?.id);
     expect(createdPhoto?.transform).toMatchObject({ x: 16, y: 24 });
+    expect(projectCanvasDocumentV3ToWorkbench(next, pageId)[1]?.position)
+      .toEqual(photo.position);
   });
 
   it("groups with explicit local child transforms and preserves sibling ordering", () => {
