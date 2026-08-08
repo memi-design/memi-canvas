@@ -47,6 +47,13 @@ const shippedV3BridgeSource = readFileSync(
   ),
   "utf8",
 );
+const shippedPageSessionSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "apps/web/src/canvas/use-workbench-page-session-v3.ts",
+  ),
+  "utf8",
+);
 const shippedWorkbenchTypesSource = readFileSync(
   resolve(process.cwd(), "apps/web/src/canvas/CanvasWorkbench.types.ts"),
   "utf8",
@@ -144,7 +151,10 @@ describe("CanvasWorkbench V3 production authority boundary", () => {
   });
 
   it("uses the V3 controller/history seam and excludes V2 scene authority from the shipped path", () => {
-    expect(shippedWorkbenchSource).toContain("useWorkbenchV3SessionBridge");
+    expect(shippedWorkbenchSource).toContain("useWorkbenchPageSessionV3");
+    expect(shippedPageSessionSource).toContain(
+      "useWorkbenchV3SessionBridge",
+    );
     expect(shippedWorkbenchSource).toContain(
       "createWorkbenchInspectorV3Actions",
     );
@@ -211,6 +221,47 @@ describe("CanvasWorkbench V3 production authority boundary", () => {
       ).toBeTruthy();
       expect(undo.getAttribute("aria-disabled")).toBe("false");
       expect(redo.getAttribute("aria-disabled")).toBe("true");
+    });
+  });
+
+  it("creates and activates a new canvas through the public navigator", async () => {
+    render(
+      createElement(CanvasWorkbench, {
+        initialNavigatorMode: "canvases",
+        project: canvasWorkbenchFixture,
+        v3Session: v3Session(),
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "New canvas" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Page 2" }).getAttribute(
+        "aria-current",
+      )).toBe("page");
+    });
+  });
+
+  it("serializes rapid public canvas creation", async () => {
+    render(
+      createElement(CanvasWorkbench, {
+        initialNavigatorMode: "canvases",
+        project: canvasWorkbenchFixture,
+        v3Session: v3Session(),
+      }),
+    );
+
+    const createCanvas = await screen.findByRole("button", {
+      name: "New canvas",
+    });
+    fireEvent.click(createCanvas);
+    fireEvent.click(createCanvas);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Page 3" }).getAttribute(
+        "aria-current",
+      )).toBe("page");
     });
   });
 
