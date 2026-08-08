@@ -570,4 +570,66 @@ describe("Gate B native clipboard fallback receipt", () => {
 
     expect(commitIntentReceipt).not.toHaveBeenCalled();
   });
+
+  it("does not retain a delayed PNG after the initiating scope changes", async () => {
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    const blob = new Blob([bytes], { type: "image/png" });
+    const arrayBuffer = vi.spyOn(blob, "arrayBuffer");
+    const item = {
+      getType: async () => blob,
+      types: ["image/png"],
+    };
+    let resolveRead!: (items: readonly typeof item[]) => void;
+    const read = vi.fn(() => new Promise<readonly typeof item[]>((resolve) => {
+      resolveRead = resolve;
+    }));
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const stale = rectangle("stale", { x: 40, y: 80 });
+    let scope = "page-a";
+    let nodes: readonly WorkbenchNode[] = [stale];
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodeReservation: {
+        get: () => nodes,
+        getScope: () => scope,
+        isScopeCurrent: (candidate) => candidate === scope,
+        set: (next) => { nodes = next; },
+      },
+      nodes,
+      selectedNode: stale,
+      selectedNodeId: stale.id,
+      selectedNodeIds: [stale.id],
+    });
+    actions.copySelection();
+    actions.pasteSelection();
+    scope = "page-b";
+    resolveRead([item]);
+    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(commitIntentReceipt).not.toHaveBeenCalled();
+    vi.stubGlobal("navigator", {});
+
+    actions.pasteSelection();
+
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste stale copy",
+      {
+        kind: "paste",
+        nodes: [expect.objectContaining({ id: "stale-copy-1" })],
+      },
+      expect.objectContaining({ selectedIds: ["stale-copy-1"] }),
+    );
+  });
 });
