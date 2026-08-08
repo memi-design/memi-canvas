@@ -253,6 +253,7 @@ describe("capture-platform discovery", () => {
       expect.objectContaining({
         routePath: "/",
         authContext: "public",
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
       expect.objectContaining({
         routePath: "/games/:gameId",
@@ -261,10 +262,12 @@ describe("capture-platform discovery", () => {
           status: "required",
           parameterNames: ["gameId"],
         },
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
       expect.objectContaining({
         routePath: "/sign-in",
         authContext: "signed-out",
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
     ]);
   });
