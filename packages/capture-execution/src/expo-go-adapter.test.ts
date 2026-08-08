@@ -786,6 +786,9 @@ describe("ExpoGoCaptureAdapter", () => {
     const artifact = await target.adapter.collect(context, launch, raw);
 
     expect(artifact.reconstructionArtifactId).toMatch(/^art_/u);
+    expect(artifact.geometryArtifactId).toBe(
+      artifact.reconstructionArtifactId,
+    );
     const artifactRoot = `${target.root}/artifacts/sha256`;
     const files = (
       await Promise.all(
