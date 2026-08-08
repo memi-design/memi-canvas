@@ -366,7 +366,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       y: event.clientY,
     });
   };
-
   const canDeleteSelection = selectedNodeIds.some((id) => {
       const node = scene.nodes.find((candidate) => candidate.id === id);
       return node !== undefined && isCanvasNodeDeletable(node);
