@@ -316,6 +316,28 @@ describe("Gate B clipboard placement", () => {
       call[1].nodes[0].id,
     )).toEqual(["card-copy-1", "card-copy-2"]);
   });
+
+  it("rejects custom MIME images whose declared metadata does not match the PNG", () => {
+    const forged: WorkbenchNode = {
+      ...rectangle("forged-image", { x: 20, y: 30 }),
+      image: {
+        alt: "Forged pixel",
+        byteLength: 1,
+        height: 1,
+        mimeType: "image/png",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+        width: 1,
+      },
+      kind: "Image",
+      size: { height: 1, width: 1 },
+    };
+
+    expect(createCanvasClipboardPayload({
+      documentId: "untrusted-document",
+      nodes: [forged],
+      selectedIds: [forged.id],
+    })).toBeNull();
+  });
 });
 
 describe("Gate B native clipboard fallback receipt", () => {
