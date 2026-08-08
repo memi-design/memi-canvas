@@ -102,6 +102,20 @@ function policy(
               },
         ],
       },
+      ...(metro.routeAuthority === "expo-development-client-url"
+        ? [{
+            executable: "/usr/bin/xcrun",
+            arguments: [
+              literal("simctl"),
+              literal("openurl"),
+              { kind: "safe-token" as const },
+              {
+                kind: "expo-standalone-url" as const,
+                scheme: metro.scheme,
+              },
+            ],
+          }]
+        : []),
       {
         executable: "/usr/bin/xcrun",
         arguments: [
@@ -338,36 +352,63 @@ describe("ExpoGoCaptureAdapter", () => {
     await mkdir(join(target.root, "app"), { recursive: true });
     await writeFile(join(target.root, "app/_layout.tsx"), ROOT_LAYOUT);
     await writeFile(join(target.root, "app/index.tsx"), SCREEN);
+    const scenario = Object.freeze({
+      ...target.scenario,
+      route: "/dashboard/:tab",
+    });
+    const context = Object.freeze({
+      ...target.context,
+      job: Object.freeze({
+        ...target.context.job,
+        scenarios: Object.freeze([scenario]),
+      }),
+    });
 
     const preparation = await target.adapter.prepare(
-      target.context,
+      context,
       application,
-      [target.scenario],
+      [scenario],
     );
 
     await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
       .resolves.toContain("MemiCaptureRuntimeAttestation");
 
-    const launch = await target.adapter.launch(target.context, preparation);
+    const launch = await target.adapter.launch(context, preparation);
     const nonce = createHash("sha256")
-      .update(`${target.context.job.id}\0${target.scenario.id}`)
+      .update(`${context.job.id}\0${scenario.id}`)
       .digest("hex")
       .slice(0, 26)
       .toUpperCase();
-    vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => ({
-      stdout: recipe.args.includes("hierarchy")
-        ? runtimeEvidence(target.scenario, {
-            nonce,
-            sourceRevision: target.context.job.repository.sourceRevision,
-          })
-        : recipe.args.includes("screenshot")
-          ? new Uint8Array([137, 80, 78, 71])
-          : new Uint8Array(),
-      stderr: "",
-    }));
+    vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => {
+      target.calls.push({
+        executable: recipe.executable,
+        args: Object.freeze([...recipe.args]),
+      });
+      return {
+        stdout: recipe.args.includes("hierarchy")
+          ? runtimeEvidence(scenario, {
+              nonce,
+              sourceRevision: context.job.repository.sourceRevision,
+            })
+          : recipe.args.includes("screenshot")
+            ? new Uint8Array([137, 80, 78, 71])
+            : new Uint8Array(),
+        stderr: "",
+      };
+    });
 
-    await target.adapter.capture(target.context, launch, target.scenario);
-    await target.adapter.cleanup(target.context, launch);
+    await target.adapter.capture(context, launch, scenario);
+    expect(target.calls).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        args: expect.arrayContaining([
+          "openurl",
+          "MEMI-SIMULATOR-1",
+          `example:///dashboard/following?__memi_capture=${nonce}` +
+            "&__memi_state=Default",
+        ]),
+      }),
+    ]));
+    await target.adapter.cleanup(context, launch);
 
     await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
       .resolves.toBe(ROOT_LAYOUT);
