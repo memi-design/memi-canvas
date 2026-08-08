@@ -256,6 +256,66 @@ describe("Gate B clipboard placement", () => {
     });
     expect(projectedImage.image).toEqual(image.image);
   });
+
+  it("keeps the stored context-menu point when pasting a native image", () => {
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      getPastePoint: () => ({ x: 999, y: 999 }),
+      nodes: [],
+      selectedNode: undefined,
+      selectedNodeId: null,
+      selectedNodeIds: [],
+    });
+    const image = {
+      alt: "Native pixel",
+      byteLength: 70,
+      height: 1,
+      mimeType: "image/png" as const,
+      src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+      width: 1,
+    };
+
+    Reflect.apply(actions.pasteImage, undefined, [
+      image,
+      { x: 320, y: 240 },
+    ]);
+
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste image",
+      {
+        kind: "paste",
+        nodes: [expect.objectContaining({ position: { x: 320, y: 240 } })],
+      },
+      expect.objectContaining({ selectedIds: ["image-1"] }),
+    );
+  });
+
+  it("allocates distinct ids for rapid paste receipts before a render refresh", () => {
+    const source = rectangle("card", { x: 40, y: 80 });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [source],
+      selectedNode: source,
+      selectedNodeId: source.id,
+      selectedNodeIds: [source.id],
+    });
+    actions.copySelection();
+
+    actions.pasteSelection();
+    actions.pasteSelection();
+
+    expect(commitIntentReceipt.mock.calls.map((call) =>
+      call[1].nodes[0].id,
+    )).toEqual(["card-copy-1", "card-copy-2"]);
+  });
 });
 
 describe("Gate B native clipboard fallback receipt", () => {
