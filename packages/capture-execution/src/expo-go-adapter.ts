@@ -854,11 +854,11 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       );
       return result.stdout;
     };
-    // Native route transitions can include a short launch/gesture animation.
-    // Twelve 500ms-spaced samples bound the wait at twelve seconds while
-    // never accepting a changing frame as evidence.
+    // A cold native launch can include a finite splash/presentation sequence
+    // that outlives Metro attachment. Thirty strict 500ms-spaced pairs bound
+    // that wait while never accepting a changing frame as evidence.
     const maximumScreenshotAttempts =
-      this.#options.maximumScreenshotStabilityAttempts ?? 12;
+      this.#options.maximumScreenshotStabilityAttempts ?? 30;
     let stableScreenshot: Uint8Array | undefined;
     let stableHash: `sha256:${string}` | undefined;
     let lastStabilityFailure: Exclude<
