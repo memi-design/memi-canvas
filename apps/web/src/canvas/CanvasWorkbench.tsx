@@ -269,7 +269,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     viewportElement,
     viewportPointer,
   });
-
   const {
     copySelection,
     createComponentFromSelection,
@@ -299,7 +298,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     selectedNodeId,
     selectedNodeIds,
   });
-
   const { sendAgentContext, switchHarness } =
     createWorkbenchAgentPromptActions({
       appendTrace,
