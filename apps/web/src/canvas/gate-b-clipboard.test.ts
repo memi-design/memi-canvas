@@ -364,6 +364,49 @@ describe("Gate B clipboard placement", () => {
 });
 
 describe("Gate B native clipboard fallback receipt", () => {
+  it("prefers a fresh system PNG over an older in-session node copy", async () => {
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    const read = vi.fn(async () => [{
+      getType: async () => new Blob([bytes], { type: "image/png" }),
+      types: ["image/png"],
+    }]);
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const source = rectangle("card", { x: 40, y: 80 });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [source],
+      selectedNode: source,
+      selectedNodeId: source.id,
+      selectedNodeIds: [source.id],
+    });
+    actions.copySelection();
+
+    actions.pasteSelection();
+
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste image",
+      {
+        kind: "paste",
+        nodes: [expect.objectContaining({
+          image: expect.objectContaining({ mimeType: "image/png" }),
+        })],
+      },
+      expect.objectContaining({ selectedIds: ["image-1"] }),
+    );
+  });
+
   it("keeps the internal copy and reports when the native clipboard is unavailable", async () => {
     vi.stubGlobal("navigator", {
       clipboard: {
