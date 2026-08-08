@@ -144,12 +144,22 @@ export function useDraftLayerMoves({
     node: WorkbenchNode,
   ): boolean => {
     if (!event.altKey || !movable(node) || onMove === undefined) return false;
+    if (
+      event.key !== "ArrowUp" &&
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowLeft" &&
+      event.key !== "ArrowRight"
+    ) {
+      return false;
+    }
+    // Recognized move shortcuts are owned by the layer tree even when the
+    // requested move is invalid, so macOS/browser navigation never leaks out.
+    event.preventDefault();
     const nodeSiblings = siblings(node.parentId);
     const currentIndex = nodeSiblings.findIndex(({ id }) => id === node.id);
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       const nextIndex = currentIndex + (event.key === "ArrowUp" ? -1 : 1);
       if (nextIndex < 0 || nextIndex >= nodeSiblings.length) return true;
-      event.preventDefault();
       request(
         { index: nextIndex, nodeId: node.id, parentId: node.parentId },
         `${node.name} moved ${event.key === "ArrowUp" ? "up" : "down"}`,
@@ -159,7 +169,6 @@ export function useDraftLayerMoves({
     if (event.key === "ArrowRight") {
       const previous = nodeSiblings[currentIndex - 1];
       if (previous === undefined || !acceptsChildren(previous)) return true;
-      event.preventDefault();
       request(
         {
           index: siblings(previous.id).length,
@@ -174,7 +183,6 @@ export function useDraftLayerMoves({
       const parent = nodesById.get(node.parentId);
       if (parent === undefined || !movable(parent)) return true;
       const parentSiblings = siblings(parent.parentId);
-      event.preventDefault();
       request(
         {
           index: parentSiblings.findIndex(({ id }) => id === parent.id) + 1,
@@ -185,7 +193,7 @@ export function useDraftLayerMoves({
       );
       return true;
     }
-    return false;
+    return true;
   };
   return { announcement, dragProps, handleMoveKey, movable };
 }
