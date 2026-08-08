@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { canonicalJson } from "@memi/canonical-json";
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
-import { CanvasComponentIdSchema, CanvasLayoutV2Schema } from "@memi/protocol";
+import {
+  CanvasComponentIdSchema,
+  CanvasEffectV2Schema,
+  CanvasLayoutV2Schema,
+} from "@memi/protocol";
 
 import {
   provenanceFromSource,
@@ -175,6 +179,7 @@ const NodeSchema = z.strictObject({
       z.number().finite().nonnegative(),
     ])
     .optional(),
+  effects: z.array(CanvasEffectV2Schema).max(32).optional(),
   id: safeText(512),
   kind: z.enum([
     "CodeFrame",
@@ -214,6 +219,7 @@ const NodeSchema = z.strictObject({
   letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
   lineHeight: z.number().finite().positive().max(10_000).optional(),
   textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
   fill: z.string().max(512).optional(),
   stroke: z.string().max(512).optional(),
   strokeAlign: z.enum(["inside", "center", "outside"]).optional(),

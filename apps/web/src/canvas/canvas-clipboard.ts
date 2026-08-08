@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CanvasEffectV2Schema } from "@memi/protocol";
 
 import type { Point, WorkbenchNode } from "./model.js";
 import {
@@ -228,6 +229,7 @@ const workbenchNodeSchema = z
         z.number().finite().nonnegative(),
     ])
       .optional(),
+    effects: z.array(CanvasEffectV2Schema).max(32).optional(),
     id: idSchema,
     image: embeddedImageSchema.optional(),
     kind: z.enum([
@@ -267,6 +269,7 @@ const workbenchNodeSchema = z
     letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
     lineHeight: z.number().finite().positive().max(10_000).optional(),
     textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+    textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
     fill: z.string().max(512).optional(),
     stroke: z.string().max(512).optional(),
     strokeAlign: z.enum(["inside", "center", "outside"]).optional(),

@@ -106,12 +106,29 @@ const CanvasPaintV2Schema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const CanvasEffectV2Schema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("drop-shadow"),
+    color: z.string().trim().min(1).max(160),
+    offsetX: FiniteNumberSchema.min(-10_000).max(10_000),
+    offsetY: FiniteNumberSchema.min(-10_000).max(10_000),
+    blur: NonnegativeFiniteNumberSchema.max(10_000),
+    spread: FiniteNumberSchema.min(-10_000).max(10_000),
+  }),
+  z.strictObject({
+    type: z.literal("layer-blur"),
+    radius: NonnegativeFiniteNumberSchema.max(10_000),
+  }),
+]);
+export type CanvasEffectV2 = z.infer<typeof CanvasEffectV2Schema>;
+
 export const CanvasStyleV2Schema = z.strictObject({
   opacity: z.number().finite().min(0).max(1),
   visible: z.boolean(),
   locked: z.boolean(),
   fills: z.array(CanvasPaintV2Schema).max(32),
   strokes: z.array(CanvasPaintV2Schema).max(32),
+  effects: z.array(CanvasEffectV2Schema).max(32).optional(),
   strokeWeight: NonnegativeFiniteNumberSchema.optional(),
   strokeAlign: z.enum(["inside", "center", "outside"]).optional(),
   cornerRadii: z.tuple([

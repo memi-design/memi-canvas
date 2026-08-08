@@ -2,6 +2,7 @@ import {
   CanvasComponentDefinitionV2Schema,
   CanvasComponentIdSchema,
   CanvasDocumentV2Schema,
+  CanvasEffectV2Schema,
   CanvasLayoutV2Schema,
   type CanvasActionIntentV2,
   type CanvasDocumentV2,
@@ -136,6 +137,7 @@ const LegacyNodeSchema = z.strictObject({
       z.number().finite().nonnegative(),
     ])
     .optional(),
+  effects: z.array(CanvasEffectV2Schema).max(32).optional(),
   component: LegacyComponentSchema.optional(),
   fill: z.string().max(160).optional(),
   frameContent: z.string().max(1_000_000).optional(),
@@ -185,6 +187,7 @@ const LegacyNodeSchema = z.strictObject({
   letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
   lineHeight: z.number().finite().positive().max(10_000).optional(),
   textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
 }).superRefine((node, context) => {
   if (node.kind === "Image" && node.image === undefined) {
     context.addIssue({

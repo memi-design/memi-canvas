@@ -16,6 +16,7 @@ import {
 import { nodeAuthority, type WorkbenchNode } from "./model.js";
 import { isSafeReferenceSourceUrl } from "./reference-security.js";
 import type { WorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
+import { workbenchEffectStyle } from "./workbench-effects.js";
 export { Layers } from "./layers-tree.js";
 
 function frameRoute(node: WorkbenchNode): string {
@@ -382,6 +383,7 @@ export function CanvasNodeView({
                 : undefined
         }
         style={{
+          ...workbenchEffectStyle(node.effects),
           ...((!semanticOverlay || semanticOverride) &&
           (node.kind === "Rectangle" ||
           node.kind === "Ellipse" ||
