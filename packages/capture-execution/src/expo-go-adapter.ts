@@ -162,6 +162,13 @@ export interface ExpoGoCaptureAdapterOptions {
     statusUrl: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  /** Lets the installed development client attach to the fresh Metro bundle. */
+  readonly waitForDevelopmentClientAttachment?: (
+    milliseconds: number,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  /** Defaults to 5s and applies only after opening a development-client URL. */
+  readonly developmentClientAttachmentDelayMs?: number;
   readonly flowByRoute?: Readonly<Record<string, string>>;
   readonly nativeDependencyPreparation?: ExpoNativeDependencyPreparation;
   /** Applies only to a managed worktree and is restored during cleanup. */
@@ -628,6 +635,17 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           ]),
         context.signal,
       );
+      if (
+        this.#options.metro.routeAuthority ===
+        "expo-development-client-url"
+      ) {
+        const waitForAttachment =
+          this.#options.waitForDevelopmentClientAttachment ?? wait;
+        await waitForAttachment(
+          this.#options.developmentClientAttachmentDelayMs ?? 5_000,
+          context.signal,
+        );
+      }
       const launch = Object.freeze({
         id: id("launch", `${preparation.id}:${prepared.deviceId}:${port}`),
         preparationId: preparation.id,

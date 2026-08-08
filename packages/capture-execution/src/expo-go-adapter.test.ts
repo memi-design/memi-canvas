@@ -226,6 +226,7 @@ async function fixture(
     release: vi.fn(async () => undefined),
   };
   const waitForMetro = vi.fn(async () => undefined);
+  const waitForDevelopmentClientAttachment = vi.fn(async () => undefined);
   const waitForCaptureSettling = vi.fn(async () => undefined);
   const releaseDevice = vi.fn(async () => undefined);
   const basePolicy = policy(root, overrides.metro);
@@ -268,6 +269,7 @@ async function fixture(
     portLease,
     releaseDevice,
     waitForMetro,
+    waitForDevelopmentClientAttachment,
     waitForCaptureSettling,
     flowByRoute: {
       "/dashboard": ".maestro/dashboard.yaml",
@@ -298,6 +300,7 @@ async function fixture(
     running,
     scenario,
     waitForMetro,
+    waitForDevelopmentClientAttachment,
     waitForCaptureSettling,
   };
 }
@@ -499,7 +502,7 @@ describe("ExpoGoCaptureAdapter", () => {
     );
     const launch = await target.adapter.launch(target.context, preparation);
 
-    expect(target.waitForCaptureSettling).toHaveBeenCalledWith(
+    expect(target.waitForDevelopmentClientAttachment).toHaveBeenCalledWith(
       5_000,
       target.context.signal,
     );
