@@ -15,6 +15,7 @@ import {
   CANVAS_CLIPBOARD_MAX_NODES,
   MEMI_CANVAS_CLIPBOARD_MIME,
   clearCanvasSessionClipboard,
+  copyCanvasSelection,
   createCanvasImageNodeAtPoint,
   createCanvasClipboardPayload,
   cutCanvasSelection,
@@ -40,7 +41,7 @@ import type {
 
 const componentMaster: WorkbenchNode = {
   id: "component-card",
-  kind: "ComponentInstance",
+  kind: "Component",
   name: "Card component",
   parentId: null,
   position: { x: 40, y: 80 },
@@ -90,6 +91,7 @@ const componentMaster: WorkbenchNode = {
 const componentInstance: WorkbenchNode = {
   ...componentMaster,
   id: "component-card-instance",
+  kind: "ComponentInstance",
   name: "Card instance",
   parentId: componentMaster.id,
   position: { x: 64, y: 104 },
@@ -340,6 +342,52 @@ describe("canvas clipboard payload", () => {
 
     const fallback = serializeCanvasClipboardFallback(payload!);
     expect(parseCanvasClipboardFallback(fallback)).toEqual(payload);
+  });
+
+  it("rejects custom MIME component nodes with mismatched metadata", () => {
+    const valid = createCanvasClipboardPayload({
+      documentId: "source-document",
+      nodes: [componentMaster, componentInstance],
+      selectedIds: [componentMaster.id],
+    });
+    expect(valid).not.toBeNull();
+    const { component: _component, ...masterWithoutMetadata } = componentMaster;
+    const missingMasterMetadata = {
+      ...valid!,
+      nodes: [masterWithoutMetadata, componentInstance],
+    };
+    const instanceClassifiedAsMaster = {
+      ...valid!,
+      nodes: [componentMaster, {
+        ...componentInstance,
+        component: {
+          ...componentInstance.component!,
+          classification: "master" as const,
+          masterId: undefined,
+        },
+      }],
+    };
+    const masterClassifiedAsInstance = {
+      ...valid!,
+      nodes: [{
+        ...componentMaster,
+        component: {
+          ...componentMaster.component!,
+          classification: "instance" as const,
+          masterId: componentMaster.id,
+        },
+      }, componentInstance],
+    };
+
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(missingMasterMetadata),
+    )).toBeNull();
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(instanceClassifiedAsMaster),
+    )).toBeNull();
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(masterClassifiedAsInstance),
+    )).toBeNull();
   });
 
   it("round-trips a validated payload through the supported system clipboard", async () => {
@@ -743,6 +791,61 @@ describe("CanvasWorkbench clipboard integration", () => {
     expect(imageNode.parentElement?.style.top).toBe("228px");
   });
 
+  it("abandons a delayed paste-event PNG after the canvas unmounts", async () => {
+    const stale: WorkbenchNode = {
+      ...componentMaster,
+      id: "stale-session-node",
+      parentId: null,
+    };
+    copyCanvasSelection({
+      documentId: "stale-session-document",
+      nodes: [stale],
+      selectedIds: [stale.id],
+    });
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/9Q9AiAAAAABJRU5ErkJggg==",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    const blob = new Blob([bytes], { type: "image/png" });
+    let resolveArrayBuffer!: (value: ArrayBuffer) => void;
+    const arrayBuffer = vi.spyOn(blob, "arrayBuffer").mockImplementation(
+      () => new Promise<ArrayBuffer>((resolve) => {
+        resolveArrayBuffer = resolve;
+      }),
+    );
+    const { v3Session, view } = await renderWorkbench(destinationProject());
+    const pasteEvent = new Event("paste", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: () => "",
+        items: [{ getAsFile: () => blob, type: "image/png" }],
+        types: ["image/png"],
+      },
+    });
+    act(() => document.dispatchEvent(pasteEvent));
+    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledOnce());
+    view.unmount();
+
+    await act(async () => {
+      resolveArrayBuffer(new Uint8Array(bytes).buffer);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(readCanvasSessionImage()).toBeNull();
+    expect(readCanvasSessionClipboard()?.rootIds).toEqual([stale.id]);
+    const journal = await v3Session.persistence.load({
+      schemaVersion: 1,
+      documentId: v3Session.document.id,
+      projectId: v3Session.document.projectId,
+    });
+    expect(journal?.operations).toEqual([]);
+  });
+
   it("pastes the validated Memi MIME payload delivered by a browser paste event", async () => {
     const payload = createCanvasClipboardPayload({
       documentId: canvasWorkbenchFixture.document.id,
@@ -855,7 +958,7 @@ describe("CanvasWorkbench clipboard integration", () => {
     expect(within(menu).getByRole("menuitem", { name: /Cut/ })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: /Copy/ })).toBeTruthy();
     expect(
-      within(menu).getByRole("menuitem", { name: /Paste/ }).hasAttribute(
+      within(menu).getByRole("menuitem", { name: /^Paste ⌘V$/ }).hasAttribute(
         "disabled",
       ),
     ).toBe(true);

@@ -353,19 +353,22 @@ describe("workbench hierarchy actions", () => {
     });
   });
 
-  it("commits the in-session payload synchronously before a delayed system read", () => {
+  it("uses the in-session payload after a delayed system read finds no native content", async () => {
     const sessionNode = rectangle("session", null, 0, 0);
     copyCanvasSelection({
       documentId: "session-document",
       nodes: [sessionNode],
       selectedIds: [sessionNode.id],
     });
+    let resolveRead!: (items: readonly never[]) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise<readonly never[]>((resolve) => {
+        resolveRead = resolve;
+      }))
+      .mockResolvedValue([]);
     vi.stubGlobal("navigator", {
       clipboard: {
-        async read() {
-          await new Promise<void>(() => undefined);
-          return [];
-        },
+        read,
         async write() {
           return undefined;
         },
@@ -375,7 +378,10 @@ describe("workbench hierarchy actions", () => {
 
     value.pasteSelection();
 
-    expect(commitScene).toHaveBeenCalledTimes(1);
+    expect(commitScene).not.toHaveBeenCalled();
+    resolveRead([]);
+    await vi.waitFor(() => expect(commitScene).toHaveBeenCalledTimes(1));
+    expect(read).toHaveBeenCalledTimes(2);
     const pasted = commitScene.mock.calls[0]?.[1] as readonly WorkbenchNode[];
     expect(pasted.map(({ id }) => id)).toEqual(["session-copy-1"]);
   });

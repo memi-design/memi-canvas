@@ -19,11 +19,18 @@ import {
   type EditorCommand,
 } from "./commands.js";
 import type { WorkbenchNode } from "./model.js";
+import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
+import type { WorkbenchClipboardGuard } from "./useWorkbenchClipboardGuard.js";
 
 interface WorkbenchGlobalInputOptions {
   readonly cameraScheduler: RefObject<FrameStateScheduler<CanvasCamera> | null>;
+  readonly clipboardGuard: WorkbenchClipboardGuard;
   readonly commands: readonly EditorCommand[];
   readonly gesture: RefObject<PointerGesture | null>;
+  readonly nodeReservation: Pick<
+    WorkbenchNodeReservation,
+    "getScope" | "isScopeCurrent"
+  >;
   readonly pasteImage: (image: CanvasClipboardImage) => unknown;
   readonly pasteSelection: (payload?: CanvasClipboardPayload) => unknown;
   readonly selectNodeIds: (nodeIds: readonly string[]) => void;
@@ -45,8 +52,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
 /** Keeps global keyboard and clipboard listeners outside the render workbench. */
 export function useWorkbenchGlobalInput({
   cameraScheduler,
+  clipboardGuard,
   commands,
   gesture,
+  nodeReservation,
   pasteImage,
   pasteSelection,
   selectNodeIds,
@@ -94,8 +103,16 @@ export function useWorkbenchGlobalInput({
       }
       if (!hasCanvasImageInPasteData(event.clipboardData)) return;
       event.preventDefault();
+      const generation = clipboardGuard.begin();
+      const initiatingScope = nodeReservation.getScope();
       void readCanvasImageFromPasteData(event.clipboardData).then((image) => {
-        if (image !== null) pasteImage(image);
+        if (
+          image !== null &&
+          clipboardGuard.isCurrent(generation) &&
+          nodeReservation.isScopeCurrent(initiatingScope)
+        ) {
+          pasteImage(image);
+        }
       });
     };
     document.addEventListener("keydown", handleKeyDown);

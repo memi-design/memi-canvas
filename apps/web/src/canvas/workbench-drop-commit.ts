@@ -47,7 +47,7 @@ export function prepareWorkbenchMoveCommit({
         ...node,
         parentId,
         position:
-          parent === undefined
+          gesture.duplicated || parent === undefined
             ? node.position
             : {
                 x: node.position.x - parent.position.x,

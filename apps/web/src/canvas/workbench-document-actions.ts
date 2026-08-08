@@ -1,17 +1,4 @@
 import {
-  canReadCanvasSystemClipboard,
-  copyCanvasSelection,
-  createCanvasImageNodeAtPoint,
-  cutCanvasSelection,
-  pasteCanvasClipboard,
-  readCanvasImageFromSystem,
-  readCanvasClipboardFromSystem,
-  readCanvasSessionClipboard,
-  writeCanvasClipboardToSystem,
-  type CanvasClipboardImage,
-  type CanvasClipboardPayload,
-} from "./canvas-clipboard.js";
-import {
   componentDuplicateBase,
   dependentNodeIds,
   nodeAuthority,
@@ -28,6 +15,15 @@ import {
   type WorkbenchLayerMove,
 } from "./workbench-layer-move.js";
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
+import {
+  createWorkbenchClipboardActions,
+  type WorkbenchClipboardActions,
+} from "./workbench-clipboard-actions.js";
+import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
+import {
+  createWorkbenchClipboardGuard,
+  type WorkbenchClipboardGuard,
+} from "./useWorkbenchClipboardGuard.js";
 
 export type { WorkbenchLayerMove } from "./workbench-layer-move.js";
 
@@ -38,6 +34,7 @@ export interface WorkbenchSemanticCommitOptions {
 
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
+  readonly clipboardGuard?: WorkbenchClipboardGuard;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   /** V3 production sink. It receives a compact receipt, never a scene diff. */
   readonly commitIntentReceipt?: (
@@ -48,15 +45,14 @@ interface DocumentActionContext {
   readonly documentId: string;
   readonly getPastePoint?: () => Point | null;
   readonly nodes: readonly WorkbenchNode[];
+  readonly nodeReservation?: WorkbenchNodeReservation;
   readonly selectedNode: WorkbenchNode | undefined;
   readonly selectedNodeId: string | null;
   readonly selectedNodeIds: readonly string[];
 }
 
-export interface WorkbenchDocumentActions {
-  readonly copySelection: () => void;
+export interface WorkbenchDocumentActions extends WorkbenchClipboardActions {
   readonly createComponentFromSelection: () => void;
-  readonly cutSelection: () => void;
   readonly deleteSelection: () => void;
   readonly detachSelection: () => void;
   readonly duplicateSelection: () => void;
@@ -66,28 +62,10 @@ export interface WorkbenchDocumentActions {
   readonly orderSelection: (
     direction: "forward" | "backward" | "front" | "back",
   ) => void;
-  readonly pasteSelection: (
-    payload?: CanvasClipboardPayload | null,
-  ) => void;
-  readonly pasteImage: (image: CanvasClipboardImage) => void;
   readonly toggleSelectionProperty: (
     property: "hidden" | "locked",
   ) => void;
   readonly ungroupSelection: () => void;
-}
-
-function imagePasteParentId(
-  selected: WorkbenchNode | undefined,
-): string | null {
-  if (selected === undefined) {
-    return null;
-  }
-  return selected.kind === "Frame" ||
-    selected.kind === "Group" ||
-    selected.kind === "Section" ||
-    selected.kind === "DraftFrame"
-    ? selected.id
-    : selected.parentId;
 }
 
 function localComponentBinding(
@@ -216,6 +194,16 @@ export function duplicateWorkbenchSubtrees(
 export function createWorkbenchDocumentActions(
   context: DocumentActionContext,
 ): WorkbenchDocumentActions {
+  let reservedNodes = context.nodes;
+  const localNodeReservation = {
+    get: () => reservedNodes,
+    getScope: () => "local",
+    isScopeCurrent: (scope: string) => scope === "local",
+    set: (nodes: readonly WorkbenchNode[]) => {
+      reservedNodes = nodes;
+    },
+  };
+  const nodeReservation = context.nodeReservation ?? localNodeReservation;
   const commit = (
     label: string,
     receipt: WorkbenchIntentReceiptV3,
@@ -228,114 +216,23 @@ export function createWorkbenchDocumentActions(
     }
     context.commitScene(label, nodes, options);
   };
-  const clipboardInput = () => ({
+  const clipboardActions = createWorkbenchClipboardActions({
+    appendTrace: context.appendTrace,
+    clipboardGuard: context.clipboardGuard ?? createWorkbenchClipboardGuard(),
+    commit,
     documentId: context.documentId,
-    nodes: context.nodes,
-    selectedIds: context.selectedNodeIds,
+    ...(context.getPastePoint === undefined
+      ? {}
+      : { getPastePoint: context.getPastePoint }),
+    nodeReservation,
+    selectedNode: context.selectedNode,
+    selectedNodeIds: context.selectedNodeIds,
   });
 
-  const copySelection = () => {
-    const payload = copyCanvasSelection(clipboardInput());
-    if (payload !== null) {
-      void writeCanvasClipboardToSystem(payload);
-    }
-  };
-
-  const cutSelection = () => {
-    const result = cutCanvasSelection(clipboardInput());
-    if (result === null || result.deletedIds.length === 0) {
-      return;
-    }
-    void writeCanvasClipboardToSystem(result.payload);
-    const label =
-      result.deletedIds.length === 1
-        ? `Cut ${
-            context.nodes.find(({ id }) => id === result.deletedIds[0])
-              ?.name ?? "selection"
-          }`
-        : `Cut ${result.deletedIds.length} layers`;
-    commit(label, { kind: "delete", nodeIds: result.deletedIds }, result.nodes, {
-      selectedIds: [],
-      targetIds: result.deletedIds,
-    });
-  };
-
-  const pasteSelection = (
-    eventPayload?: CanvasClipboardPayload | null,
-  ) => {
-    const commitPaste = (payload = readCanvasSessionClipboard()) => {
-      const result = pasteCanvasClipboard(context.nodes, payload);
-      if (result === null) {
-        return;
-      }
-      const count = result.pastedNodes.length;
-      commit(
-        `Paste ${count === 1 ? result.pastedNodes[0]?.name ?? "layer" : `${count} layers`}`,
-        { kind: "paste", nodes: result.pastedNodes },
-        result.nodes,
-        {
-          selectedIds: result.selectedIds,
-          targetIds: result.pastedNodes.map(({ id }) => id),
-        },
-      );
-    };
-    if (eventPayload !== undefined) {
-      commitPaste(eventPayload);
-      return;
-    }
-    // A Memi copy owns a validated in-session payload. Commit it immediately:
-    // native custom-MIME reads are permission-gated and must never turn an
-    // ordinary copy/paste action into an asynchronous no-op.
-    const sessionPayload = readCanvasSessionClipboard();
-    if (sessionPayload !== null) {
-      commitPaste(sessionPayload);
-      return;
-    }
-    if (!canReadCanvasSystemClipboard()) {
-      return;
-    }
-    void readCanvasImageFromSystem().then((systemImage) => {
-      if (systemImage !== null) {
-        pasteImage(systemImage);
-        return;
-      }
-      void readCanvasClipboardFromSystem().then((systemPayload) => {
-        commitPaste(systemPayload);
-      });
-    });
-  };
-
-  const pasteImage = (image: CanvasClipboardImage) => {
-    const selected = context.selectedNode;
-    const cursor = context.getPastePoint?.() ?? null;
-    const node = createCanvasImageNodeAtPoint({
-      cursor:
-        cursor ?? {
-          x: (selected?.position.x ?? 0) + 24,
-          y: (selected?.position.y ?? 0) + 24,
-        },
-      image,
-      nodes: context.nodes,
-      parentId: imagePasteParentId(selected),
-    });
-    if (node === null) {
-      return;
-    }
-    commit("Paste image", { kind: "paste", nodes: [node] }, [...context.nodes, node], {
-      selectedIds: [node.id],
-      targetIds: [node.id],
-    });
-    context.appendTrace(
-      cursor === null
-        ? "Pasted image near selection"
-        : "Pasted image at cursor",
-      node.id,
-    );
-  };
-
   const duplicateSelection = () => {
+    reservedNodes = nodeReservation.get();
     const selectedNodes = context.selectedNodeIds
-      .map((id) => context.nodes.find((node) => node.id === id))
+      .map((id) => reservedNodes.find((node) => node.id === id))
       .filter((node): node is WorkbenchNode => node !== undefined);
     if (selectedNodes.length === 0) {
       return;
@@ -348,21 +245,23 @@ export function createWorkbenchDocumentActions(
           return false;
         }
         parentId =
-          context.nodes.find(({ id }) => id === parentId)?.parentId ??
+          reservedNodes.find(({ id }) => id === parentId)?.parentId ??
           null;
       }
       return true;
     });
     const duplicates = duplicateWorkbenchSubtrees(
       roots,
-      context.nodes,
+      reservedNodes,
       { x: 16, y: 16 },
     );
+    reservedNodes = [...reservedNodes, ...duplicates];
+    nodeReservation.set(reservedNodes);
     const label =
       selectedNodes.length === 1
         ? `Duplicate ${selectedNodes[0]?.name ?? "selection"}`
         : `Duplicate ${selectedNodes.length} layers`;
-    commit(label, { kind: "paste", nodes: duplicates }, [...context.nodes, ...duplicates], {
+    commit(label, { kind: "paste", nodes: duplicates }, reservedNodes, {
       selectedIds: duplicates.map((node) => node.id),
       targetIds: duplicates.map((node) => node.id),
     });
@@ -705,9 +604,8 @@ export function createWorkbenchDocumentActions(
   };
 
   return {
-    copySelection,
+    ...clipboardActions,
     createComponentFromSelection,
-    cutSelection,
     deleteSelection,
     detachSelection,
     duplicateSelection,
@@ -715,8 +613,6 @@ export function createWorkbenchDocumentActions(
     groupSelection,
     moveLayer,
     orderSelection,
-    pasteImage,
-    pasteSelection,
     toggleSelectionProperty,
     ungroupSelection,
   };

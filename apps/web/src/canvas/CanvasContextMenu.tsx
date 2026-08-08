@@ -26,6 +26,7 @@ export interface CanvasContextMenuProps {
     direction: "forward" | "backward" | "front" | "back",
   ) => void;
   readonly onPaste: () => void;
+  readonly onPasteAtCursor: () => void;
   readonly onUngroup: () => void;
   readonly onToggleLock?: () => void;
   readonly onToggleVisibility?: () => void;
@@ -83,6 +84,7 @@ export function CanvasContextMenu({
   onOpenSource,
   onOrder,
   onPaste,
+  onPasteAtCursor,
   onUngroup,
   onToggleLock,
   onToggleVisibility,
@@ -191,6 +193,14 @@ export function CanvasContextMenu({
         type="button"
       >
         Paste <kbd>⌘V</kbd>
+      </button>
+      <button
+        disabled={!canPaste}
+        onClick={action(onPasteAtCursor)}
+        role="menuitem"
+        type="button"
+      >
+        Paste at cursor
       </button>
       <div aria-hidden="true" className="canvas-context-menu__separator" />
       <button
