@@ -85,6 +85,46 @@ const job = ImportJobSnapshotSchemaV2.parse({
 });
 
 describe("committed import hydration", () => {
+  it("restores the committed source inventory for the library page", () => {
+    const inventory = {
+      fileCount: 2,
+      screenCount: 1,
+      componentCount: 1,
+      tokenCount: 1,
+      screens: [
+        {
+          id: "screen-sign-in",
+          name: "Sign in",
+          route: "/sign-in",
+          sourcePath: "app/sign-in.tsx",
+        },
+      ],
+      components: [
+        {
+          id: "button",
+          name: "Button",
+          sourcePath: "components/Button.tsx",
+        },
+      ],
+      tokens: [
+        {
+          id: "tokens",
+          name: "Tokens",
+          sourcePath: "src/theme/tokens.ts",
+        },
+      ],
+      truncated: { screens: false, components: false, tokens: false },
+    } as const;
+
+    const manifest = repositoryManifestFromCommittedImport(
+      job,
+      inventory,
+    );
+
+    expect(manifest.inventory).toEqual(inventory);
+    expect(manifest.components).toEqual(inventory.components);
+    expect(manifest.tokens).toEqual(inventory.tokens);
+  });
   it("restores a committed Expo import as an editable repository project", () => {
     const manifest = repositoryManifestFromCommittedImport(job);
     const project = repositoryProjectFromCommittedImport(job);
