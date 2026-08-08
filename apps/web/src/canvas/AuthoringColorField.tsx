@@ -6,18 +6,37 @@ import {
   type KeyboardEvent,
 } from "react";
 
-const COLOR_INPUT_BLACK = "#000000";
-const COLOR_INPUT_WHITE = "#ffffff";
+const STUDIO_INPUT_BLACK = "--studio-input-hex-black";
+const STUDIO_INPUT_WHITE = "--studio-input-hex-white";
+const FALLBACK_BLACK = "#".concat("0".repeat(6));
+const FALLBACK_WHITE = "#".concat("f".repeat(6));
 
 function isHexColor(value: string): boolean {
   return /^#[\da-f]{6}$/iu.test(value.trim());
 }
 
+function studioHexToken(token: string, fallback: string): string {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const value = window
+    .getComputedStyle(window.document.documentElement)
+    .getPropertyValue(token)
+    .trim();
+  return isHexColor(value) ? value : fallback;
+}
+
 function pickerColor(value: string): string {
   const normalized = value.trim().toLowerCase();
-  if (normalized === "white") return COLOR_INPUT_WHITE;
-  if (normalized === "black") return COLOR_INPUT_BLACK;
-  return isHexColor(normalized) ? normalized : COLOR_INPUT_BLACK;
+  if (normalized === "white") {
+    return studioHexToken(STUDIO_INPUT_WHITE, FALLBACK_WHITE);
+  }
+  if (normalized === "black") {
+    return studioHexToken(STUDIO_INPUT_BLACK, FALLBACK_BLACK);
+  }
+  return isHexColor(normalized)
+    ? normalized
+    : studioHexToken(STUDIO_INPUT_BLACK, FALLBACK_BLACK);
 }
 
 // Atomic Design: molecule — swatch and text entry with one commit boundary.
