@@ -134,6 +134,7 @@ const runtimeCaptureLayerSchema = z
         opacity: z.number().finite().min(0).max(1).optional(),
         shadow: z.string().trim().min(1).max(512).optional(),
         stroke: z.string().trim().min(1).max(160).optional(),
+        textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
         textColor: z.string().trim().min(1).max(160).optional(),
       })
       .default({}),

@@ -187,6 +187,7 @@ const LegacyNodeSchema = z.strictObject({
   letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
   lineHeight: z.number().finite().positive().max(10_000).optional(),
   textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
 }).superRefine((node, context) => {
   if (node.kind === "Image" && node.image === undefined) {
     context.addIssue({

@@ -311,6 +311,9 @@ function layerNode(
             layer.style.lineHeight <= 0
               ? {}
               : { lineHeight: layer.style.lineHeight }),
+            ...(layer.style.textAlign === undefined
+              ? {}
+              : { textAlign: layer.style.textAlign }),
           }
         : null,
     transform: {

@@ -325,6 +325,7 @@ export interface WorkbenchNode {
   readonly letterSpacing?: number;
   readonly lineHeight?: number;
   readonly textAlign?: "left" | "center" | "right" | "justify";
+  readonly textAutoResize?: "none" | "width-height" | "height";
   readonly effects?: readonly CanvasEffectV2[];
   readonly fill?: string;
   readonly stroke?: string;
@@ -605,6 +606,9 @@ export function designDocumentFromWorkbench(
         ...(node.textAlign === undefined
           ? {}
           : { textAlign: node.textAlign }),
+        ...(node.textAutoResize === undefined
+          ? {}
+          : { textAutoResize: node.textAutoResize }),
         ...(node.frameContent === undefined
           ? {}
           : { frameContent: node.frameContent }),
