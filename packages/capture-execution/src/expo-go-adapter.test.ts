@@ -880,6 +880,26 @@ describe("ExpoGoCaptureAdapter", () => {
     expect(captureSimulatorScreenshot).toHaveBeenCalledTimes(4);
   });
 
+  it("keeps the strict verifier active through a long finite native transition", async () => {
+    let captures = 0;
+    const captureSimulatorScreenshot = vi.fn(async () => {
+      captures += 1;
+      return new Uint8Array([captures <= 26 ? captures : 99]);
+    });
+    const target = await fixture({ captureSimulatorScreenshot });
+    const preparation = await target.adapter.prepare(
+      target.context,
+      application,
+      [target.scenario],
+    );
+    const launch = await target.adapter.launch(target.context, preparation);
+
+    await expect(
+      target.adapter.capture(target.context, launch, target.scenario),
+    ).resolves.toEqual(expect.objectContaining({ scenarioId: target.scenario.id }));
+    expect(captureSimulatorScreenshot).toHaveBeenCalledTimes(28);
+  });
+
   it("reads runtime attestation from the supplied simulator evidence channel, not hierarchy text", async () => {
     const target = await fixture({
       readSimulatorRuntimeEvidence: vi.fn(async () =>
