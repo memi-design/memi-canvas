@@ -21,6 +21,7 @@ import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
 import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
+import { workbenchInteractionFeedback } from "./workbench-interaction-feedback.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -372,6 +373,11 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       : gesture.current?.type === "resize"
         ? [gesture.current.nodeId]
         : [];
+  const interactionFeedback = workbenchInteractionFeedback({
+    gesture: gesture.current,
+    nodes: projectedSceneNodes,
+    pointer: viewportPointer.current,
+  });
   const visibleNodes = projectVisibleItems(
     projectedSceneNodes,
     (node) => ({
@@ -576,6 +582,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         alignmentGuides,
         camera,
         gridStyle: viewportGridStyle,
+        interactionFeedback,
         nodes: projectedSceneNodes,
         nodeView: {
           onContextMenu: openNodeContextMenu,

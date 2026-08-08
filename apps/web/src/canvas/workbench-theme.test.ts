@@ -142,5 +142,11 @@ describe("Memi editor Studio theme contract", () => {
     expect(interactionsCss).toMatch(
       /\.canvas-node\[data-interaction-restriction="source-linked"\]\[data-direct-manipulation="move"\][\s\S]*?\.canvas-node__selection-bounds[\s\S]*?var\(--accent-soft\)/,
     );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-moving="true"\][\s\S]*?cursor:\s*grabbing/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__drop-target[\s\S]*?pointer-events:\s*none[\s\S]*?position:\s*absolute/,
+    );
   });
 });

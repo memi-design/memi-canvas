@@ -248,6 +248,8 @@ function selectionRoleFor(node: WorkbenchNode): SelectionRole {
 
 // Atomic Design: molecule — one semantic node and its manipulation handle.
 export function CanvasNodeView({
+  dropTarget = false,
+  moving = false,
   node,
   proposed = false,
   semanticOverlay = false,
@@ -258,6 +260,8 @@ export function CanvasNodeView({
   onSelect,
   onContextMenu,
 }: {
+  readonly dropTarget?: boolean;
+  readonly moving?: boolean;
   readonly node: WorkbenchNode;
   readonly proposed?: boolean;
   readonly semanticOverlay?: boolean;
@@ -321,6 +325,8 @@ export function CanvasNodeView({
       data-node-kind={node.kind}
       data-locked={node.locked}
       data-interaction-restriction={interactionRestriction}
+      data-drop-target={dropTarget}
+      data-moving={moving}
       data-proposal={proposed}
       data-selected={selected}
       data-semantic-overlay={semanticOverlay}
@@ -337,6 +343,9 @@ export function CanvasNodeView({
         width: node.size.width,
       }}
     >
+      {dropTarget ? (
+        <span aria-hidden="true" className="canvas-node__drop-target" />
+      ) : null}
       {selected ? <CanvasNodeMetadataTag node={node} /> : null}
       {selected ? (
         <span
