@@ -147,6 +147,8 @@ test("authors and reopens a responsive landing page through public editor comman
   );
   await page.goto("/");
   await page.getByRole("button", { name: "Create design project" }).click();
+  await page.getByRole("button", { name: "Back to projects" }).click();
+  await page.getByRole("button", { name: "Create design project" }).click();
   const canvas = page.getByRole("region", { name: "Infinite canvas" });
 
   await drawFrame(
@@ -233,9 +235,13 @@ test("authors and reopens a responsive landing page through public editor comman
   });
 
   await page.getByRole("button", { name: "Back to projects" }).click();
-  await page.getByRole("button", { name: /Open Untitled design 1/iu }).click();
+  await page.getByRole("button", { name: /Open Untitled design 2/iu }).click();
   await page.getByRole("button", { name: "Canvases" }).click();
   await expect(page.getByRole("button", { name: "Page 2" })).toBeVisible();
+  await page.getByRole("button", { name: "Page 2" }).click();
+  await expect(
+    page.getByRole("button", { name: "Desktop landing copy on canvas" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: initialCanvasName }).click();
   await expect(
     page.getByRole("button", { name: "Desktop landing on canvas" }),
