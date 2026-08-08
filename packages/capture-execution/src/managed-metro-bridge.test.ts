@@ -23,6 +23,7 @@ describe("managed Metro bridge", () => {
     const projectRoot = join(root, "managed-project");
     const dependencyRoot = join(root, "source-dependencies");
     await mkdir(join(projectRoot, "modules/widget-bridge"), { recursive: true });
+    await mkdir(join(projectRoot, ".memi"), { recursive: true });
     await mkdir(join(dependencyRoot, "expo-router"), { recursive: true });
     const originalPackage = `${JSON.stringify({
       name: "fixture",
@@ -30,6 +31,7 @@ describe("managed Metro bridge", () => {
       dependencies: { "widget-bridge": "file:./modules/widget-bridge" },
     }, null, 2)}\n`;
     await writeFile(join(projectRoot, "package.json"), originalPackage);
+    await writeFile(join(projectRoot, ".memi/keep.txt"), "project state\n");
     const originalMetroConfig =
       "module.exports = { resolver: { sourceExts: ['js'] } };\n";
     await writeFile(
@@ -46,9 +48,7 @@ describe("managed Metro bridge", () => {
     const patchedPackage = JSON.parse(
       await readFile(join(projectRoot, "package.json"), "utf8"),
     ) as { readonly main: string };
-    expect(patchedPackage.main).toBe(
-      ".memi/capture/metro-bridge/MemiCaptureEntry.js",
-    );
+    expect(patchedPackage.main).toBe("./.memi-capture-entry.js");
     await expect(readFile(prepared.entryPath, "utf8")).resolves.toBe(
       'import "expo-router/entry";\n',
     );
@@ -79,6 +79,35 @@ describe("managed Metro bridge", () => {
       .resolves.toBe(originalMetroConfig);
     await expect(lstat(join(projectRoot, ".memi/capture/metro-bridge")))
       .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(projectRoot, ".memi-capture-entry.js")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(projectRoot, ".memi/keep.txt"), "utf8"))
+      .resolves.toBe("project state\n");
+  });
+
+  it("never overwrites an existing project-root capture entry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "memi-metro-collision-"));
+    const projectRoot = join(root, "managed-project");
+    const dependencyRoot = join(root, "source-dependencies");
+    await mkdir(projectRoot, { recursive: true });
+    await mkdir(dependencyRoot, { recursive: true });
+    await writeFile(
+      join(projectRoot, "package.json"),
+      '{"main":"expo-router/entry"}\n',
+    );
+    await writeFile(
+      join(projectRoot, ".memi-capture-entry.js"),
+      "project owned\n",
+    );
+
+    await expect(prepareManagedMetroBridge({
+      projectRoot,
+      dependencyRoot,
+      entryPoint: "expo-router/entry",
+    })).rejects.toThrow(/capture entry already exists/i);
+    await expect(
+      readFile(join(projectRoot, ".memi-capture-entry.js"), "utf8"),
+    ).resolves.toBe("project owned\n");
   });
 
   it("rejects file dependencies that escape the managed project", async () => {
