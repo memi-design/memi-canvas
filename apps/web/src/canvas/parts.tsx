@@ -255,6 +255,7 @@ export function CanvasNodeView({
   semanticOverlay = false,
   semanticOverride = false,
   selected,
+  sourceLinked = false,
   onPointerDown,
   onResizePointerDown,
   onSelect,
@@ -267,6 +268,7 @@ export function CanvasNodeView({
   readonly semanticOverlay?: boolean;
   readonly semanticOverride?: boolean;
   readonly selected: boolean;
+  readonly sourceLinked?: boolean;
   readonly onPointerDown: (
     node: WorkbenchNode,
     event: PointerEvent<HTMLButtonElement>,
@@ -286,7 +288,9 @@ export function CanvasNodeView({
   const selectionRole = selectionRoleFor(node);
   const interactionRestriction = node.locked
     ? "locked"
-    : node.source !== undefined
+    : sourceLinked ||
+        node.source !== undefined ||
+        node.component?.source !== undefined
       ? "source-linked"
       : "none";
   const selectionDescription = `${selectionRole} selection boundary${

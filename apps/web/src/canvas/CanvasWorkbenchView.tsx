@@ -266,10 +266,11 @@ function CanvasViewport({
           />
         ))}
         {drawOrderedVisibleNodes.map((node) => {
+          const hierarchyState = hierarchyStates.get(node.id);
           const resolvedNode = resolveComponentInstance(
               {
                 ...node,
-                ...hierarchyStates.get(node.id),
+                ...hierarchyState,
               },
               nodes,
             );
@@ -292,6 +293,7 @@ function CanvasViewport({
               dropTarget={interactionFeedback.dropTargetId === node.id}
               moving={interactionFeedback.movingNodeIds.includes(node.id)}
               selected={selectedNodeIds.includes(node.id)}
+              sourceLinked={hierarchyState?.sourceLinked ?? false}
             />
           );
         })}

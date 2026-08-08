@@ -54,6 +54,12 @@ export function workbenchInteractionFeedback({
     gesture.initialNodes,
     gesture.nodeIds,
   );
+  if (gesture.duplicated) {
+    return Object.freeze({
+      dropTargetId: null,
+      movingNodeIds: Object.freeze([...movingNodeIds]),
+    });
+  }
   const movingIds = new Set(movingNodeIds);
   const hierarchyStates = workbenchHierarchyStates(nodes);
   const canvasPoint = canvasPointFromViewport(gesture.camera, pointer);
@@ -65,8 +71,7 @@ export function workbenchInteractionFeedback({
         !movingIds.has(node.id) &&
         state?.hidden === false &&
         state.locked === false &&
-        node.source === undefined &&
-        node.component?.source === undefined &&
+        state.sourceLinked === false &&
         containsPoint(node, canvasPoint)
       );
     })

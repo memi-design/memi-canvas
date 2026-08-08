@@ -747,6 +747,50 @@ describe("CanvasWorkbench professional interaction contract", () => {
     });
   });
 
+  it("commits a real reparent when a move lands on a valid container target", async () => {
+    const v3Session = await renderWorkbench();
+
+    const campaign = canvasNode("Campaign card");
+    fireEvent.pointerDown(campaign, {
+      pointerId: 44,
+      clientX: 960,
+      clientY: 180,
+    });
+    fireEvent.pointerMove(viewport(), {
+      pointerId: 44,
+      clientX: 220,
+      clientY: 800,
+      buttons: 1,
+    });
+    fireEvent.pointerUp(viewport(), {
+      pointerId: 44,
+      clientX: 220,
+      clientY: 800,
+      buttons: 1,
+    });
+
+    await waitFor(async () => {
+      const journal = await v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: v3Session.document.id,
+        projectId: v3Session.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Move Campaign card into Checkout exploration",
+      ]);
+      expect(journal?.operations.map((operation) => operation.action.type)).toEqual([
+        "atomic.batch",
+      ]);
+      expect(
+        journal?.operations.flatMap((operation) =>
+          operation.action.type === "atomic.batch"
+            ? operation.action.payload.actions.map(({ type }) => type)
+            : [operation.action.type],
+        ),
+      ).toContain("node.reparent");
+    });
+  });
+
   it("rolls back an unfinished move when pointer capture is lost", async () => {
     await renderWorkbench();
 
