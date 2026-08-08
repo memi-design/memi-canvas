@@ -98,7 +98,8 @@ describe("Buzzr pilot contract", () => {
 
     expect(first).toMatch(/^[a-f0-9]{64}$/u);
     expect(second).toBe(first);
-    expect((await readFile(keyPath, "utf8")).trim()).toBe(first);
+    expect(await readFile(keyPath, "utf8")).toBe(first);
+    expect((await readFile(keyPath)).byteLength).toBe(64);
     expect((await stat(keyPath)).mode & 0o777).toBe(0o600);
   });
 });

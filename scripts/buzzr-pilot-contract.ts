@@ -146,7 +146,7 @@ export async function loadOrCreatePilotPlanKey(
   try {
     const handle = await open(keyPath, "wx", 0o600);
     try {
-      await handle.writeFile(`${key}\n`, "utf8");
+      await handle.writeFile(key, "utf8");
     } finally {
       await handle.close();
     }
