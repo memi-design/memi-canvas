@@ -148,15 +148,16 @@ async function start(): Promise<void> {
     purgeManagedSimulator: native.purgeManagedSimulator,
     activeJobLocks: storageBudgetAuthority,
   });
+  const committedProjectStore = new BunSqliteCommittedImportedProjectStore(
+    paths.database,
+  );
   const coordinator = new ImportCoordinator({
     store: new BunSqliteImportJobStore(paths.database),
     planStore: new BunSqliteImportPlanStore(
       paths.database,
       Buffer.from(planKeyHex, "hex"),
     ),
-    committedProjectStore: new BunSqliteCommittedImportedProjectStore(
-      paths.database,
-    ),
+    committedProjectStore,
     artifactStore,
     storageBudgetAuthority,
     storageBudgetEstimateFor: estimateImportStorage,
@@ -185,7 +186,9 @@ async function start(): Promise<void> {
     storageBudgetAuthority,
   } as const;
   await recoverRuntimeBeforeServing(startupRecovery);
-  const imports = createImportRuntimeService(coordinator);
+  const imports = createImportRuntimeService(coordinator, {
+    committedProjectStore,
+  });
   const canvasDocumentPort = new BunSqliteCanvasDocumentV3PersistencePort(
     paths.database,
   );

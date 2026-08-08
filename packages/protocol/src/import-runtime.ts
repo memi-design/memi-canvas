@@ -668,6 +668,7 @@ export const ImportsPurgeAllPayloadSchemaV1 = z.strictObject({});
 
 export const ImportJobResultSchemaV2 = z.strictObject({
   job: ImportJobSnapshotSchemaV2,
+  inventory: ImportInventorySchemaV1.optional(),
 });
 export const ImportJobsListResultSchemaV1 = z.strictObject({
   jobs: z.array(ImportJobListItemSchemaV1).max(256),

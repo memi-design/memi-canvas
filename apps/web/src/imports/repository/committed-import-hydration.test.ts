@@ -114,7 +114,7 @@ describe("committed import hydration", () => {
         },
       ],
       truncated: { screens: false, components: false, tokens: false },
-    } as const;
+    };
 
     const manifest = repositoryManifestFromCommittedImport(
       job,
