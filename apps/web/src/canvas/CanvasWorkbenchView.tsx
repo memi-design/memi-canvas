@@ -27,11 +27,13 @@ import type {
 import type { CanvasCamera } from "./canvas-camera.js";
 import type { ProfessionalCanvasTool } from "./commands.js";
 import { semanticOverlayVisualSignature } from "./imported-screen-composition.js";
+import type { WorkbenchInteractionFeedback } from "./workbench-interaction-feedback.js";
 
 interface CanvasViewportProps {
   readonly alignmentGuides: AlignmentGuides;
   readonly camera: CanvasCamera;
   readonly gridStyle: CSSProperties;
+  readonly interactionFeedback: WorkbenchInteractionFeedback;
   readonly nodes: readonly WorkbenchNode[];
   readonly onClick: ComponentProps<"div">["onClick"];
   readonly onEmptyExit?: (() => void) | undefined;
@@ -125,6 +127,7 @@ function CanvasViewport({
   alignmentGuides,
   camera,
   gridStyle,
+  interactionFeedback,
   nodes,
   nodeView,
   onClick,
@@ -263,10 +266,11 @@ function CanvasViewport({
           />
         ))}
         {drawOrderedVisibleNodes.map((node) => {
+          const hierarchyState = hierarchyStates.get(node.id);
           const resolvedNode = resolveComponentInstance(
               {
                 ...node,
-                ...hierarchyStates.get(node.id),
+                ...hierarchyState,
               },
               nodes,
             );
@@ -286,10 +290,23 @@ function CanvasViewport({
                 semanticOverlayVisualSignature(node) !==
                   node.semanticBaseline
               }
+              dropTarget={interactionFeedback.dropTargetId === node.id}
+              moving={interactionFeedback.movingNodeIds.includes(node.id)}
               selected={selectedNodeIds.includes(node.id)}
+              sourceLinked={hierarchyState?.sourceLinked ?? false}
             />
           );
         })}
+        {interactionFeedback.dropTargetId === null ? null : (
+          <output
+            aria-label={`Valid drop target: ${
+              nodes.find(({ id }) => id === interactionFeedback.dropTargetId)
+                ?.name ?? "Canvas container"
+            }`}
+            className="canvas-node__selection-status"
+            role="status"
+          />
+        )}
       </div>
       <output
         aria-label="Viewport transform"

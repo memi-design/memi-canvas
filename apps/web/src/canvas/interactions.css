@@ -103,6 +103,31 @@
     0 0 0 calc(4px * var(--canvas-inverse-zoom)) color-mix(in oklch, var(--accent) 88%, transparent);
 }
 
+.canvas-node[data-moving="true"] .canvas-node__surface {
+  cursor: grabbing;
+}
+
+.canvas-node[data-moving="true"]:not([data-selected="true"])
+  .canvas-node__surface {
+  outline: calc(1px * var(--canvas-inverse-zoom)) solid
+    color-mix(in oklch, var(--accent) 72%, transparent);
+  outline-offset: calc(1px * var(--canvas-inverse-zoom));
+}
+
+.canvas-node__drop-target {
+  border: calc(2px * var(--canvas-inverse-zoom)) solid var(--accent);
+  box-shadow:
+    0 0 0 calc(2px * var(--canvas-inverse-zoom))
+      color-mix(in oklch, var(--studio-surface-canvas) 90%, transparent),
+    0 0 0 calc(5px * var(--canvas-inverse-zoom))
+      color-mix(in oklch, var(--accent) 32%, transparent);
+  box-sizing: border-box;
+  inset: calc(-5px * var(--canvas-inverse-zoom));
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+}
+
 .canvas-node[data-interaction-restriction="source-linked"][data-direct-manipulation="move"]
   .canvas-node__selection-bounds,
 .canvas-node[data-interaction-restriction="source-linked"][data-direct-manipulation="resize"]
