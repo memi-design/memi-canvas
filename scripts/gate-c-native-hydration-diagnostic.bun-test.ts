@@ -15,7 +15,9 @@ import { ContentAddressedArtifactStore } from "@memi/capture-execution";
 import {
   createGateCReconstructionLoader,
   openReadOnlyGateCImportDatabase,
+  parseGateCNativeHydrationArguments,
   resolveGateCNativeHydrationRoot,
+  summarizeGateCNativeHydration,
 } from "./gate-c-native-hydration-diagnostic.js";
 
 const temporaryDirectories: string[] = [];
@@ -38,6 +40,38 @@ async function recoveryRoot(): Promise<string> {
 }
 
 describe("Gate C native hydration diagnostic", () => {
+  it("requires the exact recovered project authority", () => {
+    const root = "/Users/designer/Library/Application Support/design.memi.canvas";
+    const projectId = "prj_42282B5031D972E2FD80970761";
+
+    expect(parseGateCNativeHydrationArguments([root, projectId])).toEqual({
+      projectId,
+      root,
+    });
+    expect(() => parseGateCNativeHydrationArguments([root])).toThrow(
+      /root and project ID/u,
+    );
+    expect(() =>
+      parseGateCNativeHydrationArguments([root, "prj_not-valid"]),
+    ).toThrow(/project ID/u);
+  });
+
+  it("summarizes hydrated artifact authority without seed node counts", () => {
+    expect(
+      summarizeGateCNativeHydration({
+        artifacts: 3,
+        components: 2,
+        projectId: "prj_42282B5031D972E2FD80970761",
+        screens: 3,
+      }),
+    ).toEqual({
+      artifacts: 3,
+      components: 2,
+      projectId: "prj_42282B5031D972E2FD80970761",
+      screens: 3,
+    });
+  });
+
   it("rejects a missing import database without creating recovery state", async () => {
     const root = await recoveryRoot();
 
@@ -59,7 +93,7 @@ describe("Gate C native hydration diagnostic", () => {
     });
     writable.exec("CREATE TABLE recovery_fixture (value TEXT NOT NULL) STRICT");
     writable.close();
-    const filesBefore = await readdir(root);
+    const filesBefore = (await readdir(root)).sort();
 
     const resolved = await resolveGateCNativeHydrationRoot(root);
     const readonly = openReadOnlyGateCImportDatabase(resolved.databasePath);
@@ -75,7 +109,7 @@ describe("Gate C native hydration diagnostic", () => {
     } finally {
       readonly.close();
     }
-    expect(await readdir(root)).toEqual(filesBefore);
+    expect((await readdir(root)).sort()).toEqual(filesBefore);
   });
 
   it("loads only the exact content-addressed reconstruction artifact", async () => {
