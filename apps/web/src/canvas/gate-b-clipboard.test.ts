@@ -571,6 +571,75 @@ describe("Gate B native clipboard fallback receipt", () => {
     expect(commitIntentReceipt).not.toHaveBeenCalled();
   });
 
+  it("lets a newer copy supersede an older pending native paste", async () => {
+    let resolveRead!: (items: readonly never[]) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise<readonly never[]>((resolve) => {
+        resolveRead = resolve;
+      }))
+      .mockResolvedValue([]);
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const source = rectangle("source", { x: 40, y: 80 });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [source],
+      selectedNode: source,
+      selectedNodeId: source.id,
+      selectedNodeIds: [source.id],
+    });
+
+    actions.pasteSelection();
+    actions.copySelection();
+    resolveRead([]);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commitIntentReceipt).not.toHaveBeenCalled();
+  });
+
+  it("lets a newer paste supersede an older pending native paste", async () => {
+    let resolveRead!: (items: readonly never[]) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise<readonly never[]>((resolve) => {
+        resolveRead = resolve;
+      }))
+      .mockResolvedValue([]);
+    vi.stubGlobal("navigator", {
+      clipboard: { read, async write() { return undefined; } },
+    });
+    const fresh = payload([rectangle("fresh", { x: 160, y: 180 })]);
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [],
+      selectedNode: undefined,
+      selectedNodeId: null,
+      selectedNodeIds: [],
+    });
+
+    actions.pasteSelection();
+    actions.pasteSelection(fresh);
+    resolveRead([]);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commitIntentReceipt).toHaveBeenCalledOnce();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Paste fresh copy",
+      expect.objectContaining({ kind: "paste" }),
+      expect.objectContaining({ selectedIds: ["fresh-copy-1"] }),
+    );
+  });
+
   it("does not retain a delayed PNG after the initiating scope changes", async () => {
     const bytes = Uint8Array.from(
       atob(

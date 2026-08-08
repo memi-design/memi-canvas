@@ -41,7 +41,7 @@ import type {
 
 const componentMaster: WorkbenchNode = {
   id: "component-card",
-  kind: "ComponentInstance",
+  kind: "Component",
   name: "Card component",
   parentId: null,
   position: { x: 40, y: 80 },
@@ -91,6 +91,7 @@ const componentMaster: WorkbenchNode = {
 const componentInstance: WorkbenchNode = {
   ...componentMaster,
   id: "component-card-instance",
+  kind: "ComponentInstance",
   name: "Card instance",
   parentId: componentMaster.id,
   position: { x: 64, y: 104 },
@@ -341,6 +342,52 @@ describe("canvas clipboard payload", () => {
 
     const fallback = serializeCanvasClipboardFallback(payload!);
     expect(parseCanvasClipboardFallback(fallback)).toEqual(payload);
+  });
+
+  it("rejects custom MIME component nodes with mismatched metadata", () => {
+    const valid = createCanvasClipboardPayload({
+      documentId: "source-document",
+      nodes: [componentMaster, componentInstance],
+      selectedIds: [componentMaster.id],
+    });
+    expect(valid).not.toBeNull();
+    const { component: _component, ...masterWithoutMetadata } = componentMaster;
+    const missingMasterMetadata = {
+      ...valid!,
+      nodes: [masterWithoutMetadata, componentInstance],
+    };
+    const instanceClassifiedAsMaster = {
+      ...valid!,
+      nodes: [componentMaster, {
+        ...componentInstance,
+        component: {
+          ...componentInstance.component!,
+          classification: "master" as const,
+          masterId: undefined,
+        },
+      }],
+    };
+    const masterClassifiedAsInstance = {
+      ...valid!,
+      nodes: [{
+        ...componentMaster,
+        component: {
+          ...componentMaster.component!,
+          classification: "instance" as const,
+          masterId: componentMaster.id,
+        },
+      }, componentInstance],
+    };
+
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(missingMasterMetadata),
+    )).toBeNull();
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(instanceClassifiedAsMaster),
+    )).toBeNull();
+    expect(parseCanvasClipboardFallback(
+      JSON.stringify(masterClassifiedAsInstance),
+    )).toBeNull();
   });
 
   it("round-trips a validated payload through the supported system clipboard", async () => {
