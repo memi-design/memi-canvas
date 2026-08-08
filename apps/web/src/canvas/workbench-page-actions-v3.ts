@@ -9,10 +9,14 @@ export interface CreateWorkbenchPageV3Options {
   readonly now?: () => string;
 }
 
-/** Create one empty design page through the canonical operation journal. */
-export async function createWorkbenchPageV3(
+const pendingPageCreations = new WeakMap<
+  CanonicalWorkbenchAuthorityV3,
+  Promise<CanvasPageId>
+>();
+
+async function commitWorkbenchPageV3(
   authority: CanonicalWorkbenchAuthorityV3,
-  options: CreateWorkbenchPageV3Options = {},
+  options: CreateWorkbenchPageV3Options,
 ): Promise<CanvasPageId> {
   const document = authority.getSnapshot().document;
   const operationId = (options.createOperationId ?? createCanvasOperationId)();
@@ -43,4 +47,26 @@ export async function createWorkbenchPageV3(
   );
 
   return pageId;
+}
+
+/** Create one serialized empty design page through the canonical journal. */
+export function createWorkbenchPageV3(
+  authority: CanonicalWorkbenchAuthorityV3,
+  options: CreateWorkbenchPageV3Options = {},
+): Promise<CanvasPageId> {
+  const pending = pendingPageCreations.get(authority);
+  const ready = pending?.then(
+    () => undefined,
+    () => undefined,
+  ) ?? Promise.resolve();
+  const creation = ready.then(() =>
+    commitWorkbenchPageV3(authority, options),
+  );
+  pendingPageCreations.set(authority, creation);
+  void creation.finally(() => {
+    if (pendingPageCreations.get(authority) === creation) {
+      pendingPageCreations.delete(authority);
+    }
+  }).catch(() => undefined);
+  return creation;
 }
