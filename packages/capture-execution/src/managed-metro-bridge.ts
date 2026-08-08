@@ -19,8 +19,12 @@ interface ManagedMetroBridgeMetadataV1 {
   readonly packageBackupPath: string;
   readonly entryPath: string;
   readonly configPath: string;
+  readonly configBackupPath: string;
+  readonly configExisted: boolean;
   readonly originalPackageHash: `sha256:${string}`;
   readonly patchedPackageHash: `sha256:${string}`;
+  readonly originalConfigHash: `sha256:${string}` | null;
+  readonly patchedConfigHash: `sha256:${string}`;
 }
 
 export type PreparedManagedMetroBridge = Readonly<ManagedMetroBridgeMetadataV1>;
@@ -150,7 +154,7 @@ async function optionalBaseConfig(projectRoot: string): Promise<string | null> {
 }
 
 export function managedMetroConfigPath(projectRoot: string): string {
-  return resolve(projectRoot, BRIDGE_RELATIVE_ROOT, "MemiMetroConfig.cjs");
+  return resolve(projectRoot, "metro.config.js");
 }
 
 export async function prepareManagedMetroBridge(
@@ -182,7 +186,9 @@ export async function prepareManagedMetroBridge(
       existing.dependencyRoot === dependencyRoot &&
       existing.entryPoint === input.entryPoint &&
       hash(await readFile(existing.packagePath, "utf8")) ===
-        existing.patchedPackageHash
+        existing.patchedPackageHash &&
+      hash(await readFile(existing.configPath, "utf8")) ===
+        existing.patchedConfigHash
     ) {
       return Object.freeze(existing);
     }
@@ -194,7 +200,9 @@ export async function prepareManagedMetroBridge(
   const packagePath = join(projectRoot, "package.json");
   const packageBackupPath = join(bridgeRoot, "original-package.json");
   const entryPath = join(projectRoot, ENTRY_RELATIVE_PATH);
-  const configPath = managedMetroConfigPath(projectRoot);
+  const originalConfigPath = await optionalBaseConfig(projectRoot);
+  const configPath = originalConfigPath ?? managedMetroConfigPath(projectRoot);
+  const configBackupPath = join(bridgeRoot, "original-metro-config.cjs");
   for (const path of [
     bridgeRoot,
     metadataPath,
@@ -202,6 +210,7 @@ export async function prepareManagedMetroBridge(
     packageBackupPath,
     entryPath,
     configPath,
+    configBackupPath,
   ]) {
     if (!contained(projectRoot, path)) {
       throw new Error("Managed Metro bridge escaped the project root.");
@@ -209,6 +218,9 @@ export async function prepareManagedMetroBridge(
   }
   await regularFile(packagePath, "Managed package manifest");
   const originalPackage = await readFile(packagePath, "utf8");
+  const originalConfig = originalConfigPath === null
+    ? null
+    : await readFile(originalConfigPath, "utf8");
   const manifest = JSON.parse(originalPackage) as Record<string, unknown>;
   const fileDependencies = await verifiedFileDependencies(manifest, projectRoot);
   const patchedPackage = `${JSON.stringify({
@@ -216,21 +228,24 @@ export async function prepareManagedMetroBridge(
     main: ENTRY_RELATIVE_PATH,
   }, null, 2)}\n`;
   let packagePatched = false;
+  let configPatched = false;
   try {
     await atomicWrite(packageBackupPath, originalPackage);
+    if (originalConfig !== null) {
+      await atomicWrite(configBackupPath, originalConfig);
+    }
     await atomicWrite(
       entryPath,
       `import ${JSON.stringify(input.entryPoint)};\n`,
     );
-    await atomicWrite(
-      configPath,
-      metroWrapper({
-        projectRoot,
-        dependencyRoot,
-        baseConfigPath: await optionalBaseConfig(projectRoot),
-        fileDependencies,
-      }),
-    );
+    const patchedConfig = metroWrapper({
+      projectRoot,
+      dependencyRoot,
+      baseConfigPath: originalConfig === null ? null : configBackupPath,
+      fileDependencies,
+    });
+    await atomicWrite(configPath, patchedConfig);
+    configPatched = true;
     await atomicWrite(packagePath, patchedPackage);
     packagePatched = true;
     const prepared: PreparedManagedMetroBridge = Object.freeze({
@@ -242,13 +257,24 @@ export async function prepareManagedMetroBridge(
       packageBackupPath,
       entryPath,
       configPath,
+      configBackupPath,
+      configExisted: originalConfig !== null,
       originalPackageHash: hash(originalPackage),
       patchedPackageHash: hash(patchedPackage),
+      originalConfigHash: originalConfig === null ? null : hash(originalConfig),
+      patchedConfigHash: hash(patchedConfig),
     });
     await atomicWrite(metadataPath, JSON.stringify(prepared));
     return prepared;
   } catch (error) {
     if (packagePatched) await atomicWrite(packagePath, originalPackage);
+    if (configPatched) {
+      if (originalConfig === null) {
+        await rm(configPath, { force: true });
+      } else {
+        await atomicWrite(configPath, originalConfig);
+      }
+    }
     await rm(bridgeRoot, { recursive: true, force: true });
     throw error;
   }
@@ -257,9 +283,10 @@ export async function prepareManagedMetroBridge(
 export async function restoreManagedMetroBridge(
   prepared: PreparedManagedMetroBridge,
 ): Promise<void> {
-  const [originalPackage, patchedPackage] = await Promise.all([
+  const [originalPackage, patchedPackage, patchedConfig] = await Promise.all([
     readFile(prepared.packageBackupPath, "utf8"),
     readFile(prepared.packagePath, "utf8"),
+    readFile(prepared.configPath, "utf8"),
   ]);
   if (hash(originalPackage) !== prepared.originalPackageHash) {
     throw new Error("Managed package backup no longer matches authority.");
@@ -267,6 +294,21 @@ export async function restoreManagedMetroBridge(
   if (hash(patchedPackage) !== prepared.patchedPackageHash) {
     throw new Error("Managed package changed during capture.");
   }
+  if (hash(patchedConfig) !== prepared.patchedConfigHash) {
+    throw new Error("Managed Metro config changed during capture.");
+  }
+  if (prepared.configExisted) {
+    const originalConfig = await readFile(prepared.configBackupPath, "utf8");
+    if (
+      prepared.originalConfigHash === null ||
+      hash(originalConfig) !== prepared.originalConfigHash
+    ) {
+      throw new Error("Managed Metro config backup no longer matches authority.");
+    }
+    await atomicWrite(prepared.configPath, originalConfig);
+  } else {
+    await rm(prepared.configPath, { force: true });
+  }
   await atomicWrite(prepared.packagePath, originalPackage);
-  await rm(dirname(prepared.configPath), { recursive: true, force: true });
+  await rm(dirname(prepared.entryPath), { recursive: true, force: true });
 }

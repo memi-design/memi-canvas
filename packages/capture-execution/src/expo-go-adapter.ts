@@ -606,8 +606,6 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
               "start",
               "--dev-client",
               "--localhost",
-              "--config",
-              this.#managedMetroBridge!.configPath,
               "--port",
               String(port),
             ],

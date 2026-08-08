@@ -10,7 +10,6 @@ import {
   type ContentAddressedArtifactStore,
   ExpoGoCaptureAdapter,
   type LocalDevelopmentMetroLaunch,
-  managedMetroConfigPath,
   ExpoMaestroCaptureAdapter,
   type AttestedMaestroFlow,
   type ExpoNativeDependencyPreparation,
@@ -522,8 +521,6 @@ function expoGoPolicy(
               literal("start"),
               literal("--dev-client"),
               literal("--localhost"),
-              literal("--config"),
-              literal(managedMetroConfigPath(authority.applicationRoot)),
               literal("--port"),
               {
                 kind: "integer" as const,
