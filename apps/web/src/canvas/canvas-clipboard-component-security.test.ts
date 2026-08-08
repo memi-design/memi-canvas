@@ -79,10 +79,8 @@ describe("canvas clipboard component integrity", () => {
     });
     const pasted = pasteCanvasClipboard([], payload);
 
-    expect(pasted?.pastedNodes[0]).toMatchObject({
-      component: undefined,
-      kind: "DraftFrame",
-    });
+    expect(pasted?.pastedNodes[0]).toMatchObject({ kind: "DraftFrame" });
+    expect(pasted?.pastedNodes[0]?.component).toBeUndefined();
     const pageId = CanvasPageIdSchema.parse("pag_01J00000000000000000000000");
     const document = createCanvasDocumentV3({
       id: "doc_01J00000000000000000000000",

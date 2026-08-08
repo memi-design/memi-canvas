@@ -381,6 +381,24 @@ function hasValidHierarchy(payload: CanvasClipboardPayload): boolean {
   }
 
   for (const node of payload.nodes) {
+    const component = node.component;
+    if (
+      component?.classification === "instance" &&
+      component.masterId !== undefined
+    ) {
+      const includedMaster = nodesById.get(component.masterId);
+      if (
+        includedMaster !== undefined &&
+        (includedMaster.kind !== "Component" ||
+          includedMaster.component?.classification !== "master" ||
+          includedMaster.component.componentId !== component.componentId)
+      ) {
+        return false;
+      }
+    }
+  }
+
+  for (const node of payload.nodes) {
     const visited = new Set<string>();
     let current: WorkbenchNode | undefined = node;
     let depth = 0;

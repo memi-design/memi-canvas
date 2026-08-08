@@ -56,6 +56,7 @@ export function pasteValidatedCanvasClipboard(
   }
 
   const pastedNodes = payload.nodes.map((node): WorkbenchNode => {
+    const cloned = structuredClone(node);
     const component = node.component;
     const resolvedMasterId =
       (component?.masterId === undefined
@@ -64,12 +65,23 @@ export function pasteValidatedCanvasClipboard(
       (component === undefined
         ? undefined
         : destinationMasterId(nodes, component));
+    const detachInstance =
+      node.kind === "ComponentInstance" &&
+      component?.classification === "instance" &&
+      resolvedMasterId === undefined;
     const pastedComponent =
-      component === undefined
+      component === undefined || detachInstance
         ? undefined
         : componentWithMaster(component, resolvedMasterId);
+    const { component: _component, ...withoutComponent } = cloned;
     return {
-      ...structuredClone(node),
+      ...(detachInstance
+        ? {
+            ...withoutComponent,
+            frameContent: node.frameContent ?? node.text ?? node.name,
+            kind: "DraftFrame" as const,
+          }
+        : cloned),
       id: pastedIdBySourceId.get(node.id) as string,
       // Name only pasted roots. Their descendants retain their component or
       // layer names, while the visible copy has the familiar editor label.
