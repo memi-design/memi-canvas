@@ -98,6 +98,33 @@ describe("workbench interaction feedback", () => {
     ).toBeNull();
   });
 
+  it("rejects a local container nested below source-authoritative evidence", () => {
+    const moving = node("moving", { position: { x: 400, y: 400 } });
+    const sourceParent = node("source-parent", {
+      source: {
+        coverageCellId: "coverage",
+        repositoryRevision: "abc123",
+        routeId: "/",
+        sourceAnchor: "app/index.tsx",
+        stateId: "default",
+        viewport: { height: 844, name: "mobile", width: 390 },
+      },
+    });
+    const localChild = node("local-child", {
+      parentId: sourceParent.id,
+      position: { x: 20, y: 20 },
+      size: { height: 100, width: 100 },
+    });
+
+    expect(
+      workbenchInteractionFeedback({
+        gesture: moveGesture([moving, sourceParent, localChild]),
+        nodes: [moving, sourceParent, localChild],
+        pointer: { x: 50, y: 50 },
+      }).dropTargetId,
+    ).toBeNull();
+  });
+
   it("returns stable empty feedback outside a move gesture", () => {
     const feedback = workbenchInteractionFeedback({
       gesture: null,
