@@ -44,6 +44,24 @@ const application = Object.freeze({
   relativeRoot: ".",
 });
 
+function pngHeader(width = 1_440, height = 900): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+  bytes.set([0, 0, 0, 13, 73, 72, 68, 82], 8);
+  new DataView(bytes.buffer).setUint32(16, width);
+  new DataView(bytes.buffer).setUint32(20, height);
+  return bytes;
+}
+
+const PNG_SCREENSHOT = pngHeader();
+
+function pngFrame(value: number): Uint8Array {
+  const bytes = new Uint8Array(PNG_SCREENSHOT.byteLength + 1);
+  bytes.set(PNG_SCREENSHOT);
+  bytes[PNG_SCREENSHOT.byteLength] = value;
+  return bytes;
+}
+
 function runtimeEvidence(
   scenario: CaptureScenarioV2,
   overrides: Readonly<Record<string, unknown>> = {},
@@ -198,7 +216,7 @@ async function fixture(
       });
       if (recipe.args.includes("screenshot")) {
         return {
-          stdout: new Uint8Array([137, 80, 78, 71]),
+          stdout: PNG_SCREENSHOT,
           stderr: "",
         };
       }
@@ -470,7 +488,7 @@ describe("ExpoGoCaptureAdapter", () => {
               runtimeToken: instrumentation.readinessToken,
             })
           : recipe.args.includes("screenshot")
-            ? new Uint8Array([137, 80, 78, 71])
+            ? PNG_SCREENSHOT
             : new Uint8Array(),
         stderr: "",
       };
@@ -790,7 +808,7 @@ describe("ExpoGoCaptureAdapter", () => {
         stdout: recipe.args.includes("hierarchy")
           ? new TextEncoder().encode("role=application")
           : recipe.args.includes("screenshot")
-            ? new Uint8Array([137, 80, 78, 71])
+            ? PNG_SCREENSHOT
             : new Uint8Array(),
         stderr: "",
       };
@@ -848,7 +866,7 @@ describe("ExpoGoCaptureAdapter", () => {
 
   it("reads simulator screenshots from the supplied evidence port instead of stdout", async () => {
     const captureSimulatorScreenshot = vi.fn(async () =>
-      new Uint8Array([137, 80, 78, 71]),
+      PNG_SCREENSHOT,
     );
     const target = await fixture({
       captureSimulatorScreenshot,
@@ -873,12 +891,28 @@ describe("ExpoGoCaptureAdapter", () => {
     ).toBe(false);
   });
 
+  it("rejects native pixels that contradict the planned viewport", async () => {
+    const target = await fixture({
+      captureSimulatorScreenshot: vi.fn(async () => pngHeader(1_206, 2_622)),
+    });
+    const preparation = await target.adapter.prepare(
+      target.context,
+      application,
+      [target.scenario],
+    );
+    const launch = await target.adapter.launch(target.context, preparation);
+
+    await expect(
+      target.adapter.capture(target.context, launch, target.scenario),
+    ).rejects.toMatchObject({ code: "VIEWPORT_MISMATCH", retryable: false });
+  });
+
   it("retries a transitioning screenshot pair until exact runtime pixels stabilize", async () => {
     const captureSimulatorScreenshot = vi.fn()
-      .mockResolvedValueOnce(new Uint8Array([1]))
-      .mockResolvedValueOnce(new Uint8Array([2]))
-      .mockResolvedValueOnce(new Uint8Array([3]))
-      .mockResolvedValueOnce(new Uint8Array([3]));
+      .mockResolvedValueOnce(pngFrame(1))
+      .mockResolvedValueOnce(pngFrame(2))
+      .mockResolvedValueOnce(pngFrame(3))
+      .mockResolvedValueOnce(pngFrame(3));
     const target = await fixture({
       captureSimulatorScreenshot,
       maximumScreenshotStabilityAttempts: 2,
@@ -900,7 +934,7 @@ describe("ExpoGoCaptureAdapter", () => {
     let captures = 0;
     const captureSimulatorScreenshot = vi.fn(async () => {
       captures += 1;
-      return new Uint8Array([captures <= 26 ? captures : 99]);
+      return pngFrame(captures <= 26 ? captures : 99);
     });
     const target = await fixture({ captureSimulatorScreenshot });
     const preparation = await target.adapter.prepare(
@@ -940,7 +974,7 @@ describe("ExpoGoCaptureAdapter", () => {
         };
       }
       if (recipe.args.includes("screenshot")) {
-        return { stdout: new Uint8Array([137, 80, 78, 71]), stderr: "" };
+        return { stdout: PNG_SCREENSHOT, stderr: "" };
       }
       return { stdout: new Uint8Array(), stderr: "" };
     });
@@ -1036,7 +1070,7 @@ describe("ExpoGoCaptureAdapter", () => {
       simctlExecutable: "/usr/bin/simctl",
       directSimulatorCommandPort: { execute: directExecute },
       captureSimulatorScreenshot: vi.fn(async () =>
-        new Uint8Array([137, 80, 78, 71]),
+        PNG_SCREENSHOT,
       ),
     });
     const preparation = await target.adapter.prepare(
@@ -1133,7 +1167,7 @@ describe("ExpoGoCaptureAdapter", () => {
         stdout: recipe.args.includes("hierarchy")
           ? runtimeEvidence(mismatch.scenario, { route: "/wrong" })
           : recipe.args.includes("screenshot")
-            ? new Uint8Array([137, 80, 78, 71])
+            ? PNG_SCREENSHOT
             : new Uint8Array(),
         stderr: "",
       }),

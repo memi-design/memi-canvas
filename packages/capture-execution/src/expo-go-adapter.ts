@@ -56,7 +56,7 @@ import {
   sandboxProcessRecipe,
 } from "./process-policy.js";
 import type { PortLease, ProcessStarter } from "./react-web-adapter.js";
-import { verifyStableFrames } from "./stability.js";
+import { readPngDimensions, verifyStableFrames } from "./stability.js";
 
 export interface ExpoGoMetroAuthority {
   readonly executable: string;
@@ -216,6 +216,7 @@ interface CaptureState {
   readonly fixtureFingerprint: `sha256:${string}`;
   readonly sourceRevision: string;
   readonly evidence: ExpoRuntimeEvidenceV1;
+  readonly dimensions: Readonly<{ width: number; height: number }>;
 }
 
 function contained(root: string, candidate: string): boolean {
@@ -906,6 +907,28 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           "Runtime capture did not produce a stable frame pair.",
       );
     }
+    const dimensions = readPngDimensions(stableScreenshot);
+    if (dimensions === null) {
+      throw new CaptureExecutionError(
+        "verify",
+        "INVALID_PNG",
+        true,
+        "Simulator capture did not return a PNG with a valid IHDR chunk.",
+      );
+    }
+    const expectedWidth = scenario.viewport.width * scenario.viewport.scale;
+    const expectedHeight = scenario.viewport.height * scenario.viewport.scale;
+    if (
+      dimensions.width !== expectedWidth ||
+      dimensions.height !== expectedHeight
+    ) {
+      throw new CaptureExecutionError(
+        "verify",
+        "VIEWPORT_MISMATCH",
+        false,
+        `Simulator pixels ${dimensions.width}x${dimensions.height} contradict the planned viewport ${expectedWidth}x${expectedHeight}.`,
+      );
+    }
     const hierarchyResult = await this.#execute(
       {
         executable: this.#options.maestroExecutable,
@@ -951,6 +974,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         })),
         sourceRevision,
         evidence,
+        dimensions,
       }),
     });
     return raw;
@@ -998,11 +1022,11 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           artifactId: state.screenshot.id,
           hash: state.screenshot.hash,
           height:
-            state.scenario.viewport.height * state.scenario.viewport.scale,
+            state.dimensions.height,
           kind: "image/png",
           src: `memi-artifact://localhost/${state.screenshot.id}`,
           sourceUrl: `memi-source://repository/${sourceAnchor.relativePath}`,
-          width: state.scenario.viewport.width * state.scenario.viewport.scale,
+          width: state.dimensions.width,
         },
         authority: "local_capture",
         binding: {
@@ -1072,9 +1096,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       sourceRevision: state.sourceRevision,
       fixtureFingerprint: state.fixtureFingerprint,
       dimensions: {
-        width: state.scenario.viewport.width * state.scenario.viewport.scale,
-        height:
-          state.scenario.viewport.height * state.scenario.viewport.scale,
+        width: state.dimensions.width,
+        height: state.dimensions.height,
         scale: state.scenario.viewport.scale,
       },
       verification: {
