@@ -5,6 +5,11 @@ import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+import {
+  resolveBuzzrPilotWorktreeRoot,
+  selectBuzzrPilotScenarios,
+} from "./buzzr-pilot-contract.js";
+
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const APP_DATA = join(
   homedir(),
@@ -12,19 +17,23 @@ const APP_DATA = join(
   "Application Support",
   "design.memi.canvas",
 );
-const MANAGED_WORKTREE_ROOT = join(
-  homedir(),
-  "Library",
-  "Caches",
-  "design.memi.canvas",
-  "capture-worktrees",
-);
 const REPOSITORY = process.env.MEMI_BUZZR_REPOSITORY;
 if (REPOSITORY === undefined || REPOSITORY.trim().length === 0) {
   throw new Error(
     "Set MEMI_BUZZR_REPOSITORY to the local Buzzr checkout before running the pilot.",
   );
 }
+const MANAGED_WORKTREE_ROOT = resolveBuzzrPilotWorktreeRoot({
+  configuredRoot: process.env.MEMI_BUZZR_PILOT_WORKTREE_ROOT,
+  defaultRoot: join(
+    homedir(),
+    "Library",
+    "Caches",
+    "design.memi.canvas",
+    "capture-worktrees",
+  ),
+  repositoryRoot: REPOSITORY,
+});
 const PACKAGED_SIDECAR = resolve(
   "apps/macos/src-tauri/binaries/memi-canvas-runtime-aarch64-apple-darwin",
 );
@@ -276,8 +285,7 @@ try {
       }),
     ).plan;
     if (planned === undefined) throw new Error("The Buzzr import plan is missing.");
-    const pilot = planned.scenarios.find((scenario) => scenario.route === "/sign-in");
-    if (pilot === undefined) throw new Error("Buzzr has no capturable signed-out sign-in scenario.");
+    const pilot = selectBuzzrPilotScenarios(planned.scenarios);
     const approvedRecipeHashes = [
       ...planned.recipes.map((recipe) => recipe.hash),
       ...(planned.dependencyPreparations ?? []).map((preparation) => preparation.planFingerprint),
@@ -285,11 +293,11 @@ try {
     started = resultOrThrow(
       await exchange(socketPath, token, "imports.start", {
         repositoryPath: REPOSITORY,
-        projectName: "Buzzr pilot",
+        projectName: "Buzzr auth flow",
         selectedHarness: null,
         planToken: planned.token,
         approvedRecipeHashes,
-        pilotScenarioIds: [pilot.id],
+        pilotScenarioIds: pilot.map(({ id }) => id),
       }),
     ).job;
   }

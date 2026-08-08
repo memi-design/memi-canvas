@@ -22,8 +22,8 @@ describe("Buzzr pilot contract", () => {
   });
 
   it("fails closed when any required auth-flow screen is absent", () => {
-    expect(() => selectBuzzrPilotScenarios(scenarios.slice(0, 3))).toThrow(
-      /forgot-password, sign-up/u,
+    expect(() => selectBuzzrPilotScenarios(scenarios.slice(0, 1))).toThrow(
+      /sign-up, \/forgot-password/u,
     );
   });
 
