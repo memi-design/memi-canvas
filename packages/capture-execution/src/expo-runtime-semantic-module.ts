@@ -16,6 +16,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Animated,
   findNodeHandle,
   Image,
   Linking,
@@ -27,6 +28,9 @@ const SOURCE_REVISION = ${JSON.stringify(sourceRevision)};
 const READINESS_MARKER = ${JSON.stringify(`MEMI_CAPTURE_READY_V1:${readinessToken}`)};
 const NONCE = /^[0-9A-HJKMNP-TV-Z]{26}$/u;
 const EVIDENCE_PREFIX = "MEMI_CAPTURE_EVIDENCE_V1:";
+const memiAnimatedLoop = Animated.loop.bind(Animated);
+Animated.loop = (animation, configuration = {}) =>
+  memiAnimatedLoop(animation, { ...configuration, iterations: 0 });
 const ParentLayerContext = createContext(null);
 let registry = new Map();
 let listeners = new Set();
