@@ -214,6 +214,24 @@ describe("CanvasWorkbench V3 production authority boundary", () => {
     });
   });
 
+  it("creates and activates a new canvas through the public navigator", async () => {
+    render(
+      createElement(CanvasWorkbench, {
+        initialNavigatorMode: "canvases",
+        project: canvasWorkbenchFixture,
+        v3Session: v3Session(),
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "New canvas" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Page 2" }).getAttribute(
+        "aria-current",
+      )).toBe("page");
+    });
+  });
+
   it("persists an actual page switch and restores it when the workbench reopens", async () => {
     const session = multiPageV3Session();
     let workspace: WorkspaceSessionDraftV1 = createWorkspaceSessionDraft({
