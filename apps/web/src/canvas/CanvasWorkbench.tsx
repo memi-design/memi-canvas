@@ -5,7 +5,7 @@ import { canvasGridMetrics, canvasPointFromViewport, pointFromEvent } from "./ca
 import { resolveComponentInstance, type WorkbenchNode } from "./model.js";
 import { Inspector } from "./parts.js";
 import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
-import { canReadCanvasSystemClipboard, hasCanvasSessionClipboard, isCanvasNodeDeletable } from "./canvas-clipboard.js";
+import { isCanvasNodeDeletable } from "./canvas-clipboard.js";
 import { projectVisibleItems } from "./canvas-performance.js";
 import { useWorkbenchV3SessionBridge } from "./workbench-v3-session-bridge.js";
 import { createWorkbenchDocumentActions } from "./workbench-document-actions.js";
@@ -23,6 +23,7 @@ import { useWorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
 import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
 import { workbenchInteractionFeedback } from "./workbench-interaction-feedback.js";
+import { createWorkbenchContextMenuProps } from "./workbench-context-menu-props.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -377,7 +378,11 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       : gesture.current?.type === "resize"
         ? [gesture.current.nodeId]
         : [];
-  const interactionFeedback = workbenchInteractionFeedback({ gesture: gesture.current, nodes: projectedSceneNodes, pointer: viewportPointer.current });
+  const interactionFeedback = workbenchInteractionFeedback({
+    gesture: gesture.current,
+    nodes: projectedSceneNodes,
+    pointer: viewportPointer.current,
+  });
   const visibleNodes = projectVisibleItems(
     projectedSceneNodes,
     (node) => ({
@@ -471,64 +476,23 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     setSelectionMarquee,
     spacePressed,
   });
-  const contextNode =
-    contextMenu === null
-      ? undefined
-      : scene.nodes.find((node) => node.id === contextMenu.nodeId);
-  const contextMenuProps =
-    contextMenu === null || contextNode === undefined
-      ? null
-      : {
-          canCut: canDeleteSelection,
-          canDelete: isCanvasNodeDeletable(contextNode),
-          canDetach:
-            (contextNode.kind === "CodeFrame" ||
-              contextNode.kind === "RoutePlaceholder") &&
-            contextNode.source !== undefined,
-          canGroup: selectedNodeIds.length > 1,
-          canPaste:
-            hasCanvasSessionClipboard() || canReadCanvasSystemClipboard(),
-          canUngroup: selectedNodeIds.some(
-            (id) =>
-              scene.nodes.find((node) => node.id === id)?.kind ===
-              ("Group" as never),
-          ),
-          node: contextNode,
-          onClose: () => setContextMenu(null),
-          onCopy: copySelection,
-          onCut: cutSelection,
-          onDelete: deleteSelection,
-          onDetach: detachSelection,
-          onDuplicate: duplicateSelection,
-          onCreateComponent: createComponentFromSelection,
-          onFrame: frameSelection,
-          onGroup: groupSelection,
-          onAskAgent: () => {
-            setPrompt(`Review and improve ${contextNode.name}`);
-          },
-          ...(() => {
-            const sourcePath =
-              contextNode.component?.source?.sourceAnchor ??
-              contextNode.source?.sourceAnchor;
-            return sourcePath === undefined ||
-              onOpenSourceInCode === undefined
-              ? {}
-              : {
-                  onOpenSource: () => onOpenSourceInCode(sourcePath),
-                };
-          })(),
-          onOrder: orderSelection,
-          onPaste: pasteSelection,
-          onPasteAtCursor: () => pasteSelection(undefined, {
-            kind: "cursor",
-            point: contextMenu.canvasPoint,
-          }),
-          onToggleLock: () => toggleSelectionProperty("locked"),
-          onToggleVisibility: () => toggleSelectionProperty("hidden"),
-          onUngroup: ungroupSelection,
-          x: contextMenu.x,
-          y: contextMenu.y,
-        };
+  const contextMenuProps = createWorkbenchContextMenuProps({
+    actions: {
+      copySelection, createComponentFromSelection, cutSelection,
+      deleteSelection, detachSelection, duplicateSelection, frameSelection,
+      groupSelection, orderSelection, pasteSelection,
+      toggleSelectionProperty, ungroupSelection,
+    },
+    canDeleteSelection,
+    contextMenu,
+    nodes: scene.nodes,
+    onAskAgent: (name) => setPrompt(`Review and improve ${name}`),
+    onClose: () => setContextMenu(null),
+    ...(onOpenSourceInCode === undefined
+      ? {}
+      : { onOpenSource: onOpenSourceInCode }),
+    selectedNodeIds,
+  });
 
   if (v3SessionStatus !== "ready") {
     const message = v3SessionStatus === "error"
