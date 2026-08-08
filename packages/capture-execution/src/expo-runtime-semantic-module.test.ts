@@ -13,6 +13,8 @@ describe("Expo runtime semantic module", () => {
     expect(module).toContain("captureSessionFromUrl(event.url)");
     expect(module).toContain("Linking.getInitialURL()");
     expect(module).toContain("setSession(fromUrl)");
+    expect(module).toContain("expectedRoute: url.pathname");
+    expect(module).toContain("pathname !== session.expectedRoute");
   });
 
   it("freezes continuous React Native loops in the managed capture runtime", () => {
