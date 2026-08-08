@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -613,6 +613,7 @@ async function selectCaptureSimulator(
 export function simulatorPolicy(
   authority: SimulatorPolicyAuthority,
   commands: readonly ProcessCommandRule[],
+  transientEvidenceRoot?: string,
 ): ProcessExecutionPolicy {
   const directSimulator =
     "directSimulator" in authority && authority.directSimulator === true;
@@ -640,6 +641,9 @@ export function simulatorPolicy(
       allowedReadRoots: Object.freeze([
         authority.applicationRoot,
         authority.appDataRoot,
+        ...(transientEvidenceRoot === undefined
+          ? []
+          : [transientEvidenceRoot]),
         "/System",
         "/Library",
         "/usr",
@@ -648,6 +652,9 @@ export function simulatorPolicy(
       ]),
       allowedWriteRoots: Object.freeze([
         authority.appDataRoot,
+        ...(transientEvidenceRoot === undefined
+          ? []
+          : [transientEvidenceRoot]),
         ...(directSimulator ? [coreSimulatorRoot] : []),
       ]),
       ...(directSimulator ? { allowHostHome: true as const } : {}),
@@ -660,6 +667,10 @@ export function simulatorPolicy(
       network: "none" as const,
     }),
   });
+}
+
+export async function createSimulatorScreenshotStagingRoot(): Promise<string> {
+  return mkdtemp("/private/tmp/design.memi.canvas-capture-");
 }
 
 function simctlRule(
@@ -682,20 +693,20 @@ function simctlRule(
 
 /**
  * `simctl io screenshot` writes to a path rather than consistently emitting
- * PNG bytes on stdout. Keep that transient path inside Memi app data, read it
- * through the bounded no-follow evidence reader, and remove it immediately.
+ * PNG bytes on stdout. CoreSimulator cannot always write through an external
+ * volume's privacy boundary, so stage one bounded screenshot in a private
+ * internal temporary directory and remove the directory immediately.
  */
 function simulatorScreenshotCapture(authority: ExpoGoAdapterAuthority) {
   return async (
     input: Readonly<{ readonly deviceId: string }>,
     signal: AbortSignal,
   ): Promise<Uint8Array> => {
-    const evidenceRoot = resolve(authority.appDataRoot, "capture-evidence");
+    const evidenceRoot = await createSimulatorScreenshotStagingRoot();
     const screenshotPath = resolve(
       evidenceRoot,
       `simctl-${randomBytes(13).toString("hex")}.png`,
     );
-    await mkdir(evidenceRoot, { recursive: true, mode: 0o700 });
     const policy = simulatorPolicy(authority, [
       simctlRule(authority, [
         literal("io"),
@@ -704,7 +715,7 @@ function simulatorScreenshotCapture(authority: ExpoGoAdapterAuthority) {
         literal("--type=png"),
         literal(screenshotPath),
       ]),
-    ]);
+    ], evidenceRoot);
     const recipe: ProcessRecipe = Object.freeze({
       executable: authority.simctlExecutable,
       args: Object.freeze([
@@ -731,13 +742,13 @@ function simulatorScreenshotCapture(authority: ExpoGoAdapterAuthority) {
       return await readSettledEvidenceFile({
         read: () => readBoundedFile(
           screenshotPath,
-          authority.appDataRoot,
+          evidenceRoot,
           MAXIMUM_SIMULATOR_SCREENSHOT_BYTES,
         ),
         signal,
       });
     } finally {
-      await rm(screenshotPath, { force: true });
+      await rm(evidenceRoot, { recursive: true, force: true });
     }
   };
 }

@@ -17,6 +17,7 @@ import React, {
 import {
   findNodeHandle,
   Image,
+  Linking,
   StyleSheet,
   UIManager,
 } from "react-native";
@@ -77,6 +78,19 @@ function captureSession(nonce, state) {
     return null;
   }
   return { nonce, state };
+}
+
+function captureSessionFromUrl(value) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    const url = new URL(value);
+    return captureSession(
+      url.searchParams.get("__memi_capture"),
+      url.searchParams.get("__memi_state"),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function storedCaptureSession(value) {
@@ -381,6 +395,24 @@ export function MemiCaptureRuntimeAttestation() {
   const [session, setSession] = useState(() => captureSession(nonce, state));
   const [registryRevision, setRegistryRevision] = useState(0);
   useEffect(() => subscribe(() => setRegistryRevision((value) => value + 1)), []);
+  useEffect(() => {
+    let cancelled = false;
+    const acceptUrl = (value) => {
+      const fromUrl = captureSessionFromUrl(value);
+      if (!cancelled && fromUrl !== null) setSession(fromUrl);
+    };
+    void Linking.getInitialURL()
+      .then(acceptUrl)
+      .catch(() => undefined);
+    const subscription = Linking.addEventListener("url", (event) => {
+      const fromUrl = captureSessionFromUrl(event.url);
+      if (!cancelled && fromUrl !== null) setSession(fromUrl);
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, []);
   useEffect(() => {
     const fromParameters = captureSession(nonce, state);
     if (fromParameters !== null) {
