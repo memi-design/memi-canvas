@@ -498,6 +498,11 @@ describe("ExpoGoCaptureAdapter", () => {
       [target.scenario],
     );
     const launch = await target.adapter.launch(target.context, preparation);
+
+    expect(target.waitForCaptureSettling).toHaveBeenCalledWith(
+      5_000,
+      target.context.signal,
+    );
     await target.adapter.capture(target.context, launch, target.scenario);
 
     expect(target.processStarter.start).toHaveBeenCalledWith(
