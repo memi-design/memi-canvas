@@ -1,5 +1,6 @@
 import {
   canReadCanvasSystemClipboard,
+  clearCanvasSessionClipboard,
   copyCanvasSelection,
   createCanvasImageNodeAtPoint,
   cutCanvasSelection,
@@ -7,6 +8,9 @@ import {
   readCanvasClipboardFromSystem,
   readCanvasImageFromSystem,
   readCanvasSessionClipboard,
+  readCanvasSessionImage,
+  storeCanvasSessionClipboard,
+  storeCanvasSessionImage,
   writeCanvasClipboardToSystem,
   type CanvasClipboardImage,
   type CanvasClipboardPayload,
@@ -158,6 +162,8 @@ export function createWorkbenchClipboardActions(
     if (node === null) {
       return;
     }
+    clearCanvasSessionClipboard();
+    storeCanvasSessionImage(image);
     const nextNodes = [...context.nodeReservation.get(), node];
     context.nodeReservation.set(nextNodes);
     context.commit(
@@ -178,6 +184,9 @@ export function createWorkbenchClipboardActions(
   ) => {
     const initiatingScope = context.nodeReservation.getScope();
     const commitPaste = (payload = readCanvasSessionClipboard()) => {
+      if (payload === null) {
+        return;
+      }
       const result = pasteCanvasClipboard(
         context.nodeReservation.get(),
         payload,
@@ -186,6 +195,7 @@ export function createWorkbenchClipboardActions(
       if (result === null) {
         return;
       }
+      storeCanvasSessionClipboard(payload);
       context.nodeReservation.set(result.nodes);
       const count = result.pastedNodes.length;
       context.commit(
@@ -203,7 +213,16 @@ export function createWorkbenchClipboardActions(
       return;
     }
     if (!canReadCanvasSystemClipboard()) {
-      commitPaste(readCanvasSessionClipboard());
+      const image = readCanvasSessionImage();
+      if (image !== null) {
+        const requested = pastePlacement(context, placement);
+        pasteImage(
+          image,
+          requested.kind === "cursor" ? requested.point : undefined,
+        );
+      } else {
+        commitPaste(readCanvasSessionClipboard());
+      }
       return;
     }
     void readCanvasImageFromSystem().then((systemImage) => {
@@ -219,8 +238,20 @@ export function createWorkbenchClipboardActions(
         return;
       }
       void readCanvasClipboardFromSystem().then((systemPayload) => {
-        if (context.nodeReservation.isScopeCurrent(initiatingScope)) {
+        if (!context.nodeReservation.isScopeCurrent(initiatingScope)) {
+          return;
+        }
+        if (systemPayload !== null) {
           commitPaste(systemPayload);
+          return;
+        }
+        const image = readCanvasSessionImage();
+        if (image !== null) {
+          const requested = pastePlacement(context, placement);
+          pasteImage(
+            image,
+            requested.kind === "cursor" ? requested.point : undefined,
+          );
         }
       });
     });
