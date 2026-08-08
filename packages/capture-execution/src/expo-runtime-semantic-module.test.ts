@@ -14,4 +14,15 @@ describe("Expo runtime semantic module", () => {
     expect(module).toContain("Linking.getInitialURL()");
     expect(module).toContain("setSession(fromUrl)");
   });
+
+  it("freezes continuous React Native loops in the managed capture runtime", () => {
+    const module = expoRuntimeSemanticModule(
+      "revision-1",
+      "0123456789ABCDEF0123456789ABCDEF",
+    );
+
+    expect(module).toContain("const memiAnimatedLoop = Animated.loop");
+    expect(module).toContain("iterations: 0");
+    expect(module).toContain("Animated.loop =");
+  });
 });
