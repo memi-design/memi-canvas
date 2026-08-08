@@ -34,6 +34,11 @@ import {
   type ExpoRuntimeEvidenceV1,
 } from "./expo-runtime-evidence.js";
 import {
+  prepareManagedDependencyBridge,
+  restoreManagedDependencyBridge,
+  type PreparedManagedDependencyBridge,
+} from "./managed-dependency-bridge.js";
+import {
   prepareExpoRuntimeInstrumentation,
   restoreExpoRuntimeInstrumentation,
   type PreparedExpoRuntimeInstrumentation,
@@ -311,6 +316,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
   #launches: Readonly<Record<string, LaunchState>> = Object.freeze({});
   #captures: Readonly<Record<string, CaptureState>> = Object.freeze({});
   #runtimeInstrumentation: PreparedExpoRuntimeInstrumentation | null = null;
+  #managedDependencyBridge: PreparedManagedDependencyBridge | null = null;
 
   constructor(options: ExpoGoCaptureAdapterOptions) {
     const expoGo = options.metro.routeAuthority === "expo-go-project-url";
@@ -510,6 +516,16 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         this.#runtimeInstrumentation = await prepareExpoRuntimeInstrumentation({
           managedWorktreeRoot: this.#options.managedWorktreeRoot,
           sourceRevision: sourceRevision!,
+        });
+      }
+      if (
+        this.#options.localDevelopmentMetroLaunch !== undefined &&
+        this.#managedDependencyBridge === null
+      ) {
+        this.#managedDependencyBridge = await prepareManagedDependencyBridge({
+          projectRoot: this.#options.projectRoot,
+          dependencyRoot:
+            this.#options.localDevelopmentMetroLaunch.dependencyRoot,
         });
       }
       const device = await this.#options.deviceResolver(context.signal);
@@ -988,16 +1004,27 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         await restoreExpoRuntimeInstrumentation(prepared);
       }
     };
+    const restoreDependencyBridge = async (): Promise<void> => {
+      const prepared = this.#managedDependencyBridge;
+      this.#managedDependencyBridge = null;
+      if (prepared !== null) {
+        await restoreManagedDependencyBridge(prepared);
+      }
+    };
     if (launch === null) {
       await Promise.all([
         this.#restorePreparationAnimations(new AbortController().signal),
         restoreInstrumentation(),
+        restoreDependencyBridge(),
       ]);
       return;
     }
     const state = this.#launches[launch.id];
     if (state === undefined) {
-      await restoreInstrumentation();
+      await Promise.all([
+        restoreInstrumentation(),
+        restoreDependencyBridge(),
+      ]);
       return;
     }
     const cleanupSignal = new AbortController().signal;
@@ -1016,6 +1043,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       ),
       preparation?.restoreSimulatorAnimations?.(cleanupSignal) ?? Promise.resolve(),
       restoreInstrumentation(),
+      restoreDependencyBridge(),
     ]);
     const releaseResults = await Promise.allSettled([
       this.#options.releaseDevice?.(cleanupSignal) ?? Promise.resolve(),

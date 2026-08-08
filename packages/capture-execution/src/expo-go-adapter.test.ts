@@ -336,6 +336,11 @@ describe("ExpoGoCaptureAdapter", () => {
   });
 
   it("launches a declared development client through its verified local Expo CLI", async () => {
+    const dependencyParent = await mkdtemp(join(tmpdir(), "memi-expo-cli-"));
+    const dependencyRoot = join(dependencyParent, "node_modules");
+    const cliPath = join(dependencyRoot, "expo", "bin", "cli");
+    await mkdir(join(dependencyRoot, "expo", "bin"), { recursive: true });
+    await writeFile(cliPath, "process.exit(0);\n");
     const target = await fixture({
       metro: {
         executable: "/opt/memi/npx",
@@ -346,9 +351,9 @@ describe("ExpoGoCaptureAdapter", () => {
       },
       localDevelopmentMetroLaunch: {
         executable: "/opt/memi/node",
-        cliPath: "/private/managed/node_modules/expo/bin/cli",
-        dependencyRoot: "/private/managed/node_modules",
-        environment: { NODE_PATH: "/private/managed/node_modules" },
+        cliPath,
+        dependencyRoot,
+        environment: { NODE_PATH: dependencyRoot },
       },
     });
     const preparation = await target.adapter.prepare(
@@ -363,7 +368,7 @@ describe("ExpoGoCaptureAdapter", () => {
       {
         executable: "/opt/memi/node",
         args: [
-          "/private/managed/node_modules/expo/bin/cli",
+          cliPath,
           "start",
           "--dev-client",
           "--localhost",
@@ -371,7 +376,7 @@ describe("ExpoGoCaptureAdapter", () => {
           "19000",
         ],
         cwd: target.root,
-        environment: { NODE_PATH: "/private/managed/node_modules" },
+        environment: { NODE_PATH: dependencyRoot },
       },
       target.options.processPolicy,
       target.context.signal,
