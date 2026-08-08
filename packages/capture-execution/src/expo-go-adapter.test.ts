@@ -483,6 +483,54 @@ describe("ExpoGoCaptureAdapter", () => {
       .resolves.toBe(ROOT_LAYOUT);
   });
 
+  it("waits for the exact managed runtime readiness marker before route handoff", async () => {
+    let reads = 0;
+    const readSimulatorRuntimeEvidence = vi.fn(async () => {
+      reads += 1;
+      if (reads === 1) {
+        return new TextEncoder().encode("MEMI_CAPTURE_READY_V1:STALE");
+      }
+      const metadata = JSON.parse(
+        await readFile(
+          join(
+            target.root,
+            ".memi/capture/runtime-attestation/metadata.json",
+          ),
+          "utf8",
+        ),
+      ) as { readonly readinessToken: string };
+      return new TextEncoder().encode(
+        `MEMI_CAPTURE_READY_V1:${metadata.readinessToken}`,
+      );
+    });
+    const target = await fixture({
+      managedRuntimeInstrumentation: true,
+      metro: {
+        executable: "/opt/memi/npx",
+        args: ["expo", "start", "--dev-client", "--localhost"],
+        appId: "com.example.client",
+        routeAuthority: "expo-development-client-url",
+        scheme: "exp+example",
+        routeScheme: "example",
+      },
+      readSimulatorRuntimeEvidence,
+      runtimeEvidencePollDelayMs: 0,
+    });
+    await mkdir(join(target.root, "app"), { recursive: true });
+    await writeFile(join(target.root, "app/_layout.tsx"), ROOT_LAYOUT);
+    await writeFile(join(target.root, "app/index.tsx"), SCREEN);
+
+    const preparation = await target.adapter.prepare(
+      target.context,
+      application,
+      [target.scenario],
+    );
+    await target.adapter.launch(target.context, preparation);
+
+    expect(readSimulatorRuntimeEvidence).toHaveBeenCalledTimes(2);
+    expect(target.waitForDevelopmentClientAttachment).not.toHaveBeenCalled();
+  });
+
   it("launches a managed development client through its declared scheme", async () => {
     const target = await fixture({
       metro: {
