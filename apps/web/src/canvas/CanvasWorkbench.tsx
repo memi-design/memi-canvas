@@ -21,6 +21,7 @@ import { EMPTY_RECONSTRUCTION_REVIEWS, useReconstructionReviewWorkspace } from "
 import { createWorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
 import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projection.js";
 import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
+import { createWorkbenchPageV3 } from "./workbench-page-actions-v3.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -109,10 +110,26 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   if (v3Session === undefined) {
     return <div role="alert">Canvas V3 session is unavailable.</div>;
   }
+  const reportV3Failure = (message: string) => setTrace((current) => [
+    ...current,
+    { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
+  ]);
+  const createPage = () => {
+    if (canonicalAuthority === null) {
+      reportV3Failure("Canvas V3 is still opening; page was not created.");
+      return;
+    }
+    void createWorkbenchPageV3(canonicalAuthority)
+      .then(selectActivePage)
+      .catch((error: unknown) => reportV3Failure(
+        error instanceof Error ? error.message : "Canvas page creation failed.",
+      ));
+  };
   const pageContext = canvasPageContextV3({
     activePageId,
     legacyDocumentId: project.document.id,
     navigation: pageNavigation,
+    onCreatePage: createPage,
     onSelectPage: selectActivePage,
     reviews: reconstructionReviews,
     session: v3Session,
@@ -124,10 +141,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     useWorkbenchV3SessionBridge({
       authority: canonicalAuthority,
       session: pageContext.session,
-      onFailure: (message) => setTrace((current) => [
-        ...current,
-        { id: `workbench-v3-error-${traceSequence.current++}`, action: message, targetNodeId: "canvas" },
-      ]),
+      onFailure: reportV3Failure,
     });
   const unavailableMutation = (..._args: unknown[]): never => { throw new Error("Canvas V2 mutation is unavailable in the V3 workbench."); };
   const selectedNodeId = selectedNodeIds.at(-1) ?? null;

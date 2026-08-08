@@ -12,6 +12,7 @@ interface CanvasPageContextV3Input {
   readonly authoritativeDocument?: CanvasDocumentV3;
   readonly legacyDocumentId: string;
   readonly navigation: CanvasPageNavigation | undefined;
+  readonly onCreatePage: () => void;
   readonly onSelectPage: (pageId: string) => void;
   readonly reviews: readonly CanvasReconstructionReview[];
   readonly session: CanvasWorkbenchV3Session;
@@ -23,6 +24,7 @@ export function canvasPageContextV3({
   authoritativeDocument,
   legacyDocumentId,
   navigation,
+  onCreatePage,
   onSelectPage,
   reviews,
   session,
@@ -32,7 +34,7 @@ export function canvasPageContextV3({
   return Object.freeze({
     navigation: navigation ?? Object.freeze({
       activePageId,
-      onCreatePage: () => undefined,
+      onCreatePage,
       onSelectPage,
       pages: document.pageIds.map((pageId) => {
         const page = document.pagesById[pageId]!;
