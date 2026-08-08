@@ -81,6 +81,26 @@ async function selectLayer(name: RegExp): Promise<HTMLElement> {
 }
 
 describe("CanvasWorkbench first usable contract", () => {
+  it("reorders a layer through V3 history and restores it with undo", async () => {
+    await renderWorkbench();
+    const welcome = await selectLayer(/Welcome headline.*Text/);
+    const promo = screen.getByRole("treeitem", { name: /Promo panel.*Rectangle/ });
+
+    fireEvent.keyDown(welcome, { altKey: true, key: "ArrowDown" });
+    await waitFor(() => {
+      expect(
+        promo.compareDocumentPosition(welcome) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => {
+      expect(
+        welcome.compareDocumentPosition(promo) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+  });
+
   it("renders lightweight chrome around an unbounded pan-and-zoom viewport", async () => {
     await renderWorkbench();
 
