@@ -279,6 +279,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     duplicateSelection,
     frameSelection,
     groupSelection,
+    moveLayer,
     orderSelection,
     pasteImage,
     pasteSelection,
@@ -555,6 +556,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
         ...(onNavigatorModeChange === undefined
           ? {}
           : { onModeChange: onNavigatorModeChange }),
+        onMoveNode: moveLayer,
         onSelectNode: selectAndRevealNode,
         productMap,
         selectedNodeId,

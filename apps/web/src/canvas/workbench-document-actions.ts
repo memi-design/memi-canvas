@@ -9,6 +9,11 @@ import {
   type WorkbenchNode,
 } from "./model.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
+import {
+  orderWorkbenchHierarchy,
+  planWorkbenchLayerMove,
+  type WorkbenchLayerMove,
+} from "./workbench-layer-move.js";
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import {
   createWorkbenchClipboardActions,
@@ -16,10 +21,13 @@ import {
 } from "./workbench-clipboard-actions.js";
 import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
 
+export type { WorkbenchLayerMove } from "./workbench-layer-move.js";
+
 export interface WorkbenchSemanticCommitOptions {
   readonly selectedIds?: readonly string[];
   readonly targetIds?: readonly string[];
 }
+
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
@@ -45,6 +53,7 @@ export interface WorkbenchDocumentActions extends WorkbenchClipboardActions {
   readonly duplicateSelection: () => void;
   readonly frameSelection: () => void;
   readonly groupSelection: () => void;
+  readonly moveLayer: (move: WorkbenchLayerMove) => void;
   readonly orderSelection: (
     direction: "forward" | "backward" | "front" | "back",
   ) => void;
@@ -177,99 +186,6 @@ export function duplicateWorkbenchSubtrees(
   });
 }
 
-function reorderSiblingIds(
-  siblingIds: readonly string[],
-  selectedIds: ReadonlySet<string>,
-  direction: "forward" | "backward" | "front" | "back",
-): readonly string[] {
-  if (direction === "front") {
-    return [
-      ...siblingIds.filter((id) => !selectedIds.has(id)),
-      ...siblingIds.filter((id) => selectedIds.has(id)),
-    ];
-  }
-  if (direction === "back") {
-    return [
-      ...siblingIds.filter((id) => selectedIds.has(id)),
-      ...siblingIds.filter((id) => !selectedIds.has(id)),
-    ];
-  }
-
-  const reordered = [...siblingIds];
-  const step = direction === "forward" ? 1 : -1;
-  const indexes = reordered
-    .map((id, index) => (selectedIds.has(id) ? index : -1))
-    .filter((index) => index >= 0)
-    .sort((left, right) =>
-      direction === "forward" ? right - left : left - right,
-    );
-  for (const index of indexes) {
-    const adjacentIndex = index + step;
-    if (
-      adjacentIndex >= 0 &&
-      adjacentIndex < reordered.length &&
-      !selectedIds.has(reordered[adjacentIndex] ?? "")
-    ) {
-      const selectedId = reordered[index];
-      const adjacentId = reordered[adjacentIndex];
-      if (selectedId !== undefined && adjacentId !== undefined) {
-        reordered[index] = adjacentId;
-        reordered[adjacentIndex] = selectedId;
-      }
-    }
-  }
-  return reordered;
-}
-
-function hierarchyOrderedNodes(
-  nodes: readonly WorkbenchNode[],
-  selectedIds: ReadonlySet<string>,
-  direction: "forward" | "backward" | "front" | "back",
-): readonly WorkbenchNode[] {
-  const nodesById = new Map(nodes.map((node) => [node.id, node]));
-  const childrenByParent = new Map<string | null, string[]>();
-  for (const node of nodes) {
-    const siblings = childrenByParent.get(node.parentId) ?? [];
-    childrenByParent.set(node.parentId, [...siblings, node.id]);
-  }
-  const selectedParentIds = new Set(
-    nodes
-      .filter(({ id }) => selectedIds.has(id))
-      .map(({ parentId }) => parentId),
-  );
-  for (const parentId of selectedParentIds) {
-    const siblingIds = childrenByParent.get(parentId) ?? [];
-    childrenByParent.set(
-      parentId,
-      [...reorderSiblingIds(siblingIds, selectedIds, direction)],
-    );
-  }
-
-  const orderedNodes: WorkbenchNode[] = [];
-  const visited = new Set<string>();
-  const visit = (id: string) => {
-    if (visited.has(id)) {
-      return;
-    }
-    const node = nodesById.get(id);
-    if (node === undefined) {
-      return;
-    }
-    visited.add(id);
-    orderedNodes.push(node);
-    for (const childId of childrenByParent.get(id) ?? []) {
-      visit(childId);
-    }
-  };
-  for (const rootId of childrenByParent.get(null) ?? []) {
-    visit(rootId);
-  }
-  for (const node of nodes) {
-    visit(node.id);
-  }
-  return orderedNodes;
-}
-
 export function createWorkbenchDocumentActions(
   context: DocumentActionContext,
 ): WorkbenchDocumentActions {
@@ -349,6 +265,13 @@ export function createWorkbenchDocumentActions(
         : `Duplicated ${selectedNodes.length} layers`,
       duplicates.at(-1)?.id ?? "canvas",
     );
+  };
+
+  const moveLayer = (move: WorkbenchLayerMove) => {
+    const plan = planWorkbenchLayerMove(context.nodes, move);
+    if (plan === null) return;
+    commit(plan.label, plan.receipt, plan.nextNodes, plan.options);
+    context.appendTrace(plan.trace, move.nodeId);
   };
 
   const deleteSelection = () => {
@@ -644,7 +567,7 @@ export function createWorkbenchDocumentActions(
       return;
     }
     const selected = new Set(context.selectedNodeIds);
-    const nextNodes = hierarchyOrderedNodes(
+    const nextNodes = orderWorkbenchHierarchy(
       context.nodes,
       selected,
       direction,
@@ -682,6 +605,7 @@ export function createWorkbenchDocumentActions(
     duplicateSelection,
     frameSelection,
     groupSelection,
+    moveLayer,
     orderSelection,
     toggleSelectionProperty,
     ungroupSelection,
