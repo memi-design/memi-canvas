@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import type { WorkbenchNode } from "./model.js";
 
@@ -16,6 +16,7 @@ export function useWorkbenchNodeReservation(
   scope = "canvas",
 ): WorkbenchNodeReservation {
   const nodesRef = useRef(nodes);
+  const activeRef = useRef(false);
   const revisionRef = useRef(revision);
   const scopeRef = useRef(scope);
   const reservationRef = useRef<WorkbenchNodeReservation>(null);
@@ -27,10 +28,17 @@ export function useWorkbenchNodeReservation(
   reservationRef.current ??= {
     get: () => nodesRef.current,
     getScope: () => scopeRef.current,
-    isScopeCurrent: (candidate) => scopeRef.current === candidate,
+    isScopeCurrent: (candidate) =>
+      activeRef.current && scopeRef.current === candidate,
     set: (next) => {
       nodesRef.current = next;
     },
   };
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
   return reservationRef.current;
 }
