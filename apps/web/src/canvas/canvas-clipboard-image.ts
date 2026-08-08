@@ -287,7 +287,6 @@ export async function readCanvasImageFromSystem(
         await item.getType("image/png"),
       );
       if (image !== null) {
-        storeCanvasSessionImage(image);
         return image;
       }
     }
