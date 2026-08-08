@@ -392,8 +392,6 @@ describe("ExpoGoCaptureAdapter", () => {
           "start",
           "--dev-client",
           "--localhost",
-          "--config",
-          join(await realpath(target.root), ".memi/capture/metro-bridge/MemiMetroConfig.cjs"),
           "--port",
           "19000",
         ],

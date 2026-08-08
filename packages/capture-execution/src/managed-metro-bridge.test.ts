@@ -30,9 +30,11 @@ describe("managed Metro bridge", () => {
       dependencies: { "widget-bridge": "file:./modules/widget-bridge" },
     }, null, 2)}\n`;
     await writeFile(join(projectRoot, "package.json"), originalPackage);
+    const originalMetroConfig =
+      "module.exports = { resolver: { sourceExts: ['js'] } };\n";
     await writeFile(
       join(projectRoot, "metro.config.js"),
-      "module.exports = { resolver: { sourceExts: ['js'] } };\n",
+      originalMetroConfig,
     );
 
     const prepared = await prepareManagedMetroBridge({
@@ -53,8 +55,12 @@ describe("managed Metro bridge", () => {
     const wrapper = await readFile(prepared.configPath, "utf8");
     const canonicalProjectRoot = await realpath(projectRoot);
     expect(prepared.configPath).toBe(
-      managedMetroConfigPath(await realpath(projectRoot)),
+      join(await realpath(projectRoot), "metro.config.js"),
     );
+    expect(managedMetroConfigPath(await realpath(projectRoot))).toBe(
+      prepared.configPath,
+    );
+    expect(wrapper).toContain("original-metro-config.cjs");
     expect(wrapper).toContain(
       JSON.stringify(await realpath(dependencyRoot)),
     );
@@ -69,6 +75,8 @@ describe("managed Metro bridge", () => {
 
     await expect(readFile(join(projectRoot, "package.json"), "utf8"))
       .resolves.toBe(originalPackage);
+    await expect(readFile(join(projectRoot, "metro.config.js"), "utf8"))
+      .resolves.toBe(originalMetroConfig);
     await expect(lstat(join(projectRoot, ".memi/capture/metro-bridge")))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
