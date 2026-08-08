@@ -27,6 +27,12 @@ async function selectPromoPanel(): Promise<void> {
   if (drafts.getAttribute("aria-expanded") === "false") {
     fireEvent.click(drafts.querySelector(".layer-group-row")!);
   }
+  const campaign = within(tree).getByRole("treeitem", {
+    name: /Campaign card.*DraftFrame/,
+  });
+  if (campaign.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(campaign.querySelector(".layer-branch-toggle")!);
+  }
   fireEvent.click(
     await within(tree).findByRole("treeitem", {
       name: /Promo panel.*Rectangle/,

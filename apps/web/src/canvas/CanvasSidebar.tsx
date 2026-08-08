@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { EditorIcon, type EditorIconName } from "./icons.js";
+import type { LayerMoveRequest } from "./layers-tree.js";
 import type { WorkbenchNode } from "./model.js";
 import { Layers } from "./parts.js";
 import { ProductMapPanel } from "./ProductMapPanel.js";
@@ -88,10 +89,12 @@ function CanvasesPanel({
 
 function LayersPanel({
   nodes,
+  onMoveNode,
   onSelectNode,
   selectedNodeId,
 }: {
   readonly nodes: readonly WorkbenchNode[];
+  readonly onMoveNode?: (move: LayerMoveRequest) => void;
   readonly onSelectNode: (nodeId: string) => void;
   readonly selectedNodeId: string | null;
 }) {
@@ -113,6 +116,7 @@ function LayersPanel({
       ) : (
         <Layers
           nodes={nodes}
+          {...(onMoveNode === undefined ? {} : { onMove: onMoveNode })}
           onSelect={onSelectNode}
           selectedNodeId={selectedNodeId}
         />
@@ -190,6 +194,7 @@ export function CanvasSidebar({
   navigation,
   nodes,
   onModeChange,
+  onMoveNode,
   onSelectNode,
   productMap,
   selectedNodeId,
@@ -198,6 +203,7 @@ export function CanvasSidebar({
   readonly navigation: CanvasPageNavigation;
   readonly nodes: readonly WorkbenchNode[];
   readonly onModeChange?: (mode: NavigatorMode) => void;
+  readonly onMoveNode?: (move: LayerMoveRequest) => void;
   readonly onSelectNode: (nodeId: string) => void;
   readonly productMap: ProductMap;
   readonly selectedNodeId: string | null;
@@ -235,6 +241,7 @@ export function CanvasSidebar({
         ) : mode === "layers" ? (
           <LayersPanel
             nodes={nodes}
+            {...(onMoveNode === undefined ? {} : { onMoveNode })}
             onSelectNode={onSelectNode}
             selectedNodeId={selectedNodeId}
           />
