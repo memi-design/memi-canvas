@@ -136,5 +136,27 @@ describe("canvas selection feedback", () => {
         .getByLabelText(`Selection bounds for ${sourceLinked.name}`)
         .getAttribute("aria-description"),
     ).toContain("source-linked");
+
+    const inheritedSource = {
+      ...selectedNode("Frame"),
+      id: "nested-source-frame",
+      name: "Nested source frame",
+    };
+    rerender(
+      <CanvasNodeView
+        node={inheritedSource}
+        onPointerDown={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelect={vi.fn()}
+        selected
+        sourceLinked
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: `${inheritedSource.name} on canvas` })
+        .parentElement?.getAttribute("data-interaction-restriction"),
+    ).toBe("source-linked");
   });
 });
