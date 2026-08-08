@@ -293,46 +293,97 @@ export function LocalDesignConsumer({
     runtimeClient,
     runtimeProjectId,
   ]);
-  const sessionController = useMemo(
-    () => {
-      if (workspaceRuntime === undefined) return undefined;
-      const draft = createCanvasWorkspaceSessionDraft(
-        canvasProject,
-        runtimeProjectId,
-      );
-      const identityAlignedDraft = Object.freeze({
-        ...draft,
-        documentId: v3Session.document.id,
-        documentRevision: v3Session.document.revision,
-        projectId: v3Session.document.projectId,
-        selection: {
-          selectedIds: [],
-          anchorId: null,
-          focusedNodeId: null,
-          editingNodeId: null,
-        },
-      });
-      return new WorkspaceSessionController(
-        workspaceSessionFromCanvasDocumentV3(
-          identityAlignedDraft,
-          v3Session.document,
-          {
-            selectedIds: [],
-            anchorId: null,
-            focusedId: null,
-            editingId: null,
-          },
-        ),
-        workspaceRuntime,
-      );
-    },
-    [
+  const createSessionOpen = () => {
+    if (workspaceRuntime === undefined) return undefined;
+    const draft = createCanvasWorkspaceSessionDraft(
       canvasProject,
       runtimeProjectId,
-      v3Session.document,
+    );
+    const identityAlignedDraft = Object.freeze({
+      ...draft,
+      documentId: v3Session.document.id,
+      documentRevision: v3Session.document.revision,
+      projectId: v3Session.document.projectId,
+      selection: {
+        selectedIds: [],
+        anchorId: null,
+        focusedNodeId: null,
+        editingNodeId: null,
+      },
+    });
+    const controller = new WorkspaceSessionController(
+      workspaceSessionFromCanvasDocumentV3(
+        identityAlignedDraft,
+        v3Session.document,
+        {
+          selectedIds: [],
+          anchorId: null,
+          focusedId: null,
+          editingId: null,
+        },
+      ),
       workspaceRuntime,
-    ],
-  );
+    );
+    const expectedLegacySourceFingerprint =
+      canvasSourceFingerprint(canvasProject);
+    const legacyDocumentId = canvasProject.document.id;
+    let restorePromise: Promise<void> | undefined;
+    return Object.freeze({
+      canvasProjectId: canvasProject.id,
+      controller,
+      documentId: v3Session.document.id,
+      legacyDocumentId,
+      projectId: v3Session.document.projectId,
+      restoreOnce: () => {
+        restorePromise ??= (async () => {
+          await migrateLegacyWorkspaceSession({
+            projectId: controller.getSnapshot().session.projectId,
+            documentId: legacyDocumentId,
+            sourceRevision: null,
+            expectedLegacySourceFingerprint,
+            storage,
+            runtime: workspaceRuntime,
+          });
+          await controller.restore();
+        })();
+        return restorePromise;
+      },
+      runtime: workspaceRuntime,
+    });
+  };
+  type SessionOpen = ReturnType<typeof createSessionOpen>;
+  const sessionOpenMatchesCurrentIdentity = (
+    candidate: SessionOpen,
+  ): boolean =>
+    workspaceRuntime === undefined
+      ? candidate === undefined
+      : candidate !== undefined &&
+        candidate.canvasProjectId === canvasProject.id &&
+        candidate.legacyDocumentId === canvasProject.document.id &&
+        candidate.documentId === v3Session.document.id &&
+        candidate.projectId === v3Session.document.projectId &&
+        candidate.runtime === workspaceRuntime;
+  const [retainedSessionOpen, setRetainedSessionOpen] =
+    useState<SessionOpen>(createSessionOpen);
+  const sessionOpen = sessionOpenMatchesCurrentIdentity(
+    retainedSessionOpen,
+  )
+    ? retainedSessionOpen
+    : undefined;
+  useEffect(() => {
+    setRetainedSessionOpen((current) =>
+      sessionOpenMatchesCurrentIdentity(current)
+        ? current
+        : createSessionOpen(),
+    );
+  }, [
+    canvasProject.document.id,
+    canvasProject.id,
+    v3Session.document.id,
+    v3Session.document.projectId,
+    workspaceRuntime,
+  ]);
+  const sessionController = sessionOpen?.controller;
   const sessionSnapshot = useSyncExternalStore(
     sessionController?.subscribe ?? subscribeToNoSession,
     sessionController?.getSnapshot ?? readNoSession,
@@ -352,62 +403,45 @@ export function LocalDesignConsumer({
           ),
     [sessionController],
   );
-  const [restoredSessionDocumentId, setRestoredSessionDocumentId] =
-    useState<string | null>(
-      runtimeClient === undefined
-        ? canvasProject.document.id
-        : null,
-    );
+  const [restoredSessionOpen, setRestoredSessionOpen] =
+    useState<SessionOpen>(undefined);
   const [restoredWorkspaceSession, setRestoredWorkspaceSession] =
     useState<WorkspaceSessionDraftV1 | null>(null);
 
   useEffect(() => {
-    if (
-      sessionController === undefined ||
-      workspaceRuntime === undefined
-    ) {
-      setRestoredSessionDocumentId(canvasProject.document.id);
+    if (sessionOpen === undefined) {
+      setRestoredSessionOpen(undefined);
+      setRestoredWorkspaceSession(null);
       return;
     }
     let cancelled = false;
-    const restore = async () => {
-      await migrateLegacyWorkspaceSession({
-        projectId:
-          sessionController.getSnapshot().session.projectId,
-        documentId: canvasProject.document.id,
-        sourceRevision: null,
-        expectedLegacySourceFingerprint:
-          canvasSourceFingerprint(canvasProject),
-        storage,
-        runtime: workspaceRuntime,
-      });
-      await sessionController.restore();
+    setRestoredSessionOpen(undefined);
+    setRestoredWorkspaceSession(null);
+    void sessionOpen.restoreOnce().then(() => {
       if (!cancelled) {
         setRestoredWorkspaceSession(
-          sessionController.getSnapshot().session,
+          sessionOpen.controller.getSnapshot().session,
         );
         setSessionWarning(undefined);
-        setRestoredSessionDocumentId(canvasProject.document.id);
+        setRestoredSessionOpen(sessionOpen);
       }
-    };
-    void restore().catch(() => {
+    }).catch(() => {
       if (!cancelled) {
         setRestoredWorkspaceSession(
-          sessionController.getSnapshot().session,
+          sessionOpen.controller.getSnapshot().session,
         );
         setSessionWarning(
           "Workspace session unavailable · document edits continue with local recovery",
         );
-        setRestoredSessionDocumentId(canvasProject.document.id);
+        setRestoredSessionOpen(sessionOpen);
       }
     });
     return () => {
       cancelled = true;
     };
   }, [
-    canvasProject,
-    sessionController,
-    storage,
+    canvasProject.document.id,
+    sessionOpen,
     workspaceRuntime,
   ]);
 
@@ -420,7 +454,7 @@ export function LocalDesignConsumer({
 
   if (
     workspaceRuntime !== undefined &&
-    restoredSessionDocumentId !== canvasProject.document.id
+    (sessionOpen === undefined || restoredSessionOpen !== sessionOpen)
   ) {
     return (
       <main
@@ -440,7 +474,9 @@ export function LocalDesignConsumer({
       ? { ...canvasProject, selectedNodeId }
       : canvasProject;
   const initialWorkspaceSession =
-    restoredWorkspaceSession ?? sessionSnapshot?.session ?? null;
+    sessionOpen !== undefined && restoredSessionOpen === sessionOpen
+      ? (restoredWorkspaceSession ?? sessionSnapshot?.session ?? null)
+      : (sessionSnapshot?.session ?? null);
   const canvasProjectWithPreferences =
     harnessPreference === undefined
       ? restoredProject

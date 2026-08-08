@@ -139,6 +139,7 @@ describe("LocalDesignConsumer workspace session", () => {
       projectId: runtimeProjectId,
       documentId: expect.stringMatching(/^doc_/u),
     });
+    expect(restore).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Frame tool" }));
     fireEvent.click(
@@ -148,16 +149,35 @@ describe("LocalDesignConsumer workspace session", () => {
     await waitFor(() => {
       expect(save).toHaveBeenCalled();
     });
+    fireEvent.click(screen.getByRole("button", { name: "Ellipse tool" }));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Ellipse tool" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+    });
+    fireEvent.click(
+      screen.getByRole("region", { name: "Infinite canvas" }),
+      { clientX: 720, clientY: 420 },
+    );
+    await screen.findByRole("button", { name: "Ellipse 1 on canvas" });
+    await waitFor(() => {
+      expect(save.mock.calls.at(-1)?.[0]).toMatchObject({
+        session: { documentRevision: 3 },
+      });
+    });
+    expect(restore).toHaveBeenCalledTimes(1);
     expect(save.mock.calls.at(-1)?.[0]).toMatchObject({
       expected: {
-        documentRevision: 2,
-        sessionRevision: null,
+        documentRevision: 3,
+        sessionRevision: 1,
         sourceRevision: null,
       },
       projectId: runtimeProjectId,
       documentId: expect.stringMatching(/^doc_/u),
       session: {
-        documentRevision: 2,
+        documentRevision: 3,
       },
     });
   });
