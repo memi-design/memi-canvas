@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  canonicalizeMacOsAppPath,
   findPackagedRuntimeSidecar,
   formatDirectChildDiagnostic,
   macOsVisibleWindowProbe,
@@ -13,8 +14,17 @@ import {
   type ProcessRow,
 } from "./smoke-macos-app-process.js";
 
-const APP_PATH = resolve(
-  "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+function optionalOption(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value?.trim() || undefined;
+}
+
+const APP_PATH = await canonicalizeMacOsAppPath(
+  resolve(
+    optionalOption("--app") ??
+      "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+  ),
 );
 const EXECUTABLE_PATH = resolve(
   APP_PATH,
