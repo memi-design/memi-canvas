@@ -307,6 +307,10 @@ describe("ExpoGoCaptureAdapter", () => {
     const dependencyParent = await mkdtemp(join(tmpdir(), "memi-expo-deps-"));
     const dependencyRoot = join(dependencyParent, "node_modules");
     await mkdir(join(dependencyRoot, "expo", "bin"), { recursive: true });
+    await writeFile(
+      join(await realpath(dependencyParent), "managed-package-sentinel"),
+      "source remains read-only\n",
+    );
     const target = await fixture({
       metro: {
         executable: "/opt/memi/npx",
@@ -322,17 +326,25 @@ describe("ExpoGoCaptureAdapter", () => {
         dependencyRoot,
         environment: { NODE_PATH: dependencyRoot },
       },
+      managedMetroEntryPoint: "expo-router/entry",
     });
+    const originalPackage = '{"main":"expo-router/entry"}\n';
+    await writeFile(join(target.root, "package.json"), originalPackage);
+    await writeFile(join(target.root, "metro.config.js"), "module.exports = {};\n");
 
     await target.adapter.prepare(target.context, application, [target.scenario]);
 
     const bridgePath = join(target.root, "node_modules");
     expect((await lstat(bridgePath)).isSymbolicLink()).toBe(true);
     await expect(realpath(bridgePath)).resolves.toBe(await realpath(dependencyRoot));
+    await expect(readFile(join(target.root, "package.json"), "utf8"))
+      .resolves.toContain("MemiCaptureEntry.js");
 
     await target.adapter.cleanup(target.context, null);
 
     await expect(lstat(bridgePath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(target.root, "package.json"), "utf8"))
+      .resolves.toBe(originalPackage);
     await expect(lstat(dependencyRoot)).resolves.toMatchObject({});
   });
 
@@ -357,7 +369,13 @@ describe("ExpoGoCaptureAdapter", () => {
         dependencyRoot,
         environment: { NODE_PATH: dependencyRoot },
       },
+      managedMetroEntryPoint: "expo-router/entry",
     });
+    await writeFile(
+      join(target.root, "package.json"),
+      '{"main":"expo-router/entry"}\n',
+    );
+    await writeFile(join(target.root, "metro.config.js"), "module.exports = {};\n");
     const preparation = await target.adapter.prepare(
       target.context,
       application,
@@ -374,6 +392,8 @@ describe("ExpoGoCaptureAdapter", () => {
           "start",
           "--dev-client",
           "--localhost",
+          "--config",
+          join(await realpath(target.root), ".memi/capture/metro-bridge/MemiMetroConfig.cjs"),
           "--port",
           "19000",
         ],
