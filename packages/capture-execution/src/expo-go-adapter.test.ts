@@ -438,6 +438,15 @@ describe("ExpoGoCaptureAdapter", () => {
       application,
       [scenario],
     );
+    const instrumentation = JSON.parse(
+      await readFile(
+        join(
+          target.root,
+          ".memi/capture/runtime-attestation/metadata.json",
+        ),
+        "utf8",
+      ),
+    ) as { readonly readinessToken: string };
 
     await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
       .resolves.toContain("MemiCaptureRuntimeAttestation");
@@ -458,6 +467,7 @@ describe("ExpoGoCaptureAdapter", () => {
           ? runtimeEvidence(scenario, {
               nonce,
               sourceRevision: context.job.repository.sourceRevision,
+              runtimeToken: instrumentation.readinessToken,
             })
           : recipe.args.includes("screenshot")
             ? new Uint8Array([137, 80, 78, 71])
@@ -679,6 +689,7 @@ describe("ExpoGoCaptureAdapter", () => {
     const sourceHash = `sha256:${"b".repeat(64)}` as const;
     let navigationUrl = "";
     let readinessMarker = "";
+    let runtimeToken = "";
     let scenario: CaptureScenarioV2 | undefined;
     const readSimulatorRuntimeEvidence = vi.fn(async () => {
       if (navigationUrl === "") {
@@ -693,6 +704,7 @@ describe("ExpoGoCaptureAdapter", () => {
       return runtimeEvidence(scenario, {
         nonce,
         sourceRevision: "a".repeat(40),
+        runtimeToken,
         semanticCapture: {
           appVersion: "2.1",
           layers: [
@@ -767,6 +779,7 @@ describe("ExpoGoCaptureAdapter", () => {
         "utf8",
       ),
     ) as { readonly readinessToken: string };
+    runtimeToken = instrumentation.readinessToken;
     readinessMarker = `MEMI_CAPTURE_READY_V1:${instrumentation.readinessToken}`;
     const launch = await target.adapter.launch(context, preparation);
     vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => {

@@ -30,6 +30,7 @@ import type {
 import { assertNativeDependencyPreparationApproval } from "./native-dependency-preparation.js";
 import { CaptureExecutionError } from "./executor.js";
 import {
+  isExpoManagedRuntimeReady,
   verifyExpoRuntimeEvidence,
   type ExpoRuntimeEvidenceV1,
 } from "./expo-runtime-evidence.js";
@@ -644,7 +645,6 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         const instrumentation = this.#runtimeInstrumentation;
         const readEvidence = this.#options.readSimulatorRuntimeEvidence;
         if (instrumentation !== null && readEvidence !== undefined) {
-          const expected = `MEMI_CAPTURE_READY_V1:${instrumentation.readinessToken}`;
           const maximumAttempts =
             this.#options.maximumDevelopmentClientReadinessAttempts ?? 150;
           let ready = false;
@@ -653,7 +653,12 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
               { deviceId: prepared.deviceId },
               context.signal,
             );
-            if (new TextDecoder().decode(bytes) === expected) {
+            if (
+              isExpoManagedRuntimeReady(
+                bytes,
+                instrumentation.readinessToken,
+              )
+            ) {
               ready = true;
               break;
             }
@@ -794,6 +799,12 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         bytes,
         ...(attestation === undefined ? {} : { expectedNonce: attestation.nonce }),
         ...(attestation === undefined ? {} : { expectedSourceRevision: sourceRevision }),
+        ...(this.#runtimeInstrumentation === null
+          ? {}
+          : {
+              expectedRuntimeToken:
+                this.#runtimeInstrumentation.readinessToken,
+            }),
       });
     let runtimeEvidence: ExpoRuntimeEvidenceV1 | undefined;
     if (this.#options.readSimulatorRuntimeEvidence !== undefined) {

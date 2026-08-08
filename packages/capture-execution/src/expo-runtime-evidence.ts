@@ -10,6 +10,7 @@ export interface ExpoRuntimeEvidenceV1 {
   readonly version: 1;
   readonly nonce?: string;
   readonly sourceRevision?: string;
+  readonly runtimeToken?: string;
   readonly route: string;
   readonly state: string;
   readonly readinessSelector: string | null;
@@ -29,6 +30,26 @@ export interface VerifyExpoRuntimeEvidenceInput {
   readonly expectedRoute?: string;
   readonly expectedNonce?: string;
   readonly expectedSourceRevision?: string;
+  readonly expectedRuntimeToken?: string;
+}
+
+export function isExpoManagedRuntimeReady(
+  bytes: Uint8Array,
+  expectedRuntimeToken: string,
+): boolean {
+  const value = new TextDecoder().decode(bytes);
+  if (value === `MEMI_CAPTURE_READY_V1:${expectedRuntimeToken}`) return true;
+  const match = value.match(/^MEMI_CAPTURE_EVIDENCE_V1:(\{[^\r\n]*\})$/u);
+  if (match === null) return false;
+  try {
+    const candidate = JSON.parse(match[1]!) as Readonly<Record<string, unknown>>;
+    return (
+      candidate.version === 1 &&
+      candidate.runtimeToken === expectedRuntimeToken
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function verifyExpoRuntimeEvidence(
@@ -122,6 +143,11 @@ export function verifyExpoRuntimeEvidence(
       input.expectedSourceRevision !== undefined &&
         evidence.sourceRevision !== input.expectedSourceRevision,
       "ATTESTATION_REVISION_MISMATCH",
+    ],
+    [
+      input.expectedRuntimeToken !== undefined &&
+        evidence.runtimeToken !== input.expectedRuntimeToken,
+      "ATTESTATION_RUNTIME_MISMATCH",
     ],
     [
       evidence.route !== (input.expectedRoute ?? input.scenario.route),

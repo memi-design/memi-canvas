@@ -25,6 +25,7 @@ import {
 } from "react-native";
 
 const SOURCE_REVISION = ${JSON.stringify(sourceRevision)};
+const RUNTIME_TOKEN = ${JSON.stringify(readinessToken)};
 const READINESS_MARKER = ${JSON.stringify(`MEMI_CAPTURE_READY_V1:${readinessToken}`)};
 const NONCE = /^[0-9A-HJKMNP-TV-Z]{26}$/u;
 const EVIDENCE_PREFIX = "MEMI_CAPTURE_EVIDENCE_V1:";
@@ -453,6 +454,7 @@ export function MemiCaptureRuntimeAttestation() {
           version: 1,
           nonce: session.nonce,
           sourceRevision: SOURCE_REVISION,
+          runtimeToken: RUNTIME_TOKEN,
           route: pathname,
           state: session.state,
           readinessSelector: null,
