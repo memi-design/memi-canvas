@@ -38,6 +38,7 @@ import {
   restoreExpoRuntimeInstrumentation,
   type PreparedExpoRuntimeInstrumentation,
 } from "./expo-runtime-instrumentation.js";
+import { createExpoStandaloneDeepLink } from "./expo-route-navigation.js";
 import {
   type ProcessExecutionPolicy,
   type ProcessRecipe,
@@ -270,6 +271,17 @@ function scenarioUrl(
   scenario: CaptureScenarioV2,
   attestation?: Readonly<{ nonce: string; state: string }>,
 ): string {
+  if (
+    metro.routeAuthority === "expo-development-client-url" &&
+    attestation !== undefined
+  ) {
+    return createExpoStandaloneDeepLink({
+      scheme: metro.scheme,
+      route: scenario.route,
+      parameters: scenario.parameters,
+      attestation,
+    }).url;
+  }
   return metroProjectUrl(metro, port, scenario, attestation);
 }
 

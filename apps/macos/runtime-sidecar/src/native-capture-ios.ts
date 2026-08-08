@@ -988,6 +988,17 @@ export function createExpoGoCaptureAdapter(
               scheme: configuration.metro.scheme,
             },
       ]),
+      ...(configuration.metro.routeAuthority ===
+      "expo-development-client-url"
+        ? [simctlRule(authority, [
+            literal("openurl"),
+            safe(),
+            {
+              kind: "expo-standalone-url" as const,
+              scheme: configuration.metro.scheme,
+            },
+          ])]
+        : []),
       simctlRule(authority, [
         literal("io"),
         safe(),

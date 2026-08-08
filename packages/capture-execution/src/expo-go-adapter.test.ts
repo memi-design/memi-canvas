@@ -356,13 +356,13 @@ describe("ExpoGoCaptureAdapter", () => {
       ...target.scenario,
       route: "/dashboard/:tab",
     });
-    const context = Object.freeze({
+    const context = {
       ...target.context,
-      job: Object.freeze({
+      job: {
         ...target.context.job,
-        scenarios: Object.freeze([scenario]),
-      }),
-    });
+        scenarios: [scenario],
+      },
+    };
 
     const preparation = await target.adapter.prepare(
       context,
@@ -611,6 +611,7 @@ describe("ExpoGoCaptureAdapter", () => {
     await writeFile(`${target.root}/app/index.tsx`, SCREEN);
     scenario = Object.freeze({
       ...target.scenario,
+      route: "/dashboard/:tab",
       sourceAnchor: {
         contentHash: sourceHash,
         relativePath: "app/(auth)/sign-in.tsx",
