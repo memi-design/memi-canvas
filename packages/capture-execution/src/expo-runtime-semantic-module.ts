@@ -83,8 +83,8 @@ function captureSession(nonce, state, expectedRoute) {
     state.length > 160 ||
     typeof expectedRoute !== "string" ||
     !expectedRoute.startsWith("/") ||
-    expectedRoute.includes("\\") ||
-    expectedRoute.includes("\0")
+    expectedRoute.includes("\\\\") ||
+    expectedRoute.includes("\\0")
   ) {
     return null;
   }
