@@ -1,17 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  loadOrCreatePilotPlanKey,
+  resolveBuzzrPilotAppDataRoot,
   resolveBuzzrPilotWorktreeRoot,
   selectBuzzrPilotScenarios,
 } from "./buzzr-pilot-contract.js";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const APP_DATA = join(
+const DEFAULT_APP_DATA = join(
   homedir(),
   "Library",
   "Application Support",
@@ -33,6 +35,12 @@ const MANAGED_WORKTREE_ROOT = resolveBuzzrPilotWorktreeRoot({
     "capture-worktrees",
   ),
   repositoryRoot: REPOSITORY,
+});
+const APP_DATA = resolveBuzzrPilotAppDataRoot({
+  configuredRoot: process.env.MEMI_BUZZR_PILOT_APP_DATA,
+  defaultRoot: DEFAULT_APP_DATA,
+  repositoryRoot: REPOSITORY,
+  worktreeRoot: MANAGED_WORKTREE_ROOT,
 });
 const PACKAGED_SIDECAR = resolve(
   "apps/macos/src-tauri/binaries/memi-canvas-runtime-aarch64-apple-darwin",
@@ -196,10 +204,7 @@ async function stop(child: ReturnType<typeof spawn>): Promise<void> {
   }
 }
 
-const planKey = (await readFile(join(APP_DATA, "runtime", "plan-integrity-v1.key"), "utf8")).trim();
-if (!/^[a-f0-9]{64}$/iu.test(planKey)) {
-  throw new Error("Memi's local import-plan authority is unavailable.");
-}
+const planKey = await loadOrCreatePilotPlanKey(APP_DATA);
 const socketPath = join(APP_DATA, "runtime", `pilot-${randomBytes(4).toString("hex")}.sock`);
 const token = randomBytes(32).toString("hex");
 const sidecar = spawn(SIDECAR, SIDECAR_ARGS, {

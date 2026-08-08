@@ -1,4 +1,6 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { randomBytes } from "node:crypto";
+import { lstat, mkdir, open, readFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const REQUIRED_AUTH_ROUTES = [
   "/sign-in",
@@ -20,6 +22,24 @@ function contains(root: string, candidate: string): boolean {
       !local.startsWith(`..${sep}`) &&
       !isAbsolute(local))
   );
+}
+
+function resolvedStorageRoot(
+  value: string,
+  label: "app data" | "worktree",
+): string {
+  if (
+    !isAbsolute(value) ||
+    value.includes("\0") ||
+    value.trim() !== value
+  ) {
+    throw new Error(`Buzzr pilot ${label} root must be an absolute path.`);
+  }
+  const root = resolve(value);
+  if (root === "/") {
+    throw new Error(`Buzzr pilot ${label} root may not be the filesystem root.`);
+  }
+  return root;
 }
 
 export function selectBuzzrPilotScenarios<Scenario extends PilotScenario>(
@@ -46,18 +66,12 @@ export function resolveBuzzrPilotWorktreeRoot(input: Readonly<{
   readonly defaultRoot: string;
   readonly repositoryRoot: string;
 }>): string {
-  const supplied = input.configuredRoot ?? input.defaultRoot;
-  if (
-    !isAbsolute(supplied) ||
-    supplied.includes("\0") ||
-    supplied.trim() !== supplied
-  ) {
-    throw new Error("Buzzr pilot worktree root must be an absolute path.");
-  }
-  const worktreeRoot = resolve(supplied);
+  const worktreeRoot = resolvedStorageRoot(
+    input.configuredRoot ?? input.defaultRoot,
+    "worktree",
+  );
   const repositoryRoot = resolve(input.repositoryRoot);
   if (
-    worktreeRoot === "/" ||
     contains(repositoryRoot, worktreeRoot) ||
     contains(worktreeRoot, repositoryRoot)
   ) {
@@ -66,4 +80,85 @@ export function resolveBuzzrPilotWorktreeRoot(input: Readonly<{
     );
   }
   return worktreeRoot;
+}
+
+export function resolveBuzzrPilotAppDataRoot(input: Readonly<{
+  readonly configuredRoot?: string;
+  readonly defaultRoot: string;
+  readonly repositoryRoot: string;
+  readonly worktreeRoot: string;
+}>): string {
+  const appDataRoot = resolvedStorageRoot(
+    input.configuredRoot ?? input.defaultRoot,
+    "app data",
+  );
+  const repositoryRoot = resolve(input.repositoryRoot);
+  const worktreeRoot = resolve(input.worktreeRoot);
+  if (
+    contains(repositoryRoot, appDataRoot) ||
+    contains(appDataRoot, repositoryRoot) ||
+    contains(worktreeRoot, appDataRoot) ||
+    contains(appDataRoot, worktreeRoot)
+  ) {
+    throw new Error(
+      "Buzzr pilot app data root must be disjoint from source and worktree storage.",
+    );
+  }
+  return appDataRoot;
+}
+
+async function validatedPlanKey(path: string): Promise<string> {
+  const metadata = await lstat(path);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new Error("Memi's local import-plan authority must be a regular file.");
+  }
+  const key = (await readFile(path, "utf8")).trim();
+  if (!/^[a-f0-9]{64}$/u.test(key)) {
+    throw new Error("Memi's local import-plan authority is invalid.");
+  }
+  return key;
+}
+
+export async function loadOrCreatePilotPlanKey(
+  appDataRoot: string,
+): Promise<string> {
+  const root = resolvedStorageRoot(appDataRoot, "app data");
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const rootMetadata = await lstat(root);
+  if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
+    throw new Error("Buzzr pilot app data root must be a real directory.");
+  }
+  const runtimeRoot = join(root, "runtime");
+  await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
+  const keyPath = join(runtimeRoot, "plan-integrity-v1.key");
+  try {
+    return await validatedPlanKey(keyPath);
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "ENOENT"
+    ) {
+      throw error;
+    }
+  }
+  const key = randomBytes(32).toString("hex");
+  try {
+    const handle = await open(keyPath, "wx", 0o600);
+    try {
+      await handle.writeFile(`${key}\n`, "utf8");
+    } finally {
+      await handle.close();
+    }
+    return key;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "EEXIST"
+    ) {
+      return validatedPlanKey(keyPath);
+    }
+    throw error;
+  }
 }
