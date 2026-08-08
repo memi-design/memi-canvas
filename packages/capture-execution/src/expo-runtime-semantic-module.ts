@@ -73,27 +73,33 @@ function subscribe(listener) {
   };
 }
 
-function captureSession(nonce, state) {
+function captureSession(nonce, state, expectedRoute) {
   if (
     typeof nonce !== "string" ||
     !NONCE.test(nonce) ||
     typeof state !== "string" ||
     state.length === 0 ||
-    state.length > 160
+    state.length > 160 ||
+    typeof expectedRoute !== "string" ||
+    !expectedRoute.startsWith("/") ||
+    expectedRoute.includes("\\") ||
+    expectedRoute.includes("\0")
   ) {
     return null;
   }
-  return { nonce, state };
+  return { nonce, state, expectedRoute };
 }
 
 function captureSessionFromUrl(value) {
   if (typeof value !== "string" || value.length === 0) return null;
   try {
     const url = new URL(value);
-    return captureSession(
+    const session = captureSession(
       url.searchParams.get("__memi_capture"),
       url.searchParams.get("__memi_state"),
+      url.pathname,
     );
+    return session === null ? null : { ...session, expectedRoute: url.pathname };
   } catch {
     return null;
   }
@@ -109,7 +115,7 @@ function storedCaptureSession(value) {
     ) {
       return null;
     }
-    return captureSession(candidate.nonce, candidate.state);
+    return captureSession(candidate.nonce, candidate.state, candidate.route);
   } catch {
     return null;
   }
@@ -398,7 +404,9 @@ export function MemiCaptureRuntimeAttestation() {
   const parameters = useGlobalSearchParams();
   const nonce = parameters.__memi_capture;
   const state = parameters.__memi_state;
-  const [session, setSession] = useState(() => captureSession(nonce, state));
+  const [session, setSession] = useState(() =>
+    captureSession(nonce, state, pathname),
+  );
   const [registryRevision, setRegistryRevision] = useState(0);
   useEffect(() => {
     void Clipboard.setStringAsync(READINESS_MARKER).catch(() => undefined);
@@ -423,7 +431,7 @@ export function MemiCaptureRuntimeAttestation() {
     };
   }, []);
   useEffect(() => {
-    const fromParameters = captureSession(nonce, state);
+    const fromParameters = captureSession(nonce, state, pathname);
     if (fromParameters !== null) {
       setSession(fromParameters);
       return;
@@ -434,9 +442,9 @@ export function MemiCaptureRuntimeAttestation() {
         if (restored !== null) setSession((current) => current ?? restored);
       })
       .catch(() => undefined);
-  }, [nonce, state]);
+  }, [nonce, pathname, state]);
   useEffect(() => {
-    if (session === null) return undefined;
+    if (session === null || pathname !== session.expectedRoute) return undefined;
     let cancelled = false;
     const timeout = setTimeout(() => {
       void measuredLayers().then((layers) => {
