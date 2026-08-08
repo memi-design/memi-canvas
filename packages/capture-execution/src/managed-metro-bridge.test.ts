@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -50,12 +51,19 @@ describe("managed Metro bridge", () => {
       'import "expo-router/entry";\n',
     );
     const wrapper = await readFile(prepared.configPath, "utf8");
-    expect(prepared.configPath).toBe(managedMetroConfigPath(projectRoot));
-    expect(wrapper).toContain(JSON.stringify(dependencyRoot));
-    expect(wrapper).toContain(
-      JSON.stringify(join(projectRoot, "modules/widget-bridge")),
+    const canonicalProjectRoot = await realpath(projectRoot);
+    expect(prepared.configPath).toBe(
+      managedMetroConfigPath(await realpath(projectRoot)),
     );
-    expect(wrapper).toContain(JSON.stringify(join(projectRoot, "node_modules")));
+    expect(wrapper).toContain(
+      JSON.stringify(await realpath(dependencyRoot)),
+    );
+    expect(wrapper).toContain(
+      JSON.stringify(join(canonicalProjectRoot, "modules/widget-bridge")),
+    );
+    expect(wrapper).toContain(
+      JSON.stringify(join(canonicalProjectRoot, "node_modules")),
+    );
 
     await restoreManagedMetroBridge(prepared);
 
