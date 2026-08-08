@@ -232,6 +232,29 @@ describe("CanvasWorkbench V3 production authority boundary", () => {
     });
   });
 
+  it("serializes rapid public canvas creation", async () => {
+    render(
+      createElement(CanvasWorkbench, {
+        initialNavigatorMode: "canvases",
+        project: canvasWorkbenchFixture,
+        v3Session: v3Session(),
+      }),
+    );
+
+    const createCanvas = await screen.findByRole("button", {
+      name: "New canvas",
+    });
+    fireEvent.click(createCanvas);
+    fireEvent.click(createCanvas);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Page 3" }).getAttribute(
+        "aria-current",
+      )).toBe("page");
+    });
+  });
+
   it("persists an actual page switch and restores it when the workbench reopens", async () => {
     const session = multiPageV3Session();
     let workspace: WorkspaceSessionDraftV1 = createWorkspaceSessionDraft({
