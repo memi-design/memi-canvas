@@ -12,7 +12,7 @@ type LayerBlur = Extract<CanvasEffectV2, { type: "layer-blur" }>;
 
 const DEFAULT_SHADOW: DropShadow = Object.freeze({
   blur: 12,
-  color: "oklch(0% 0 0 / 32%)",
+  color: "var(--studio-effect-shadow-color)",
   offsetX: 0,
   offsetY: 4,
   spread: 0,
