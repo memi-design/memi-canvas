@@ -24,6 +24,7 @@ import { projectLegacyComponentMasterIdV3 } from "./canvas-v3-workbench-projecti
 import { canvasPageContextV3 } from "./canvas-page-navigation-v3.js";
 import { workbenchInteractionFeedback } from "./workbench-interaction-feedback.js";
 import { createWorkbenchContextMenuProps } from "./workbench-context-menu-props.js";
+import { useWorkbenchClipboardGuard } from "./useWorkbenchClipboardGuard.js";
 import "./workbench.css";
 import "./canvas-grid.css";
 import "./workspace-shell.css";
@@ -139,6 +140,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   );
   const selectedNode = selectedNodes.at(-1);
   const nodeReservation = useWorkbenchNodeReservation(scene.nodes, scene.revision, `${v3SessionStatus}:${activePageId}`);
+  const clipboardGuard = useWorkbenchClipboardGuard();
   const {
     inspectorReview,
     navigableNodes: navigableSceneNodes,
@@ -289,6 +291,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
     ungroupSelection,
   } = createWorkbenchDocumentActions({
     appendTrace,
+    clipboardGuard,
     commitScene,
     commitIntentReceipt,
     documentId: project.document.id,
@@ -466,7 +469,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
   );
   useWorkbenchGlobalInput({
     cameraScheduler,
-    commands, gesture, nodeReservation,
+    clipboardGuard, commands, gesture, nodeReservation,
     pasteImage,
     pasteSelection,
     selectNodeIds,

@@ -20,6 +20,10 @@ import {
   type WorkbenchClipboardActions,
 } from "./workbench-clipboard-actions.js";
 import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
+import {
+  createWorkbenchClipboardGuard,
+  type WorkbenchClipboardGuard,
+} from "./useWorkbenchClipboardGuard.js";
 
 export type { WorkbenchLayerMove } from "./workbench-layer-move.js";
 
@@ -30,6 +34,7 @@ export interface WorkbenchSemanticCommitOptions {
 
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
+  readonly clipboardGuard?: WorkbenchClipboardGuard;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   /** V3 production sink. It receives a compact receipt, never a scene diff. */
   readonly commitIntentReceipt?: (
@@ -213,6 +218,7 @@ export function createWorkbenchDocumentActions(
   };
   const clipboardActions = createWorkbenchClipboardActions({
     appendTrace: context.appendTrace,
+    clipboardGuard: context.clipboardGuard ?? createWorkbenchClipboardGuard(),
     commit,
     documentId: context.documentId,
     ...(context.getPastePoint === undefined

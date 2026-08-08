@@ -13,6 +13,7 @@ import {
   type CanvasSystemClipboardDependencies,
 } from "./canvas-clipboard-image.js";
 import { pasteValidatedCanvasClipboard } from "./canvas-clipboard-paste.js";
+import { canvasClipboardComponentBindingSchema } from "./canvas-clipboard-component-schema.js";
 
 export {
   CANVAS_CLIPBOARD_MAX_IMAGE_BYTES,
@@ -128,84 +129,6 @@ const referenceBindingSchema = z
     componentIds: z.array(safeText(2_048)).max(1_024).optional(),
   })
   .strict();
-const componentSourceSchema = z
-  .object({
-    repositoryRevision: safeText(512),
-    repositoryDirty: z.boolean().optional(),
-    sourceAnchor: safeText(4_096),
-    sourceContentHash: safeText(512).optional(),
-    exportName: safeText(512).optional(),
-  })
-  .strict();
-const componentPreviewItemSchema = z
-  .object({
-    icon: z.string().max(512).optional(),
-    label: z.string().max(2_048),
-    status: z.string().max(512).optional(),
-    supportingText: z.string().max(4_096).optional(),
-    value: z.string().max(2_048).optional(),
-  })
-  .strict();
-
-const componentBindingSchema = z
-  .object({
-    atomicLevel: z.enum([
-      "atom",
-      "molecule",
-      "organism",
-      "template",
-      "page",
-    ]),
-    componentId: idSchema,
-    componentName: safeText(512),
-    classification: z.enum(["master", "instance"]),
-    editable: z
-      .object({
-        label: z.boolean(),
-        icon: z.boolean(),
-        selected: z.boolean(),
-        variant: z.boolean(),
-      })
-      .strict(),
-    masterId: idSchema.optional(),
-    props: z
-      .object({
-        label: z.string().max(2_048).optional(),
-        icon: z.string().max(512).optional(),
-        selected: z.boolean().optional(),
-        status: z.string().max(512).optional(),
-        supportingText: z.string().max(4_096).optional(),
-        placeholder: z.string().max(2_048).optional(),
-        value: z.string().max(2_048).optional(),
-        items: z.array(componentPreviewItemSchema).max(100).optional(),
-      })
-      .strict(),
-    role: z.enum([
-      "button",
-      "tab-bar",
-      "tab-item",
-      "card",
-      "input",
-      "badge",
-      "header",
-      "screen-shell",
-    ]),
-    source: componentSourceSchema,
-    variant: z.string().max(512).optional(),
-  })
-  .strict()
-  .superRefine((component, context) => {
-    if (
-      component.classification === "master" &&
-      component.masterId !== undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Component masters cannot reference another master.",
-        path: ["masterId"],
-      });
-    }
-  });
 const embeddedImageSchema = z
   .object({
     alt: z.string().trim().min(1).max(4_096),
@@ -277,7 +200,7 @@ const workbenchNodeSchema = z
     source: sourceBindingSchema.optional(),
     provenance: sourceProvenanceSchema.optional(),
     reference: referenceBindingSchema.optional(),
-    component: componentBindingSchema.optional(),
+    component: canvasClipboardComponentBindingSchema.optional(),
     frameContent: z.string().max(65_536).optional(),
     semanticBaseline: z.string().max(65_536).optional(),
   })
@@ -339,6 +262,33 @@ const workbenchNodeSchema = z
         code: "custom",
         message: "Component instances require component metadata.",
         path: ["component"],
+      });
+    }
+    if (node.kind === "Component" && node.component === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Component masters require component metadata.",
+        path: ["component"],
+      });
+    }
+    if (
+      node.kind === "Component" &&
+      node.component?.classification !== "master"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Component nodes require master metadata.",
+        path: ["component", "classification"],
+      });
+    }
+    if (
+      node.kind === "ComponentInstance" &&
+      node.component?.classification !== "instance"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Component instance nodes require instance metadata.",
+        path: ["component", "classification"],
       });
     }
     if (

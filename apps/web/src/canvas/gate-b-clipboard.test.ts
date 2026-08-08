@@ -597,7 +597,7 @@ describe("Gate B native clipboard fallback receipt", () => {
     actions.pasteSelection();
     actions.copySelection();
     resolveRead([]);
-    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(commitIntentReceipt).not.toHaveBeenCalled();
@@ -629,7 +629,7 @@ describe("Gate B native clipboard fallback receipt", () => {
     actions.pasteSelection();
     actions.pasteSelection(fresh);
     resolveRead([]);
-    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(commitIntentReceipt).toHaveBeenCalledOnce();

@@ -20,6 +20,7 @@ import type { Point, WorkbenchNode } from "./model.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
+import type { WorkbenchClipboardGuard } from "./useWorkbenchClipboardGuard.js";
 
 interface ClipboardCommitOptions {
   readonly selectedIds?: readonly string[];
@@ -35,6 +36,7 @@ type ClipboardCommit = (
 
 interface WorkbenchClipboardActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
+  readonly clipboardGuard: WorkbenchClipboardGuard;
   readonly commit: ClipboardCommit;
   readonly documentId: string;
   readonly getPastePoint?: () => Point | null;
@@ -101,6 +103,7 @@ export function createWorkbenchClipboardActions(
   };
 
   const copySelection = () => {
+    context.clipboardGuard.begin();
     const payload = copyCanvasSelection({
       documentId: context.documentId,
       nodes: context.nodeReservation.get(),
@@ -119,6 +122,7 @@ export function createWorkbenchClipboardActions(
   };
 
   const cutSelection = () => {
+    context.clipboardGuard.begin();
     const result = cutCanvasSelection({
       documentId: context.documentId,
       nodes: context.nodeReservation.get(),
@@ -148,6 +152,7 @@ export function createWorkbenchClipboardActions(
   };
 
   const pasteImage: WorkbenchClipboardActions["pasteImage"] = (image, point) => {
+    context.clipboardGuard.begin();
     const selected = context.selectedNode;
     const cursor = point ?? context.getPastePoint?.() ?? null;
     const node = createCanvasImageNodeAtPoint({
@@ -182,6 +187,7 @@ export function createWorkbenchClipboardActions(
     eventPayload,
     placement = { kind: "offset" },
   ) => {
+    const generation = context.clipboardGuard.begin();
     const initiatingScope = context.nodeReservation.getScope();
     const commitPaste = (payload = readCanvasSessionClipboard()) => {
       if (payload === null) {
@@ -226,7 +232,10 @@ export function createWorkbenchClipboardActions(
       return;
     }
     void readCanvasImageFromSystem().then((systemImage) => {
-      if (!context.nodeReservation.isScopeCurrent(initiatingScope)) {
+      if (
+        !context.clipboardGuard.isCurrent(generation) ||
+        !context.nodeReservation.isScopeCurrent(initiatingScope)
+      ) {
         return;
       }
       if (systemImage !== null) {
@@ -238,7 +247,10 @@ export function createWorkbenchClipboardActions(
         return;
       }
       void readCanvasClipboardFromSystem().then((systemPayload) => {
-        if (!context.nodeReservation.isScopeCurrent(initiatingScope)) {
+        if (
+          !context.clipboardGuard.isCurrent(generation) ||
+          !context.nodeReservation.isScopeCurrent(initiatingScope)
+        ) {
           return;
         }
         if (systemPayload !== null) {
