@@ -23,6 +23,7 @@ import {
   type SelectionState,
   type WorkbenchNode,
 } from "./model.js";
+import { workbenchTextAppearance } from "./workbench-text-style.js";
 import { parseCanvasPath } from "./canvas-path.js";
 import type { CommandActor, CommandTrace } from "./command-bus.js";
 import {
@@ -309,6 +310,9 @@ function projectedNodes(
       rotation: node.transform.rotation,
       opacity: node.style.opacity,
       cornerRadii: node.style.cornerRadii,
+      ...(node.style.effects === undefined
+        ? {}
+        : { effects: node.style.effects.map((effect) => ({ ...effect })) }),
       ...(node.style.strokeWeight === undefined
         ? {}
         : { strokeWeight: node.style.strokeWeight }),
@@ -323,7 +327,10 @@ function projectedNodes(
           : typeof node.componentBinding?.props.label === "string"
             ? { text: node.componentBinding.props.label }
             : {}
-        : { text: node.text.characters }),
+        : {
+            text: node.text.characters,
+            ...workbenchTextAppearance(node.text),
+          }),
       ...(component === undefined
         ? {}
         : { component: structuredClone(component) }),

@@ -77,6 +77,7 @@
   --studio-motion-standard: 120ms;
   --studio-motion-slow: 180ms;
   --studio-motion-reduced: 0.01ms;
+  --studio-effect-shadow-color: oklch(0% 0 0 / 32%);
   --studio-shadow-card: 0 10px 26px oklch(0% 0 0 / 18%);
   --studio-shadow-frame: 0 9px 22px oklch(0% 0 0 / 22%);
   --studio-shadow-note: 0 6px 14px oklch(0% 0 0 / 16%);

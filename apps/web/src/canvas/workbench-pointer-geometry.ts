@@ -67,7 +67,10 @@ export function createWorkbenchNode(
           ]
         : undefined;
   return {
-    id: uniqueNodeId(nodes, `node-${kind.toLowerCase()}`),
+    id: uniqueNodeId(
+      nodes,
+      `node-${kind.toLowerCase()}-${ordinal}`,
+    ),
     kind,
     name,
     parentId: null,

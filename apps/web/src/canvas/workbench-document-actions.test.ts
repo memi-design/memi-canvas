@@ -76,6 +76,101 @@ afterEach(() => {
 });
 
 describe("workbench hierarchy actions", () => {
+  it("emits a canonical V3 reparent receipt with a parent-local transform", () => {
+    const origin = frame("origin", null, 100, 80);
+    const target = frame("target", null, 300, 200);
+    const existing = rectangle("existing", target.id, 320, 220);
+    const card = rectangle("card", origin.id, 360, 240);
+    const commitIntentReceipt = vi.fn();
+    const { commitScene, value } = actions(
+      [origin, card, target, existing],
+      [card.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.moveLayer({ index: 1, nodeId: card.id, parentId: target.id });
+
+    expect(commitScene).not.toHaveBeenCalled();
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Move card into target",
+      {
+        kind: "reparent",
+        nextIndices: [1],
+        nodes: [
+          expect.objectContaining({
+            id: "card",
+            parentId: "target",
+            position: { x: 60, y: 40 },
+          }),
+        ],
+      },
+      { selectedIds: ["card"], targetIds: ["card", "target"] },
+    );
+  });
+
+  it("emits a sibling-only V3 order receipt for a layer-tree reorder", () => {
+    const container = frame("frame", null, 100, 80);
+    const a = rectangle("a", container.id, 120, 100);
+    const b = rectangle("b", container.id, 180, 100);
+    const c = rectangle("c", container.id, 240, 100);
+    const commitIntentReceipt = vi.fn();
+    const { value } = actions(
+      [container, a, b, c],
+      [b.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.moveLayer({ index: 0, nodeId: b.id, parentId: container.id });
+
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Reorder b",
+      {
+        kind: "order",
+        orderedNodeIds: ["b", "a", "c"],
+        parentId: "frame",
+      },
+      { selectedIds: ["b"], targetIds: ["b"] },
+    );
+  });
+
+  it("rejects layer-tree cycles, non-containers, source nodes, and locked hierarchies", () => {
+    const group = {
+      ...rectangle("group", null, 0, 0),
+      kind: "Group" as const,
+    };
+    const childFrame = frame("child-frame", group.id, 20, 20);
+    const leaf = rectangle("leaf", null, 300, 0);
+    const lockedFrame = { ...frame("locked", null, 400, 0), locked: true };
+    const source = {
+      ...frame("source", null, 500, 0),
+      kind: "CodeFrame" as const,
+      source: {
+        coverageCellId: "home:desktop",
+        repositoryRevision: "repo@abc123",
+        routeId: "home",
+        sourceAnchor: "src/App.tsx#App",
+        stateId: "default",
+        viewport: { height: 800, name: "desktop" as const, width: 1280 },
+      },
+    };
+    const commitIntentReceipt = vi.fn();
+    const { value } = actions(
+      [group, childFrame, leaf, lockedFrame, source],
+      [group.id],
+      () => null,
+      commitIntentReceipt,
+    );
+
+    value.moveLayer({ index: 0, nodeId: group.id, parentId: childFrame.id });
+    value.moveLayer({ index: 0, nodeId: group.id, parentId: leaf.id });
+    value.moveLayer({ index: 0, nodeId: group.id, parentId: lockedFrame.id });
+    value.moveLayer({ index: 0, nodeId: source.id, parentId: null });
+
+    expect(commitIntentReceipt).not.toHaveBeenCalled();
+  });
+
   it("emits an explicit V3 detach receipt without falling back to a scene commit", () => {
     const source = {
       ...frame("source-screen", null, 40, 60),
@@ -258,19 +353,22 @@ describe("workbench hierarchy actions", () => {
     });
   });
 
-  it("commits the in-session payload synchronously before a delayed system read", () => {
+  it("uses the in-session payload after a delayed system read finds no native content", async () => {
     const sessionNode = rectangle("session", null, 0, 0);
     copyCanvasSelection({
       documentId: "session-document",
       nodes: [sessionNode],
       selectedIds: [sessionNode.id],
     });
+    let resolveRead!: (items: readonly never[]) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise<readonly never[]>((resolve) => {
+        resolveRead = resolve;
+      }))
+      .mockResolvedValue([]);
     vi.stubGlobal("navigator", {
       clipboard: {
-        async read() {
-          await new Promise<void>(() => undefined);
-          return [];
-        },
+        read,
         async write() {
           return undefined;
         },
@@ -280,7 +378,10 @@ describe("workbench hierarchy actions", () => {
 
     value.pasteSelection();
 
-    expect(commitScene).toHaveBeenCalledTimes(1);
+    expect(commitScene).not.toHaveBeenCalled();
+    resolveRead([]);
+    await vi.waitFor(() => expect(commitScene).toHaveBeenCalledTimes(1));
+    expect(read).toHaveBeenCalledTimes(2);
     const pasted = commitScene.mock.calls[0]?.[1] as readonly WorkbenchNode[];
     expect(pasted.map(({ id }) => id)).toEqual(["session-copy-1"]);
   });

@@ -1,17 +1,4 @@
 import {
-  canReadCanvasSystemClipboard,
-  copyCanvasSelection,
-  createCanvasImageNodeAtPoint,
-  cutCanvasSelection,
-  pasteCanvasClipboard,
-  readCanvasImageFromSystem,
-  readCanvasClipboardFromSystem,
-  readCanvasSessionClipboard,
-  writeCanvasClipboardToSystem,
-  type CanvasClipboardImage,
-  type CanvasClipboardPayload,
-} from "./canvas-clipboard.js";
-import {
   componentDuplicateBase,
   dependentNodeIds,
   nodeAuthority,
@@ -22,14 +9,32 @@ import {
   type WorkbenchNode,
 } from "./model.js";
 import type { WorkbenchHistoryActions } from "./workbench-history-actions.js";
+import {
+  orderWorkbenchHierarchy,
+  planWorkbenchLayerMove,
+  type WorkbenchLayerMove,
+} from "./workbench-layer-move.js";
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
+import {
+  createWorkbenchClipboardActions,
+  type WorkbenchClipboardActions,
+} from "./workbench-clipboard-actions.js";
+import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
+import {
+  createWorkbenchClipboardGuard,
+  type WorkbenchClipboardGuard,
+} from "./useWorkbenchClipboardGuard.js";
+
+export type { WorkbenchLayerMove } from "./workbench-layer-move.js";
 
 export interface WorkbenchSemanticCommitOptions {
   readonly selectedIds?: readonly string[];
   readonly targetIds?: readonly string[];
 }
+
 interface DocumentActionContext {
   readonly appendTrace: WorkbenchHistoryActions["appendTrace"];
+  readonly clipboardGuard?: WorkbenchClipboardGuard;
   readonly commitScene: WorkbenchHistoryActions["commitScene"];
   /** V3 production sink. It receives a compact receipt, never a scene diff. */
   readonly commitIntentReceipt?: (
@@ -40,45 +45,27 @@ interface DocumentActionContext {
   readonly documentId: string;
   readonly getPastePoint?: () => Point | null;
   readonly nodes: readonly WorkbenchNode[];
+  readonly nodeReservation?: WorkbenchNodeReservation;
   readonly selectedNode: WorkbenchNode | undefined;
   readonly selectedNodeId: string | null;
   readonly selectedNodeIds: readonly string[];
 }
 
-export interface WorkbenchDocumentActions {
-  readonly copySelection: () => void;
+export interface WorkbenchDocumentActions extends WorkbenchClipboardActions {
   readonly createComponentFromSelection: () => void;
-  readonly cutSelection: () => void;
   readonly deleteSelection: () => void;
   readonly detachSelection: () => void;
   readonly duplicateSelection: () => void;
   readonly frameSelection: () => void;
   readonly groupSelection: () => void;
+  readonly moveLayer: (move: WorkbenchLayerMove) => void;
   readonly orderSelection: (
     direction: "forward" | "backward" | "front" | "back",
   ) => void;
-  readonly pasteSelection: (
-    payload?: CanvasClipboardPayload | null,
-  ) => void;
-  readonly pasteImage: (image: CanvasClipboardImage) => void;
   readonly toggleSelectionProperty: (
     property: "hidden" | "locked",
   ) => void;
   readonly ungroupSelection: () => void;
-}
-
-function imagePasteParentId(
-  selected: WorkbenchNode | undefined,
-): string | null {
-  if (selected === undefined) {
-    return null;
-  }
-  return selected.kind === "Frame" ||
-    selected.kind === "Group" ||
-    selected.kind === "Section" ||
-    selected.kind === "DraftFrame"
-    ? selected.id
-    : selected.parentId;
 }
 
 function localComponentBinding(
@@ -204,102 +191,19 @@ export function duplicateWorkbenchSubtrees(
   });
 }
 
-function reorderSiblingIds(
-  siblingIds: readonly string[],
-  selectedIds: ReadonlySet<string>,
-  direction: "forward" | "backward" | "front" | "back",
-): readonly string[] {
-  if (direction === "front") {
-    return [
-      ...siblingIds.filter((id) => !selectedIds.has(id)),
-      ...siblingIds.filter((id) => selectedIds.has(id)),
-    ];
-  }
-  if (direction === "back") {
-    return [
-      ...siblingIds.filter((id) => selectedIds.has(id)),
-      ...siblingIds.filter((id) => !selectedIds.has(id)),
-    ];
-  }
-
-  const reordered = [...siblingIds];
-  const step = direction === "forward" ? 1 : -1;
-  const indexes = reordered
-    .map((id, index) => (selectedIds.has(id) ? index : -1))
-    .filter((index) => index >= 0)
-    .sort((left, right) =>
-      direction === "forward" ? right - left : left - right,
-    );
-  for (const index of indexes) {
-    const adjacentIndex = index + step;
-    if (
-      adjacentIndex >= 0 &&
-      adjacentIndex < reordered.length &&
-      !selectedIds.has(reordered[adjacentIndex] ?? "")
-    ) {
-      const selectedId = reordered[index];
-      const adjacentId = reordered[adjacentIndex];
-      if (selectedId !== undefined && adjacentId !== undefined) {
-        reordered[index] = adjacentId;
-        reordered[adjacentIndex] = selectedId;
-      }
-    }
-  }
-  return reordered;
-}
-
-function hierarchyOrderedNodes(
-  nodes: readonly WorkbenchNode[],
-  selectedIds: ReadonlySet<string>,
-  direction: "forward" | "backward" | "front" | "back",
-): readonly WorkbenchNode[] {
-  const nodesById = new Map(nodes.map((node) => [node.id, node]));
-  const childrenByParent = new Map<string | null, string[]>();
-  for (const node of nodes) {
-    const siblings = childrenByParent.get(node.parentId) ?? [];
-    childrenByParent.set(node.parentId, [...siblings, node.id]);
-  }
-  const selectedParentIds = new Set(
-    nodes
-      .filter(({ id }) => selectedIds.has(id))
-      .map(({ parentId }) => parentId),
-  );
-  for (const parentId of selectedParentIds) {
-    const siblingIds = childrenByParent.get(parentId) ?? [];
-    childrenByParent.set(
-      parentId,
-      [...reorderSiblingIds(siblingIds, selectedIds, direction)],
-    );
-  }
-
-  const orderedNodes: WorkbenchNode[] = [];
-  const visited = new Set<string>();
-  const visit = (id: string) => {
-    if (visited.has(id)) {
-      return;
-    }
-    const node = nodesById.get(id);
-    if (node === undefined) {
-      return;
-    }
-    visited.add(id);
-    orderedNodes.push(node);
-    for (const childId of childrenByParent.get(id) ?? []) {
-      visit(childId);
-    }
-  };
-  for (const rootId of childrenByParent.get(null) ?? []) {
-    visit(rootId);
-  }
-  for (const node of nodes) {
-    visit(node.id);
-  }
-  return orderedNodes;
-}
-
 export function createWorkbenchDocumentActions(
   context: DocumentActionContext,
 ): WorkbenchDocumentActions {
+  let reservedNodes = context.nodes;
+  const localNodeReservation = {
+    get: () => reservedNodes,
+    getScope: () => "local",
+    isScopeCurrent: (scope: string) => scope === "local",
+    set: (nodes: readonly WorkbenchNode[]) => {
+      reservedNodes = nodes;
+    },
+  };
+  const nodeReservation = context.nodeReservation ?? localNodeReservation;
   const commit = (
     label: string,
     receipt: WorkbenchIntentReceiptV3,
@@ -312,114 +216,23 @@ export function createWorkbenchDocumentActions(
     }
     context.commitScene(label, nodes, options);
   };
-  const clipboardInput = () => ({
+  const clipboardActions = createWorkbenchClipboardActions({
+    appendTrace: context.appendTrace,
+    clipboardGuard: context.clipboardGuard ?? createWorkbenchClipboardGuard(),
+    commit,
     documentId: context.documentId,
-    nodes: context.nodes,
-    selectedIds: context.selectedNodeIds,
+    ...(context.getPastePoint === undefined
+      ? {}
+      : { getPastePoint: context.getPastePoint }),
+    nodeReservation,
+    selectedNode: context.selectedNode,
+    selectedNodeIds: context.selectedNodeIds,
   });
 
-  const copySelection = () => {
-    const payload = copyCanvasSelection(clipboardInput());
-    if (payload !== null) {
-      void writeCanvasClipboardToSystem(payload);
-    }
-  };
-
-  const cutSelection = () => {
-    const result = cutCanvasSelection(clipboardInput());
-    if (result === null || result.deletedIds.length === 0) {
-      return;
-    }
-    void writeCanvasClipboardToSystem(result.payload);
-    const label =
-      result.deletedIds.length === 1
-        ? `Cut ${
-            context.nodes.find(({ id }) => id === result.deletedIds[0])
-              ?.name ?? "selection"
-          }`
-        : `Cut ${result.deletedIds.length} layers`;
-    commit(label, { kind: "delete", nodeIds: result.deletedIds }, result.nodes, {
-      selectedIds: [],
-      targetIds: result.deletedIds,
-    });
-  };
-
-  const pasteSelection = (
-    eventPayload?: CanvasClipboardPayload | null,
-  ) => {
-    const commitPaste = (payload = readCanvasSessionClipboard()) => {
-      const result = pasteCanvasClipboard(context.nodes, payload);
-      if (result === null) {
-        return;
-      }
-      const count = result.pastedNodes.length;
-      commit(
-        `Paste ${count === 1 ? result.pastedNodes[0]?.name ?? "layer" : `${count} layers`}`,
-        { kind: "paste", nodes: result.pastedNodes },
-        result.nodes,
-        {
-          selectedIds: result.selectedIds,
-          targetIds: result.pastedNodes.map(({ id }) => id),
-        },
-      );
-    };
-    if (eventPayload !== undefined) {
-      commitPaste(eventPayload);
-      return;
-    }
-    // A Memi copy owns a validated in-session payload. Commit it immediately:
-    // native custom-MIME reads are permission-gated and must never turn an
-    // ordinary copy/paste action into an asynchronous no-op.
-    const sessionPayload = readCanvasSessionClipboard();
-    if (sessionPayload !== null) {
-      commitPaste(sessionPayload);
-      return;
-    }
-    if (!canReadCanvasSystemClipboard()) {
-      return;
-    }
-    void readCanvasImageFromSystem().then((systemImage) => {
-      if (systemImage !== null) {
-        pasteImage(systemImage);
-        return;
-      }
-      void readCanvasClipboardFromSystem().then((systemPayload) => {
-        commitPaste(systemPayload);
-      });
-    });
-  };
-
-  const pasteImage = (image: CanvasClipboardImage) => {
-    const selected = context.selectedNode;
-    const cursor = context.getPastePoint?.() ?? null;
-    const node = createCanvasImageNodeAtPoint({
-      cursor:
-        cursor ?? {
-          x: (selected?.position.x ?? 0) + 24,
-          y: (selected?.position.y ?? 0) + 24,
-        },
-      image,
-      nodes: context.nodes,
-      parentId: imagePasteParentId(selected),
-    });
-    if (node === null) {
-      return;
-    }
-    commit("Paste image", { kind: "paste", nodes: [node] }, [...context.nodes, node], {
-      selectedIds: [node.id],
-      targetIds: [node.id],
-    });
-    context.appendTrace(
-      cursor === null
-        ? "Pasted image near selection"
-        : "Pasted image at cursor",
-      node.id,
-    );
-  };
-
   const duplicateSelection = () => {
+    reservedNodes = nodeReservation.get();
     const selectedNodes = context.selectedNodeIds
-      .map((id) => context.nodes.find((node) => node.id === id))
+      .map((id) => reservedNodes.find((node) => node.id === id))
       .filter((node): node is WorkbenchNode => node !== undefined);
     if (selectedNodes.length === 0) {
       return;
@@ -432,21 +245,23 @@ export function createWorkbenchDocumentActions(
           return false;
         }
         parentId =
-          context.nodes.find(({ id }) => id === parentId)?.parentId ??
+          reservedNodes.find(({ id }) => id === parentId)?.parentId ??
           null;
       }
       return true;
     });
     const duplicates = duplicateWorkbenchSubtrees(
       roots,
-      context.nodes,
+      reservedNodes,
       { x: 16, y: 16 },
     );
+    reservedNodes = [...reservedNodes, ...duplicates];
+    nodeReservation.set(reservedNodes);
     const label =
       selectedNodes.length === 1
         ? `Duplicate ${selectedNodes[0]?.name ?? "selection"}`
         : `Duplicate ${selectedNodes.length} layers`;
-    commit(label, { kind: "paste", nodes: duplicates }, [...context.nodes, ...duplicates], {
+    commit(label, { kind: "paste", nodes: duplicates }, reservedNodes, {
       selectedIds: duplicates.map((node) => node.id),
       targetIds: duplicates.map((node) => node.id),
     });
@@ -456,6 +271,13 @@ export function createWorkbenchDocumentActions(
         : `Duplicated ${selectedNodes.length} layers`,
       duplicates.at(-1)?.id ?? "canvas",
     );
+  };
+
+  const moveLayer = (move: WorkbenchLayerMove) => {
+    const plan = planWorkbenchLayerMove(context.nodes, move);
+    if (plan === null) return;
+    commit(plan.label, plan.receipt, plan.nextNodes, plan.options);
+    context.appendTrace(plan.trace, move.nodeId);
   };
 
   const deleteSelection = () => {
@@ -751,7 +573,7 @@ export function createWorkbenchDocumentActions(
       return;
     }
     const selected = new Set(context.selectedNodeIds);
-    const nextNodes = hierarchyOrderedNodes(
+    const nextNodes = orderWorkbenchHierarchy(
       context.nodes,
       selected,
       direction,
@@ -782,17 +604,15 @@ export function createWorkbenchDocumentActions(
   };
 
   return {
-    copySelection,
+    ...clipboardActions,
     createComponentFromSelection,
-    cutSelection,
     deleteSelection,
     detachSelection,
     duplicateSelection,
     frameSelection,
     groupSelection,
+    moveLayer,
     orderSelection,
-    pasteImage,
-    pasteSelection,
     toggleSelectionProperty,
     ungroupSelection,
   };

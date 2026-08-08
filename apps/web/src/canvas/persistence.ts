@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { canonicalJson } from "@memi/canonical-json";
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
-import { CanvasComponentIdSchema, CanvasLayoutV2Schema } from "@memi/protocol";
+import {
+  CanvasComponentIdSchema,
+  CanvasEffectV2Schema,
+  CanvasLayoutV2Schema,
+} from "@memi/protocol";
 
 import {
   provenanceFromSource,
@@ -10,7 +14,7 @@ import {
   type SceneState,
   type WorkbenchNode,
 } from "./model.js";
-import { isSafeReferenceSourceUrl } from "./reference-security.js";
+import { canvasReferenceBindingSchema } from "./reference-binding-schema.js";
 import { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
 
 export { canvasSourceFingerprint } from "./canvas-source-fingerprint.js";
@@ -62,29 +66,6 @@ const ProvenanceSchema = z.strictObject({
   routeId: safeText(512),
   stateId: safeText(512),
   coverageCellId: safeText(512),
-});
-const ReferenceSchema = z.strictObject({
-  src: z
-    .string()
-    .min(1)
-    .max(4_096)
-    .regex(
-      /^(?:\/imports\/artifacts\/art_[0-9A-HJKMNP-TV-Z]{26}\.png|memi-artifact:\/\/localhost\/art_[0-9A-HJKMNP-TV-Z]{26})$/u,
-    ),
-  alt: z.string().trim().min(1).max(2_048),
-  authority: z.string().trim().min(1).max(256),
-  appVersion: z.string().trim().min(1).max(128),
-  capturedAt: z.iso.datetime(),
-  sourceUrl: z
-    .url()
-    .max(8_192)
-    .refine(isSafeReferenceSourceUrl),
-  captureId: safeText(2_048).optional(),
-  contentHash: safeText(512).optional(),
-  sourceRevision: safeText(2_048).optional(),
-  accessibilitySnapshotRef: safeText(2_048).optional(),
-  sourceAnchors: z.array(safeText(2_048)).max(1_024).optional(),
-  componentIds: z.array(safeText(2_048)).max(1_024).optional(),
 });
 const ComponentSourceSchema = z.strictObject({
   repositoryRevision: safeText(512),
@@ -175,6 +156,7 @@ const NodeSchema = z.strictObject({
       z.number().finite().nonnegative(),
     ])
     .optional(),
+  effects: z.array(CanvasEffectV2Schema).max(32).optional(),
   id: safeText(512),
   kind: z.enum([
     "CodeFrame",
@@ -208,13 +190,20 @@ const NodeSchema = z.strictObject({
   opacity: z.number().finite().min(0).max(1).optional(),
   rotation: z.number().finite().optional(),
   text: z.string().max(65_536).optional(),
+  fontFamily: safeText(512).optional(),
+  fontSize: z.number().finite().positive().max(10_000).optional(),
+  fontWeight: z.number().int().min(1).max(900).optional(),
+  letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
+  lineHeight: z.number().finite().positive().max(10_000).optional(),
+  textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
   fill: z.string().max(512).optional(),
   stroke: z.string().max(512).optional(),
   strokeAlign: z.enum(["inside", "center", "outside"]).optional(),
   strokeWeight: z.number().finite().nonnegative().optional(),
   source: SourceSchema.optional(),
   provenance: ProvenanceSchema.optional(),
-  reference: ReferenceSchema.optional(),
+  reference: canvasReferenceBindingSchema.optional(),
   component: ComponentSchema.optional(),
   frameContent: z.string().max(65_536).optional(),
   semanticBaseline: z.string().max(65_536).optional(),

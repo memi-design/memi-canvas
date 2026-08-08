@@ -9,6 +9,7 @@ import {
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
 
 import { DEFAULT_WORKBENCH_LAYOUT, type SelectionState, type WorkbenchNode } from "./model.js";
+import { canvasTextFromWorkbench } from "./workbench-text-style.js";
 
 export interface RootWorkbenchIntentTraceV3 {
   readonly adapter: "v3-root-workbench-intents";
@@ -206,6 +207,9 @@ function canvasNodeForRootCreate(
         ? [0, 0, 0, 0]
         : [...node.cornerRadii],
       fills: node.fill === undefined ? [] : [{ color: node.fill, type: "solid" }],
+      ...(node.effects === undefined
+        ? {}
+        : { effects: node.effects.map((effect) => ({ ...effect })) }),
       locked: node.locked,
       opacity: node.opacity ?? 1,
       ...(node.strokeAlign === undefined
@@ -220,7 +224,7 @@ function canvasNodeForRootCreate(
       visible: !node.hidden,
     },
     text: kind === "text"
-      ? { autoResize: "width-height", characters: node.text ?? "" }
+      ? canvasTextFromWorkbench(node, node.text ?? "")
       : null,
     transform: {
       rotation: node.rotation ?? 0,

@@ -17,6 +17,7 @@ import {
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
 
 import { DEFAULT_WORKBENCH_LAYOUT, type WorkbenchNode } from "./model.js";
+import { canvasTextFromWorkbench } from "./workbench-text-style.js";
 
 /** A compact, user-action receipt. It deliberately never accepts scene arrays. */
 export type WorkbenchIntentReceiptV3 =
@@ -142,6 +143,9 @@ function style(node: WorkbenchNode): CanvasNodeV3["style"] {
   return {
     cornerRadii: node.cornerRadii === undefined ? [0, 0, 0, 0] : [...node.cornerRadii],
     fills: node.fill === undefined ? [] : [{ color: node.fill, type: "solid" }],
+    ...(node.effects === undefined
+      ? {}
+      : { effects: node.effects.map((effect) => ({ ...effect })) }),
     locked: node.locked,
     opacity: node.opacity ?? 1,
     ...(node.strokeAlign === undefined ? {} : { strokeAlign: node.strokeAlign }),
@@ -296,7 +300,9 @@ function toCanvasNode(
     instanceOverrides: instanceOverrides(node), kind, layout: { ...layout, padding: { ...layout.padding } }, name: node.name,
     pageId, parentId: node.parentId === null ? null : canvasId(document, pageId, node.parentId),
     provenance: detachedProvenance(node), referenceBinding: null, sourceAnchor: null, sourceBinding: null,
-    style: style(node), text: kind === "text" ? { autoResize: "width-height", characters: node.text ?? "" } : null,
+    style: style(node), text: kind === "text"
+      ? canvasTextFromWorkbench(node, node.text ?? "")
+      : null,
     transform: { rotation: node.rotation ?? 0, scaleX: 1, scaleY: 1, x: node.position.x, y: node.position.y },
   });
 }
@@ -305,7 +311,9 @@ function createActions(
   document: CanvasDocumentV3,
   pageId: CanvasPageId,
   nodes: readonly WorkbenchNode[],
+  positions: "local" | "absolute",
 ): readonly CanvasSingleActionIntentV3[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const pending = [...nodes];
   const actions: CanvasSingleActionIntentV3[] = [];
   const indices = new Map<string | null, number>();
@@ -320,7 +328,17 @@ function createActions(
     if (index < 0) throw new Error("Workbench create receipt contains a cyclic or missing parent.");
     const [node] = pending.splice(index, 1);
     if (node === undefined) continue;
-    const canvasNode = toCanvasNode(document, pageId, node);
+    const parentPosition = node.parentId === null || positions === "local"
+      ? { x: 0, y: 0 }
+      : nodesById.get(node.parentId)?.position ??
+        absolutePosition(document, canvasId(document, pageId, node.parentId));
+    const canvasNode = toCanvasNode(document, pageId, {
+      ...node,
+      position: {
+        x: node.position.x - parentPosition.x,
+        y: node.position.y - parentPosition.y,
+      },
+    });
     if (document.nodesById[canvasNode.id] !== undefined) throw new Error(`Canvas V3 workbench create would duplicate ${node.id}.`);
     actions.push({ type: "node.create", payload: { index: nextIndex(canvasNode.parentId), node: canvasNode, parentId: canvasNode.parentId } });
   }
@@ -536,7 +554,14 @@ export function compileWorkbenchIntentReceiptV3(input: WorkbenchIntentReceiptInp
       },
     ]));
   }
-  if (receipt.kind === "create" || receipt.kind === "paste") return freeze(asIntent(createActions(document, pageId, receipt.nodes)));
+  if (receipt.kind === "create" || receipt.kind === "paste") {
+    return freeze(asIntent(createActions(
+      document,
+      pageId,
+      receipt.nodes,
+      receipt.kind === "paste" ? "absolute" : "local",
+    )));
+  }
   if (receipt.kind === "move") {
     return freeze(asIntent(moveActions(document, pageId, receipt.nodes)));
   }

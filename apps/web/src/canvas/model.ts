@@ -2,6 +2,7 @@ import {
   resolveComponentInstanceBinding,
   type ComponentInstanceBinding,
 } from "./component-model.js";
+import type { CanvasEffectV2 } from "@memi/protocol";
 
 export {
   createSceneState,
@@ -318,6 +319,14 @@ export interface WorkbenchNode {
   readonly hidden: boolean;
   readonly path?: readonly Point[];
   readonly text?: string;
+  readonly fontFamily?: string;
+  readonly fontSize?: number;
+  readonly fontWeight?: number;
+  readonly letterSpacing?: number;
+  readonly lineHeight?: number;
+  readonly textAlign?: "left" | "center" | "right" | "justify";
+  readonly textAutoResize?: "none" | "width-height" | "height";
+  readonly effects?: readonly CanvasEffectV2[];
   readonly fill?: string;
   readonly stroke?: string;
   readonly rotation?: number;
@@ -342,6 +351,7 @@ export interface WorkbenchNode {
 export interface WorkbenchHierarchyState {
   readonly hidden: boolean;
   readonly locked: boolean;
+  readonly sourceLinked: boolean;
 }
 
 export function workbenchHierarchyStates(
@@ -356,18 +366,27 @@ export function workbenchHierarchyStates(
       return existing;
     }
     if (resolving.has(node.id)) {
-      return { hidden: node.hidden, locked: node.locked };
+      return {
+        hidden: node.hidden,
+        locked: node.locked,
+        sourceLinked:
+          node.source !== undefined || node.component?.source !== undefined,
+      };
     }
     resolving.add(node.id);
     const parent =
       node.parentId === null ? undefined : nodesById.get(node.parentId);
     const parentState =
       parent === undefined
-        ? { hidden: false, locked: false }
+        ? { hidden: false, locked: false, sourceLinked: false }
         : resolve(parent);
     const state = {
       hidden: node.hidden || parentState.hidden,
       locked: node.locked || parentState.locked,
+      sourceLinked:
+        node.source !== undefined ||
+        node.component?.source !== undefined ||
+        parentState.sourceLinked,
     };
     resolving.delete(node.id);
     states.set(node.id, state);
@@ -574,10 +593,32 @@ export function designDocumentFromWorkbench(
         ...(node.strokeAlign === undefined
           ? {}
           : { strokeAlign: node.strokeAlign }),
+        ...(node.effects === undefined
+          ? {}
+          : { effects: node.effects.map((effect) => ({ ...effect })) }),
         ...(node.path === undefined
           ? {}
           : { path: structuredClone(node.path) }),
         ...(node.text === undefined ? {} : { text: node.text }),
+        ...(node.fontFamily === undefined
+          ? {}
+          : { fontFamily: node.fontFamily }),
+        ...(node.fontSize === undefined ? {} : { fontSize: node.fontSize }),
+        ...(node.fontWeight === undefined
+          ? {}
+          : { fontWeight: node.fontWeight }),
+        ...(node.letterSpacing === undefined
+          ? {}
+          : { letterSpacing: node.letterSpacing }),
+        ...(node.lineHeight === undefined
+          ? {}
+          : { lineHeight: node.lineHeight }),
+        ...(node.textAlign === undefined
+          ? {}
+          : { textAlign: node.textAlign }),
+        ...(node.textAutoResize === undefined
+          ? {}
+          : { textAutoResize: node.textAutoResize }),
         ...(node.frameContent === undefined
           ? {}
           : { frameContent: node.frameContent }),

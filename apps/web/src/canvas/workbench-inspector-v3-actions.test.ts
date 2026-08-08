@@ -18,6 +18,69 @@ function subject(nodes: readonly WorkbenchNode[] = [first]) {
 }
 
 describe("workbench inspector V3 actions", () => {
+  it("commits text appearance through one canonical node.text receipt", () => {
+    const textNode = canvasWorkbenchFixture.document.nodes.find(
+      ({ kind }) => kind === "Text",
+    ) as WorkbenchNode;
+    const { actions, commitIntentReceipt } = subject([textNode]);
+
+    actions.commit({
+      label: "Change typography",
+      targetIds: [textNode.id],
+      update: (node) => ({
+        ...node,
+        fontFamily: "Inter Variable",
+        fontSize: 48,
+        fontWeight: 500,
+        letterSpacing: -0.8,
+        lineHeight: 56,
+        textAlign: "center",
+      }) as WorkbenchNode,
+    });
+
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Change typography",
+      {
+        kind: "node.text",
+        nodeId: textNode.id,
+        next: expect.objectContaining({
+          fontFamily: "Inter Variable",
+          fontSize: 48,
+          fontWeight: 500,
+          letterSpacing: -0.8,
+          lineHeight: 56,
+          textAlign: "center",
+        }),
+      },
+      { selectedIds: [textNode.id] },
+    );
+  });
+
+  it("preserves a text node resize mode while editing typography", () => {
+    const textNode = {
+      ...canvasWorkbenchFixture.document.nodes.find(
+        ({ kind }) => kind === "Text",
+      )!,
+      textAutoResize: "height" as const,
+    } satisfies WorkbenchNode;
+    const { actions, commitIntentReceipt } = subject([textNode]);
+
+    actions.commit({
+      label: "Change font size",
+      targetIds: [textNode.id],
+      update: (node) => ({ ...node, fontSize: 32 }),
+    });
+
+    expect(commitIntentReceipt).toHaveBeenCalledWith(
+      "Change font size",
+      expect.objectContaining({
+        kind: "node.text",
+        next: expect.objectContaining({ autoResize: "height", fontSize: 32 }),
+      }),
+      { selectedIds: [textNode.id] },
+    );
+  });
+
   it("emits compact transform, geometry, style, text, and layout receipts", () => {
     const { actions, commitIntentReceipt } = subject();
     const cases = [

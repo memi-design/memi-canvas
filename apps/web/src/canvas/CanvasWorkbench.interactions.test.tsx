@@ -130,6 +130,62 @@ describe("CanvasWorkbench professional interaction contract", () => {
     ).toContain("Campaign card");
   });
 
+  it("marks only an eligible canvas container as the active drop target while moving", async () => {
+    await renderWorkbench();
+
+    const campaign = canvasNode("Campaign card");
+    const checkout = canvasNode("Checkout exploration");
+    const dashboard = canvasNode("Dashboard desktop");
+
+    fireEvent.pointerDown(campaign, {
+      button: 0,
+      clientX: 960,
+      clientY: 180,
+      pointerId: 37,
+    });
+    fireEvent.pointerMove(viewport(), {
+      buttons: 1,
+      clientX: 220,
+      clientY: 800,
+      pointerId: 37,
+    });
+
+    expect(
+      checkout.parentElement?.getAttribute("data-drop-target"),
+    ).toBe("true");
+    expect(campaign.parentElement?.getAttribute("data-moving")).toBe(
+      "true",
+    );
+    expect(
+      screen.getByRole("status", {
+        name: "Valid drop target: Checkout exploration",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.pointerMove(viewport(), {
+      buttons: 1,
+      clientX: 220,
+      clientY: 220,
+      pointerId: 37,
+    });
+
+    expect(
+      dashboard.parentElement?.getAttribute("data-drop-target"),
+    ).toBe("false");
+    expect(
+      screen.queryByRole("status", { name: /Valid drop target:/ }),
+    ).toBeNull();
+
+    fireEvent.pointerCancel(viewport(), {
+      button: 0,
+      pointerId: 37,
+    });
+
+    expect(campaign.parentElement?.getAttribute("data-moving")).toBe(
+      "false",
+    );
+  });
+
   it("marquee-selects intersecting unlocked nodes as one ordered selection", async () => {
     await renderWorkbench();
 
@@ -688,6 +744,50 @@ describe("CanvasWorkbench professional interaction contract", () => {
       expect(journal?.operations.map(({ label }) => label)).toEqual([
         "Duplicate and move Campaign card",
       ]);
+    });
+  });
+
+  it("commits a real reparent when a move lands on a valid container target", async () => {
+    const v3Session = await renderWorkbench();
+
+    const campaign = canvasNode("Campaign card");
+    fireEvent.pointerDown(campaign, {
+      pointerId: 44,
+      clientX: 960,
+      clientY: 180,
+    });
+    fireEvent.pointerMove(viewport(), {
+      pointerId: 44,
+      clientX: 220,
+      clientY: 800,
+      buttons: 1,
+    });
+    fireEvent.pointerUp(viewport(), {
+      pointerId: 44,
+      clientX: 220,
+      clientY: 800,
+      buttons: 1,
+    });
+
+    await waitFor(async () => {
+      const journal = await v3Session.persistence.load({
+        schemaVersion: 1,
+        documentId: v3Session.document.id,
+        projectId: v3Session.document.projectId,
+      });
+      expect(journal?.operations.map(({ label }) => label)).toEqual([
+        "Move Campaign card into Checkout exploration",
+      ]);
+      expect(journal?.operations.map((operation) => operation.action.type)).toEqual([
+        "atomic.batch",
+      ]);
+      expect(
+        journal?.operations.flatMap((operation) =>
+          operation.action.type === "atomic.batch"
+            ? operation.action.payload.actions.map(({ type }) => type)
+            : [operation.action.type],
+        ),
+      ).toContain("node.reparent");
     });
   });
 

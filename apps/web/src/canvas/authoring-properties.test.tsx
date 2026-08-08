@@ -17,6 +17,7 @@ import {
   createSceneState,
   createSelectionState,
   replaceNode,
+  type WorkbenchNode,
 } from "./model.js";
 import { createCanvasAutosave } from "./persistence.js";
 
@@ -25,6 +26,12 @@ async function selectPromoPanel(): Promise<void> {
   const drafts = within(tree).getByRole("treeitem", { name: "Drafts" });
   if (drafts.getAttribute("aria-expanded") === "false") {
     fireEvent.click(drafts.querySelector(".layer-group-row")!);
+  }
+  const campaign = within(tree).getByRole("treeitem", {
+    name: /Campaign card.*DraftFrame/,
+  });
+  if (campaign.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(campaign.querySelector(".layer-branch-toggle")!);
   }
   fireEvent.click(
     await within(tree).findByRole("treeitem", {
@@ -61,6 +68,14 @@ async function commitNumber(label: string, value: string): Promise<void> {
   });
 }
 
+async function undoWhenReady(): Promise<void> {
+  const undo = screen.getByRole("button", { name: "Undo" });
+  await waitFor(() => expect(undo.getAttribute("aria-disabled")).toBe("false"));
+  await act(async () => {
+    fireEvent.click(undo);
+  });
+}
+
 async function renderWorkbench(): Promise<void> {
   render(
     <CanvasWorkbench
@@ -76,6 +91,49 @@ beforeEach(() => {
 });
 
 describe("professional authoring properties", () => {
+  it("exposes coherent typography controls only for text layers", async () => {
+    const onChange = vi.fn();
+    const textNode = createSceneState(canvasWorkbenchFixture).nodes.find(
+      ({ kind }) => kind === "Text",
+    )!;
+    render(
+      <AuthoringPropertySections node={textNode} onChange={onChange} />,
+    );
+
+    expect(screen.getByLabelText("Font family")).toBeTruthy();
+    expect(screen.getByLabelText("Font size")).toBeTruthy();
+    expect(screen.getByLabelText("Font weight")).toBeTruthy();
+    expect(screen.getByLabelText("Line height")).toBeTruthy();
+    expect(screen.getByLabelText("Letter spacing")).toBeTruthy();
+    expect(screen.getByLabelText("Text alignment")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Font size"), {
+      target: { value: "48" },
+    });
+    fireEvent.blur(screen.getByLabelText("Font size"));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(
+      (onChange.mock.calls[0]![1](textNode) as WorkbenchNode & {
+        fontSize?: number;
+      }).fontSize,
+    ).toBe(48);
+  });
+
+  it("renders and undoes a canonical typography edit in the workbench", async () => {
+    await renderWorkbench();
+    const text = screen.getByRole("button", {
+      name: "Welcome headline on canvas",
+    });
+    fireEvent.click(text);
+
+    await commitNumber("Font size", "48");
+    await waitFor(() => expect(text.style.fontSize).toBe("48px"));
+
+    await undoWhenReady();
+    await waitFor(() => expect(text.style.fontSize).toBe(""));
+  });
+
   it("coalesces a numeric field session into one semantic change", async () => {
     const onChange = vi.fn();
     const onPreview = vi.fn();
@@ -189,6 +247,29 @@ describe("professional authoring properties", () => {
         .getByRole("button", { name: "Link corner radii" })
         .getAttribute("title"),
     ).toBe("Link corner radii");
+  });
+
+  it("authors layer blur and drop shadow as reversible style operations", async () => {
+    await renderWorkbench();
+    await selectCampaignCard();
+    const card = screen.getByRole("button", {
+      name: "Campaign card on canvas",
+    });
+
+    await commitNumber("Layer blur", "8");
+    await waitFor(() => expect(card.style.filter).toContain("blur(8px)"));
+    await undoWhenReady();
+    await waitFor(() => expect(card.style.filter).toBe(""));
+
+    await commitNumber("Shadow blur", "24");
+    await waitFor(() => expect(card.style.boxShadow).toContain("24px"));
+    await undoWhenReady();
+    await waitFor(() => expect(card.style.boxShadow).toBe(""));
+
+    await commitNumber("Shadow Y", "12");
+    await waitFor(() =>
+      expect(card.style.boxShadow).toContain("0px 12px 12px 0px"),
+    );
   });
 
   it("resynchronizes the corner mode when the selected node changes externally", async () => {

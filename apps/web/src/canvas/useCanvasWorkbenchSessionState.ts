@@ -6,7 +6,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { createWorkspaceSessionDraft, type CanvasPageId } from "@memi/protocol";
+import {
+  CanvasPageIdSchema,
+  createWorkspaceSessionDraft,
+  type CanvasPageId,
+} from "@memi/protocol";
 
 import {
   createAgentPatch,
@@ -105,8 +109,9 @@ export function useCanvasWorkbenchSessionState(
       ? v3Snapshot.workspace.activePageId as CanvasPageId
       : v3Session.activePageId;
   const selectActivePage = (pageId: string) => {
-    if (currentDocument.pagesById[pageId] !== undefined) {
-      setRequestedPageId(pageId as CanvasPageId);
+    const parsed = CanvasPageIdSchema.safeParse(pageId);
+    if (parsed.success) {
+      setRequestedPageId(parsed.data);
     }
   };
   const disposeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

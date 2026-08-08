@@ -1,5 +1,9 @@
 import type { WorkbenchIntentReceiptV3 } from "./workbench-v3-intents.js";
 import { DEFAULT_WORKBENCH_LAYOUT, type WorkbenchNode } from "./model.js";
+import {
+  canvasTextFromWorkbench,
+  textAppearanceChanged,
+} from "./workbench-text-style.js";
 
 export interface InspectorV3Mutation {
   readonly label: string;
@@ -66,6 +70,7 @@ function receiptFor(
   const styled = changed(
     (left, right) =>
       !equal(left.cornerRadii, right.cornerRadii) ||
+      !equal(left.effects, right.effects) ||
       left.fill !== right.fill ||
       left.stroke !== right.stroke ||
       left.strokeAlign !== right.strokeAlign ||
@@ -78,12 +83,13 @@ function receiptFor(
   if (resized.length) groups.push({ kind: "resize", nodes: resized });
   if (styled.length) groups.push({ kind: "style", nodes: styled });
   const names = changed((left, right) => left.name !== right.name);
-  const text = changed(
-    (left, right) =>
-      left.kind === "Text" &&
-      right.kind === "Text" &&
-      left.text !== right.text,
-  );
+  const text = changed((left, right) => {
+    if (left.kind !== "Text" || right.kind !== "Text") return false;
+    return (
+      left.text !== right.text ||
+      textAppearanceChanged(left, right)
+    );
+  });
   const layout = changed((left, right) => !equal(left.layout, right.layout));
   names.forEach((node) => groups.push({
     kind: "node.name",
@@ -93,10 +99,7 @@ function receiptFor(
   text.forEach((node) => groups.push({
     kind: "node.text",
     nodeId: node.id,
-    next: {
-      autoResize: "width-height",
-      characters: node.text ?? node.name,
-    },
+    next: canvasTextFromWorkbench(node),
   }));
   layout.forEach((node) => groups.push({
     kind: "node.layout",

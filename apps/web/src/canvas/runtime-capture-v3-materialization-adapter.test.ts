@@ -121,6 +121,7 @@ function capture() {
           fontWeight: 500,
           lineHeight: 20,
           opacity: 1,
+          textAlign: "center",
           textColor: "#08090a",
         },
         zIndex: 1,
@@ -401,6 +402,13 @@ describe("runtime capture V3 materialization", () => {
       route: "/sign-in",
       sourceRevision,
       verification: { status: "verified" },
+    });
+    expect(
+      result.persistence.document.nodesById[result.plan.layerNodeIds["auth.continue.label"]!]
+        ?.text,
+    ).toMatchObject({
+      characters: "Continue as guest",
+      textAlign: "center",
     });
     expect(
       result.persistence.document.nodesById[result.plan.layerNodeIds["auth.continue.label"]!]

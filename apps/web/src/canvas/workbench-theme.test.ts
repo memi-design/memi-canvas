@@ -6,6 +6,10 @@ const css = readFileSync(
   resolve("apps/web/src/canvas/workbench.css"),
   "utf8",
 );
+const interactionsCss = readFileSync(
+  resolve("apps/web/src/canvas/interactions.css"),
+  "utf8",
+);
 const gridCss = readFileSync(
   resolve("apps/web/src/canvas/canvas-grid.css"),
   "utf8",
@@ -58,9 +62,23 @@ describe("Memi editor Studio theme contract", () => {
     expect(css).toMatch(
       /\.layers-tree \.layer-leaf\[aria-selected="true"\][\s\S]*?background:\s*var\(--accent-dark\)/,
     );
-    expect(css).toMatch(
-      /\.canvas-node\[data-selected="true"\][\s\S]*?border-color:\s*var\(--accent\)/,
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-bounds[\s\S]*?border-color:\s*var\(--accent\)/,
     );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-bounds[\s\S]*?inset:\s*0[\s\S]*?position:\s*absolute[\s\S]*?pointer-events:\s*none/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__selection-handle[\s\S]*?height:\s*calc\(8px \* var\(--canvas-inverse-zoom\)\)[\s\S]*?position:\s*absolute[\s\S]*?width:\s*calc\(8px \* var\(--canvas-inverse-zoom\)\)/,
+    );
+    expect(interactionsCss).toContain(
+      ".canvas-node__selection-handle--nw",
+    );
+    expect(interactionsCss).toContain(
+      ".canvas-node__selection-handle--se",
+    );
+    expect(css).not.toContain(".canvas-node__selection-bounds {");
+    expect(css).not.toContain(".canvas-node__selection-handle {");
 
     const weights = Array.from(
       chromeCss.matchAll(/font-weight:\s*(\d+)/g),
@@ -108,6 +126,27 @@ describe("Memi editor Studio theme contract", () => {
     );
     expect(css).toContain(
       ") .canvas-node__surface {\n  cursor: crosshair;",
+    );
+  });
+
+  it("visually separates hover, locked, and source-linked interaction states", () => {
+    expect(interactionsCss).toMatch(
+      /\.canvas-node:not\(\[data-selected="true"\]\)[\s\S]*?\.canvas-node__surface:hover[\s\S]*?outline:/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="locked"\][\s\S]*?\.canvas-node__selection-bounds/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="source-linked"\][\s\S]*?\.canvas-node__selection-bounds/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-interaction-restriction="source-linked"\]\[data-direct-manipulation="move"\][\s\S]*?\.canvas-node__selection-bounds[\s\S]*?var\(--accent-soft\)/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node\[data-moving="true"\][\s\S]*?cursor:\s*grabbing/,
+    );
+    expect(interactionsCss).toMatch(
+      /\.canvas-node__drop-target[\s\S]*?pointer-events:\s*none[\s\S]*?position:\s*absolute/,
     );
   });
 });

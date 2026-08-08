@@ -5,9 +5,21 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { DraftLayerBranch } from "./DraftLayerBranch.js";
 import { EditorIcon, type EditorIconName } from "./icons.js";
 import { descendantNodeIds } from "./layer-hierarchy.js";
+import {
+  layerIcon,
+  layerLabel,
+  layerNodeAriaLabel,
+} from "./layer-tree-presentation.js";
 import type { WorkbenchNode } from "./model.js";
+import {
+  useDraftLayerMoves,
+  type LayerMoveRequest,
+} from "./use-draft-layer-moves.js";
+
+export type { LayerMoveRequest } from "./use-draft-layer-moves.js";
 
 const expansionSeparator = "\u0001";
 
@@ -32,10 +44,12 @@ export function mergeExpansionIds(
 
 export function Layers({
   nodes,
+  onMove,
   selectedNodeId,
   onSelect,
 }: {
   readonly nodes: readonly WorkbenchNode[];
+  readonly onMove?: (move: LayerMoveRequest) => void;
   readonly selectedNodeId: string | null;
   readonly onSelect: (nodeId: string) => void;
 }) {
@@ -194,6 +208,10 @@ export function Layers({
     }),
     [designIds, importedDescendantIds, nodes],
   );
+  const draftIds = useMemo(
+    () => new Set(draftNodes.map(({ id }) => id)),
+    [draftNodes],
+  );
   const selectedNode =
     selectedNodeId === null ? undefined : nodesById.get(selectedNodeId);
   const selectedIsDesign =
@@ -249,7 +267,24 @@ export function Layers({
       return ["design-system"];
     }
     if (sourceAnchor === undefined) {
-      return ["drafts"];
+      const draftBranches: string[] = [];
+      let current = selectedNode;
+      const seen = new Set<string>();
+      while (
+        current !== undefined &&
+        draftIds.has(current.id) &&
+        !seen.has(current.id)
+      ) {
+        seen.add(current.id);
+        if ((childrenByParentId.get(current.id)?.length ?? 0) > 0) {
+          draftBranches.push(`draft-${current.id}`);
+        }
+        current =
+          current.parentId === null
+            ? undefined
+            : nodesById.get(current.parentId);
+      }
+      return ["drafts", ...draftBranches];
     }
     return [
       "product-flows",
@@ -264,6 +299,11 @@ export function Layers({
   const [focusedItemId, setFocusedItemId] = useState(
     selectedNodeId ?? "product-flows",
   );
+  const draftMoves = useDraftLayerMoves({
+    nodes,
+    nodesById,
+    ...(onMove === undefined ? {} : { onMove }),
+  });
   const requiredExpansionSignature = [...requiredExpansionIds()]
     .sort()
     .join(expansionSeparator);
@@ -347,17 +387,12 @@ export function Layers({
     }
   };
 
-  const nodeAriaLabel = (node: WorkbenchNode) =>
-    node.kind === "ReferenceFrame" && node.locked
-      ? `${node.name} ${node.kind} Locked reference`
-      : `${node.name} ${node.kind}`;
-
   const renderLeaf = (node: WorkbenchNode) => (
     <li
       aria-disabled={
         node.kind === "ReferenceFrame" && node.locked ? true : undefined
       }
-      aria-label={nodeAriaLabel(node)}
+      aria-label={layerNodeAriaLabel(node)}
       aria-selected={node.id === selectedNodeId}
       className={`layer-leaf${
         node.kind === "ReferenceFrame"
@@ -562,7 +597,7 @@ export function Layers({
     return (
       <li
         aria-expanded={isExpanded}
-        aria-label={nodeAriaLabel(node)}
+        aria-label={layerNodeAriaLabel(node)}
         aria-selected={node.id === selectedNodeId}
         className="layer-group layer-node-branch"
         key={node.id}
@@ -606,9 +641,16 @@ export function Layers({
       </li>
     );
   };
+  const draftRootNodes = draftNodes.filter(
+    (node) => node.parentId === null || !draftIds.has(node.parentId),
+  );
 
   return (
-    <ul aria-label="Layers" className="layers-tree" role="tree">
+    <>
+      <p aria-live="polite" className="canvas-visually-hidden" role="status">
+        {draftMoves.announcement}
+      </p>
+      <ul aria-label="Layers" className="layers-tree" role="tree">
       {designNodes.length > 0
         ? renderGroup(
             "design-system",
@@ -684,11 +726,28 @@ export function Layers({
         ? renderGroup(
             "drafts",
             "Drafts",
-            () => draftNodes.map(renderLeaf),
+            () =>
+              draftRootNodes.map((node) => (
+                <DraftLayerBranch
+                  childrenByParentId={childrenByParentId}
+                  draftIds={draftIds}
+                  expanded={expanded}
+                  focusAdjacent={focusAdjacentItem}
+                  focusedItemId={focusedItemId}
+                  key={node.id}
+                  moves={draftMoves}
+                  node={node}
+                  onFocus={setFocusedItemId}
+                  onSelect={onSelect}
+                  selectedNodeId={selectedNodeId}
+                  toggle={toggle}
+                />
+              )),
             "frame",
           )
         : null}
-    </ul>
+      </ul>
+    </>
   );
 }
 
@@ -720,45 +779,4 @@ function routeLabel(node: WorkbenchNode | undefined): string {
     return "Route";
   }
   return node.name.split("/")[0]?.trim() ?? node.name;
-}
-
-function layerIcon(node: WorkbenchNode): EditorIconName {
-  if (node.kind === "Text") {
-    return "text";
-  }
-  if (node.kind === "Rectangle") {
-    return "square";
-  }
-  if (node.kind === "Ellipse") {
-    return "circle";
-  }
-  if (node.kind === "Line") {
-    return "line";
-  }
-  if (node.kind === "Arrow") {
-    return "arrow";
-  }
-  if (node.kind === "Vector") {
-    return "line";
-  }
-  if (node.kind === "Section") {
-    return "section";
-  }
-  if (node.kind === "Comment") {
-    return "context";
-  }
-  if (node.kind === "ComponentInstance") {
-    return "layers";
-  }
-  if (node.source !== undefined) {
-    return "route";
-  }
-  return "frame";
-}
-
-function layerLabel(node: WorkbenchNode): string {
-  if (node.source === undefined) {
-    return node.name;
-  }
-  return node.name.split(" / ").at(-1) ?? node.name;
 }

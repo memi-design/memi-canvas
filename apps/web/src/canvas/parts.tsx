@@ -16,6 +16,7 @@ import {
 import { nodeAuthority, type WorkbenchNode } from "./model.js";
 import { isSafeReferenceSourceUrl } from "./reference-security.js";
 import type { WorkbenchInspectorV3Actions } from "./workbench-inspector-v3-actions.js";
+import { workbenchEffectStyle } from "./workbench-effects.js";
 export { Layers } from "./layers-tree.js";
 
 function frameRoute(node: WorkbenchNode): string {
@@ -247,21 +248,27 @@ function selectionRoleFor(node: WorkbenchNode): SelectionRole {
 
 // Atomic Design: molecule — one semantic node and its manipulation handle.
 export function CanvasNodeView({
+  dropTarget = false,
+  moving = false,
   node,
   proposed = false,
   semanticOverlay = false,
   semanticOverride = false,
   selected,
+  sourceLinked = false,
   onPointerDown,
   onResizePointerDown,
   onSelect,
   onContextMenu,
 }: {
+  readonly dropTarget?: boolean;
+  readonly moving?: boolean;
   readonly node: WorkbenchNode;
   readonly proposed?: boolean;
   readonly semanticOverlay?: boolean;
   readonly semanticOverride?: boolean;
   readonly selected: boolean;
+  readonly sourceLinked?: boolean;
   readonly onPointerDown: (
     node: WorkbenchNode,
     event: PointerEvent<HTMLButtonElement>,
@@ -279,6 +286,18 @@ export function CanvasNodeView({
   const [directManipulation, setDirectManipulation] =
     useState<DirectManipulation>(null);
   const selectionRole = selectionRoleFor(node);
+  const interactionRestriction = node.locked
+    ? "locked"
+    : sourceLinked ||
+        node.source !== undefined ||
+        node.component?.source !== undefined
+      ? "source-linked"
+      : "none";
+  const selectionDescription = `${selectionRole} selection boundary${
+    interactionRestriction === "none"
+      ? ""
+      : `, ${interactionRestriction} layer`
+  }`;
 
   useEffect(() => {
     if (directManipulation === null) {
@@ -309,6 +328,9 @@ export function CanvasNodeView({
       data-node-id={node.id}
       data-node-kind={node.kind}
       data-locked={node.locked}
+      data-interaction-restriction={interactionRestriction}
+      data-drop-target={dropTarget}
+      data-moving={moving}
       data-proposal={proposed}
       data-selected={selected}
       data-semantic-overlay={semanticOverlay}
@@ -325,11 +347,14 @@ export function CanvasNodeView({
         width: node.size.width,
       }}
     >
+      {dropTarget ? (
+        <span aria-hidden="true" className="canvas-node__drop-target" />
+      ) : null}
       {selected ? <CanvasNodeMetadataTag node={node} /> : null}
       {selected ? (
         <span
           aria-label={`Selection bounds for ${node.name}`}
-          aria-description={`${selectionRole} selection boundary`}
+          aria-description={selectionDescription}
           className={`canvas-node__selection-bounds canvas-node__selection-bounds--${selectionRole}`}
           data-artwork="false"
           data-selection-role={selectionRole}
@@ -371,6 +396,7 @@ export function CanvasNodeView({
                 : undefined
         }
         style={{
+          ...workbenchEffectStyle(node.effects),
           ...((!semanticOverlay || semanticOverride) &&
           (node.kind === "Rectangle" ||
           node.kind === "Ellipse" ||
@@ -398,7 +424,27 @@ export function CanvasNodeView({
             : {}),
           ...((!semanticOverlay || semanticOverride) &&
           node.kind === "Text"
-            ? { color: node.fill }
+            ? {
+                color: node.fill,
+                ...(node.fontFamily === undefined
+                  ? {}
+                  : { fontFamily: node.fontFamily }),
+                ...(node.fontSize === undefined
+                  ? {}
+                  : { fontSize: `${node.fontSize}px` }),
+                ...(node.fontWeight === undefined
+                  ? {}
+                  : { fontWeight: node.fontWeight }),
+                ...(node.letterSpacing === undefined
+                  ? {}
+                  : { letterSpacing: `${node.letterSpacing}px` }),
+                ...(node.lineHeight === undefined
+                  ? {}
+                  : { lineHeight: `${node.lineHeight}px` }),
+                ...(node.textAlign === undefined
+                  ? {}
+                  : { textAlign: node.textAlign }),
+              }
             : {}),
           height: "100%",
           width: "100%",

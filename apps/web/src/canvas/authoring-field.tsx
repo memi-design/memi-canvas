@@ -125,16 +125,18 @@ export function AuthoringNumberField({
 
 export function AuthoringTextField({
   label,
+  mixed = false,
   onCommit,
   value,
 }: {
   readonly label: string;
+  readonly mixed?: boolean;
   readonly onCommit: (value: string) => void;
   readonly value: string;
 }) {
   const { draft, editingRef, setDraft, skipBlurRef } =
-    useCommittedDraft(value);
-  const reset = () => setDraft(value);
+    useCommittedDraft(value, mixed);
+  const reset = () => setDraft(mixed ? "" : value);
   const commit = () => {
     if (draft !== value) {
       onCommit(draft);
@@ -161,6 +163,7 @@ export function AuthoringTextField({
         onKeyDown={(event) =>
           finishWithKeyboard(event, commit, reset, skipBlurRef)
         }
+        placeholder={mixed ? "Mixed" : undefined}
         type="text"
         value={draft}
       />

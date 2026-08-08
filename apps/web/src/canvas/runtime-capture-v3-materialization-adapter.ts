@@ -292,7 +292,29 @@ function layerNode(
     },
     text:
       kind === "text"
-        ? { autoResize: "width-height", characters: layer.content.text ?? "" }
+        ? {
+            autoResize: "width-height",
+            characters: layer.content.text ?? "",
+            ...(layer.style.fontFamily === undefined
+              ? {}
+              : { fontFamily: layer.style.fontFamily }),
+            ...(layer.style.fontSize === undefined || layer.style.fontSize <= 0
+              ? {}
+              : { fontSize: layer.style.fontSize }),
+            ...(layer.style.fontWeight === undefined
+              ? {}
+              : { fontWeight: Math.min(900, layer.style.fontWeight) }),
+            ...(layer.style.letterSpacing === undefined
+              ? {}
+              : { letterSpacing: layer.style.letterSpacing }),
+            ...(layer.style.lineHeight === undefined ||
+            layer.style.lineHeight <= 0
+              ? {}
+              : { lineHeight: layer.style.lineHeight }),
+            ...(layer.style.textAlign === undefined
+              ? {}
+              : { textAlign: layer.style.textAlign }),
+          }
         : null,
     transform: {
       rotation: layer.geometry.rotation,

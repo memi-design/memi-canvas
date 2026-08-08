@@ -2,6 +2,7 @@ import type { WorkbenchNode } from "./model.js";
 
 export const CANVAS_CLIPBOARD_MAX_IMAGE_BYTES = 2_097_152;
 export const CANVAS_CLIPBOARD_MAX_IMAGE_DIMENSION = 32_768;
+export const CANVAS_CLIPBOARD_MAX_IMAGE_PIXELS = 16_777_216;
 
 export interface CanvasSystemClipboardItem {
   readonly types: readonly string[];
@@ -74,7 +75,8 @@ function pngDimensions(
     bytes[12] !== 73 ||
     bytes[13] !== 72 ||
     bytes[14] !== 68 ||
-    bytes[15] !== 82
+    bytes[15] !== 82 ||
+    !hasCompletePngStructure(bytes)
   ) {
     return null;
   }
@@ -90,10 +92,36 @@ function pngDimensions(
     height === 0 ||
     width > CANVAS_CLIPBOARD_MAX_IMAGE_DIMENSION ||
     height > CANVAS_CLIPBOARD_MAX_IMAGE_DIMENSION
+    || width * height > CANVAS_CLIPBOARD_MAX_IMAGE_PIXELS
   ) {
     return null;
   }
   return { height, width };
+}
+
+function hasCompletePngStructure(bytes: Uint8Array): boolean {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  let sawImageData = false;
+  while (offset + 12 <= bytes.byteLength) {
+    const length = view.getUint32(offset);
+    const end = offset + 12 + length;
+    if (end > bytes.byteLength) {
+      return false;
+    }
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (offset === 8 && (type !== "IHDR" || length !== 13)) {
+      return false;
+    }
+    if (type === "IDAT") {
+      sawImageData = true;
+    }
+    if (type === "IEND") {
+      return length === 0 && sawImageData && end === bytes.byteLength;
+    }
+    offset = end;
+  }
+  return false;
 }
 
 function bytesFromImageSource(src: string): Uint8Array | null {
@@ -235,11 +263,7 @@ export function hasCanvasImageInPasteData(
 export async function readCanvasImageFromPasteData(
   clipboardData: CanvasClipboardPasteData | null,
 ): Promise<CanvasClipboardImage | null> {
-  const image = await readCanvasImageFromPngBlob(nativePngBlob(clipboardData));
-  if (image !== null) {
-    storeCanvasSessionImage(image);
-  }
-  return image;
+  return readCanvasImageFromPngBlob(nativePngBlob(clipboardData));
 }
 
 export async function readCanvasImageFromSystem(
@@ -259,7 +283,6 @@ export async function readCanvasImageFromSystem(
         await item.getType("image/png"),
       );
       if (image !== null) {
-        storeCanvasSessionImage(image);
         return image;
       }
     }

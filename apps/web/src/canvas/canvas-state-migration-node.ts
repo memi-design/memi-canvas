@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { LegacyNode } from "./canvas-state-migration.js";
 import { serializeCanvasPath } from "./canvas-path.js";
 import { DEFAULT_WORKBENCH_LAYOUT } from "./model.js";
+import { canvasTextFromWorkbench } from "./workbench-text-style.js";
 
 function nullableRepositoryFields(
   value: Readonly<Record<string, unknown>>,
@@ -210,6 +211,9 @@ export function canonicalNodeFromLegacy(
       kind === "imported-source-frame" ? canonicalSourceBinding : null,
     style: {
       cornerRadii: legacy.cornerRadii ?? [0, 0, 0, 0],
+      ...(legacy.effects === undefined
+        ? {}
+        : { effects: legacy.effects.map((effect) => ({ ...effect })) }),
       fills:
         legacy.fill === undefined
           ? []
@@ -230,10 +234,7 @@ export function canonicalNodeFromLegacy(
     },
     text:
       kind === "text"
-        ? {
-            autoResize: "width-height",
-            characters: legacy.text ?? "",
-          }
+        ? canvasTextFromWorkbench(legacy, legacy.text ?? "")
         : null,
     transform: {
       rotation: legacy.rotation ?? 0,

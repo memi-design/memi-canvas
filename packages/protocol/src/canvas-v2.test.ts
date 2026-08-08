@@ -4,6 +4,8 @@ import {
   CanvasDocumentV2Schema,
   CanvasNodeV2Schema,
   CanvasOperationV2Schema,
+  CanvasStyleV2Schema,
+  CanvasTextV2Schema,
   LegacyCanvasIdMappingReceiptV2Schema,
   SourceAnchorV2Schema,
 } from "./canvas-v2.js";
@@ -51,6 +53,52 @@ describe("Canvas V2 protocol", () => {
     sourceAnchor: null,
     sourceBinding: null,
   };
+
+  it("validates professional text appearance without accepting invalid metrics", () => {
+    const appearance = {
+      autoResize: "height",
+      characters: "Design at the speed of thought",
+      fontFamily: "Inter Variable",
+      fontSize: 48,
+      fontWeight: 500,
+      letterSpacing: -0.8,
+      lineHeight: 56,
+      textAlign: "center",
+    };
+
+    expect(CanvasTextV2Schema.safeParse(appearance).success).toBe(true);
+    expect(
+      CanvasTextV2Schema.safeParse({ ...appearance, fontSize: 0 }).success,
+    ).toBe(false);
+    expect(
+      CanvasTextV2Schema.safeParse({ ...appearance, fontWeight: 950 }).success,
+    ).toBe(false);
+  });
+
+  it("validates bounded visual effects without accepting invalid blur radii", () => {
+    const style = {
+      ...node.style,
+      effects: [
+        {
+          type: "drop-shadow",
+          color: "oklch(0% 0 0 / 32%)",
+          offsetX: 0,
+          offsetY: 12,
+          blur: 28,
+          spread: 0,
+        },
+        { type: "layer-blur", radius: 8 },
+      ],
+    };
+
+    expect(CanvasStyleV2Schema.safeParse(style).success).toBe(true);
+    expect(
+      CanvasStyleV2Schema.safeParse({
+        ...style,
+        effects: [{ type: "layer-blur", radius: -1 }],
+      }).success,
+    ).toBe(false);
+  });
 
   it("fails closed on unknown document and operation fields", () => {
     const document = {

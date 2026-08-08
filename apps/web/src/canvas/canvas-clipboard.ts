@@ -1,16 +1,20 @@
 import { z } from "zod";
+import { CanvasEffectV2Schema } from "@memi/protocol";
 
-import type { WorkbenchNode } from "./model.js";
+import type { Point, WorkbenchNode } from "./model.js";
 import {
   browserClipboard,
   browserClipboardItem,
   CANVAS_CLIPBOARD_MAX_IMAGE_BYTES,
   CANVAS_CLIPBOARD_MAX_IMAGE_DIMENSION,
   clearCanvasSessionImage,
+  isValidCanvasClipboardImage,
   type CanvasClipboardPasteData,
   type CanvasSystemClipboardDependencies,
 } from "./canvas-clipboard-image.js";
 import { pasteValidatedCanvasClipboard } from "./canvas-clipboard-paste.js";
+import { canvasClipboardComponentBindingSchema } from "./canvas-clipboard-component-schema.js";
+import { canvasReferenceBindingSchema } from "./reference-binding-schema.js";
 
 export {
   CANVAS_CLIPBOARD_MAX_IMAGE_BYTES,
@@ -80,19 +84,23 @@ const layoutSchema = z
   .strict();
 const sourceProvenanceSchema = z
   .object({
+    captureState: z.enum(["captured", "placeholder"]).optional(),
     repositoryRevision: safeText(512),
     repositoryDirty: z.boolean().optional(),
     dirtyFileFingerprint: safeText(512).optional(),
     sourceFingerprint: safeText(512).optional(),
     sourceContentHash: safeText(512).optional(),
     sourceAnchor: safeText(4_096),
-    routeId: safeText(512),
-    stateId: safeText(512),
-    coverageCellId: safeText(512),
+    routeId: safeText(512).nullable(),
+    stateId: safeText(512).nullable(),
+    coverageCellId: safeText(512).nullable(),
   })
   .strict();
 const sourceBindingSchema = sourceProvenanceSchema
   .extend({
+    routeId: safeText(512),
+    stateId: safeText(512),
+    coverageCellId: safeText(512),
     viewport: z
       .object({
         name: z.enum(["desktop", "tablet", "mobile"]),
@@ -102,104 +110,6 @@ const sourceBindingSchema = sourceProvenanceSchema
       .strict(),
   })
   .strict();
-const referenceBindingSchema = z
-  .object({
-    src: z
-      .string()
-      .min(1)
-      .max(4_096)
-      .regex(/^\/imports\/[a-z0-9/_\-.]+$/u),
-    alt: z.string().trim().min(1).max(2_048),
-    authority: z.string().trim().min(1).max(256),
-    appVersion: z.string().trim().min(1).max(128),
-    capturedAt: z.iso.datetime(),
-    sourceUrl: z.url().max(8_192),
-    captureId: safeText(2_048).optional(),
-    contentHash: safeText(512).optional(),
-    sourceRevision: safeText(2_048).optional(),
-    accessibilitySnapshotRef: safeText(2_048).optional(),
-    sourceAnchors: z.array(safeText(2_048)).max(1_024).optional(),
-    componentIds: z.array(safeText(2_048)).max(1_024).optional(),
-  })
-  .strict();
-const componentSourceSchema = z
-  .object({
-    repositoryRevision: safeText(512),
-    repositoryDirty: z.boolean().optional(),
-    sourceAnchor: safeText(4_096),
-    sourceContentHash: safeText(512).optional(),
-    exportName: safeText(512).optional(),
-  })
-  .strict();
-const componentPreviewItemSchema = z
-  .object({
-    icon: z.string().max(512).optional(),
-    label: z.string().max(2_048),
-    status: z.string().max(512).optional(),
-    supportingText: z.string().max(4_096).optional(),
-    value: z.string().max(2_048).optional(),
-  })
-  .strict();
-
-const componentBindingSchema = z
-  .object({
-    atomicLevel: z.enum([
-      "atom",
-      "molecule",
-      "organism",
-      "template",
-      "page",
-    ]),
-    componentId: idSchema,
-    componentName: safeText(512),
-    classification: z.enum(["master", "instance"]),
-    editable: z
-      .object({
-        label: z.boolean(),
-        icon: z.boolean(),
-        selected: z.boolean(),
-        variant: z.boolean(),
-      })
-      .strict(),
-    masterId: idSchema.optional(),
-    props: z
-      .object({
-        label: z.string().max(2_048).optional(),
-        icon: z.string().max(512).optional(),
-        selected: z.boolean().optional(),
-        status: z.string().max(512).optional(),
-        supportingText: z.string().max(4_096).optional(),
-        placeholder: z.string().max(2_048).optional(),
-        value: z.string().max(2_048).optional(),
-        items: z.array(componentPreviewItemSchema).max(100).optional(),
-      })
-      .strict(),
-    role: z.enum([
-      "button",
-      "tab-bar",
-      "tab-item",
-      "card",
-      "input",
-      "badge",
-      "header",
-      "screen-shell",
-    ]),
-    source: componentSourceSchema,
-    variant: z.string().max(512).optional(),
-  })
-  .strict()
-  .superRefine((component, context) => {
-    if (
-      component.classification === "master" &&
-      component.masterId !== undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Component masters cannot reference another master.",
-        path: ["masterId"],
-      });
-    }
-  });
 const embeddedImageSchema = z
   .object({
     alt: z.string().trim().min(1).max(4_096),
@@ -223,6 +133,7 @@ const workbenchNodeSchema = z
         z.number().finite().nonnegative(),
     ])
       .optional(),
+    effects: z.array(CanvasEffectV2Schema).max(32).optional(),
     id: idSchema,
     image: embeddedImageSchema.optional(),
     kind: z.enum([
@@ -256,14 +167,21 @@ const workbenchNodeSchema = z
     opacity: z.number().finite().min(0).max(1).optional(),
     rotation: z.number().finite().optional(),
     text: z.string().max(65_536).optional(),
+    fontFamily: safeText(512).optional(),
+    fontSize: z.number().finite().positive().max(10_000).optional(),
+    fontWeight: z.number().int().min(1).max(900).optional(),
+    letterSpacing: z.number().finite().min(-1_000).max(1_000).optional(),
+    lineHeight: z.number().finite().positive().max(10_000).optional(),
+    textAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+    textAutoResize: z.enum(["none", "width-height", "height"]).optional(),
     fill: z.string().max(512).optional(),
     stroke: z.string().max(512).optional(),
     strokeAlign: z.enum(["inside", "center", "outside"]).optional(),
     strokeWeight: z.number().finite().nonnegative().optional(),
     source: sourceBindingSchema.optional(),
     provenance: sourceProvenanceSchema.optional(),
-    reference: referenceBindingSchema.optional(),
-    component: componentBindingSchema.optional(),
+    reference: canvasReferenceBindingSchema.optional(),
+    component: canvasClipboardComponentBindingSchema.optional(),
     frameContent: z.string().max(65_536).optional(),
     semanticBaseline: z.string().max(65_536).optional(),
   })
@@ -287,6 +205,17 @@ const workbenchNodeSchema = z
       context.addIssue({
         code: "custom",
         message: "Image nodes require embedded PNG content.",
+        path: ["image"],
+      });
+    }
+    if (
+      node.kind === "Image" &&
+      node.image !== undefined &&
+      !isValidCanvasClipboardImage(node.image)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Image metadata must match verified PNG content.",
         path: ["image"],
       });
     }
@@ -314,6 +243,33 @@ const workbenchNodeSchema = z
         code: "custom",
         message: "Component instances require component metadata.",
         path: ["component"],
+      });
+    }
+    if (node.kind === "Component" && node.component === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Component masters require component metadata.",
+        path: ["component"],
+      });
+    }
+    if (
+      node.kind === "Component" &&
+      node.component?.classification !== "master"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Component nodes require master metadata.",
+        path: ["component", "classification"],
+      });
+    }
+    if (
+      node.kind === "ComponentInstance" &&
+      node.component?.classification !== "instance"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Component instance nodes require instance metadata.",
+        path: ["component", "classification"],
       });
     }
     if (
@@ -367,6 +323,10 @@ export interface CanvasClipboardCutResult {
   readonly payload: CanvasClipboardPayload;
 }
 
+export type CanvasClipboardPlacement =
+  | { readonly kind: "offset"; readonly offset?: number }
+  | { readonly kind: "cursor"; readonly point: Point };
+
 let sessionClipboardFallback: string | null = null;
 
 function serializedByteLength(value: unknown): number {
@@ -399,6 +359,24 @@ function hasValidHierarchy(payload: CanvasClipboardPayload): boolean {
     )
   ) {
     return false;
+  }
+
+  for (const node of payload.nodes) {
+    const component = node.component;
+    if (
+      component?.classification === "instance" &&
+      component.masterId !== undefined
+    ) {
+      const includedMaster = nodesById.get(component.masterId);
+      if (
+        includedMaster !== undefined &&
+        (includedMaster.kind !== "Component" ||
+          includedMaster.component?.classification !== "master" ||
+          includedMaster.component.componentId !== component.componentId)
+      ) {
+        return false;
+      }
+    }
   }
 
   for (const node of payload.nodes) {
@@ -664,16 +642,46 @@ export function clearCanvasSessionClipboard(): void {
 export function pasteCanvasClipboard(
   nodes: readonly WorkbenchNode[],
   payload: CanvasClipboardPayload | null = readCanvasSessionClipboard(),
+  placement: CanvasClipboardPlacement = { kind: "offset" },
 ): CanvasClipboardPasteResult | null {
   const validated = payload === null ? null : validatedPayload(payload);
   if (validated === null) {
     return null;
   }
+  const translation = canvasClipboardTranslation(validated, placement);
+  if (translation === null) {
+    return null;
+  }
   return pasteValidatedCanvasClipboard(
     nodes,
     validated,
-    CANVAS_CLIPBOARD_OFFSET,
+    translation,
   );
+}
+
+function canvasClipboardTranslation(
+  payload: CanvasClipboardPayload,
+  placement: CanvasClipboardPlacement,
+): Point | null {
+  if (placement.kind === "offset") {
+    const offset = placement.offset ?? CANVAS_CLIPBOARD_OFFSET;
+    return Number.isFinite(offset) ? { x: offset, y: offset } : null;
+  }
+  if (!Number.isFinite(placement.point.x) || !Number.isFinite(placement.point.y)) {
+    return null;
+  }
+  const roots = payload.rootIds.flatMap((id) => {
+    const node = payload.nodes.find((candidate) => candidate.id === id);
+    return node === undefined ? [] : [node];
+  });
+  const left = Math.min(...roots.map(({ position }) => position.x));
+  const top = Math.min(...roots.map(({ position }) => position.y));
+  const right = Math.max(...roots.map((node) => node.position.x + node.size.width));
+  const bottom = Math.max(...roots.map((node) => node.position.y + node.size.height));
+  return {
+    x: placement.point.x - (left + right) / 2,
+    y: placement.point.y - (top + bottom) / 2,
+  };
 }
 
 export function isCanvasNodeDeletable(node: WorkbenchNode): boolean {
