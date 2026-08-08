@@ -23,6 +23,7 @@ interface ManagedMetroBridgeMetadataV1 {
   readonly configExisted: boolean;
   readonly originalPackageHash: `sha256:${string}`;
   readonly patchedPackageHash: `sha256:${string}`;
+  readonly patchedEntryHash: `sha256:${string}`;
   readonly originalConfigHash: `sha256:${string}` | null;
   readonly patchedConfigHash: `sha256:${string}`;
 }
@@ -30,7 +31,7 @@ interface ManagedMetroBridgeMetadataV1 {
 export type PreparedManagedMetroBridge = Readonly<ManagedMetroBridgeMetadataV1>;
 
 const BRIDGE_RELATIVE_ROOT = ".memi/capture/metro-bridge";
-const ENTRY_RELATIVE_PATH = `${BRIDGE_RELATIVE_ROOT}/MemiCaptureEntry.js`;
+const ENTRY_RELATIVE_PATH = "./.memi-capture-entry.js";
 
 function hash(value: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -187,6 +188,8 @@ export async function prepareManagedMetroBridge(
       existing.entryPoint === input.entryPoint &&
       hash(await readFile(existing.packagePath, "utf8")) ===
         existing.patchedPackageHash &&
+      hash(await readFile(existing.entryPath, "utf8")) ===
+        existing.patchedEntryHash &&
       hash(await readFile(existing.configPath, "utf8")) ===
         existing.patchedConfigHash
     ) {
@@ -217,6 +220,12 @@ export async function prepareManagedMetroBridge(
     }
   }
   await regularFile(packagePath, "Managed package manifest");
+  try {
+    await lstat(entryPath);
+    throw new Error("Managed capture entry already exists in the project.");
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
   const originalPackage = await readFile(packagePath, "utf8");
   const originalConfig = originalConfigPath === null
     ? null
@@ -229,6 +238,7 @@ export async function prepareManagedMetroBridge(
   }, null, 2)}\n`;
   let packagePatched = false;
   let configPatched = false;
+  let entryCreated = false;
   try {
     await atomicWrite(packageBackupPath, originalPackage);
     if (originalConfig !== null) {
@@ -238,6 +248,7 @@ export async function prepareManagedMetroBridge(
       entryPath,
       `import ${JSON.stringify(input.entryPoint)};\n`,
     );
+    entryCreated = true;
     const patchedConfig = metroWrapper({
       projectRoot,
       dependencyRoot,
@@ -261,6 +272,9 @@ export async function prepareManagedMetroBridge(
       configExisted: originalConfig !== null,
       originalPackageHash: hash(originalPackage),
       patchedPackageHash: hash(patchedPackage),
+      patchedEntryHash: hash(
+        `import ${JSON.stringify(input.entryPoint)};\n`,
+      ),
       originalConfigHash: originalConfig === null ? null : hash(originalConfig),
       patchedConfigHash: hash(patchedConfig),
     });
@@ -275,6 +289,8 @@ export async function prepareManagedMetroBridge(
         await atomicWrite(configPath, originalConfig);
       }
     }
+    if (entryCreated) await rm(entryPath, { force: true });
+    await rm(`${entryPath}.tmp`, { force: true });
     await rm(bridgeRoot, { recursive: true, force: true });
     throw error;
   }
@@ -283,9 +299,10 @@ export async function prepareManagedMetroBridge(
 export async function restoreManagedMetroBridge(
   prepared: PreparedManagedMetroBridge,
 ): Promise<void> {
-  const [originalPackage, patchedPackage, patchedConfig] = await Promise.all([
+  const [originalPackage, patchedPackage, patchedEntry, patchedConfig] = await Promise.all([
     readFile(prepared.packageBackupPath, "utf8"),
     readFile(prepared.packagePath, "utf8"),
+    readFile(prepared.entryPath, "utf8"),
     readFile(prepared.configPath, "utf8"),
   ]);
   if (hash(originalPackage) !== prepared.originalPackageHash) {
@@ -293,6 +310,9 @@ export async function restoreManagedMetroBridge(
   }
   if (hash(patchedPackage) !== prepared.patchedPackageHash) {
     throw new Error("Managed package changed during capture.");
+  }
+  if (hash(patchedEntry) !== prepared.patchedEntryHash) {
+    throw new Error("Managed Metro entry changed during capture.");
   }
   if (hash(patchedConfig) !== prepared.patchedConfigHash) {
     throw new Error("Managed Metro config changed during capture.");
@@ -310,5 +330,9 @@ export async function restoreManagedMetroBridge(
     await rm(prepared.configPath, { force: true });
   }
   await atomicWrite(prepared.packagePath, originalPackage);
-  await rm(dirname(prepared.entryPath), { recursive: true, force: true });
+  await rm(prepared.entryPath, { force: true });
+  await rm(dirname(prepared.packageBackupPath), {
+    recursive: true,
+    force: true,
+  });
 }

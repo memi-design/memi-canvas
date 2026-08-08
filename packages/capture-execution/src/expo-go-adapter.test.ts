@@ -341,7 +341,7 @@ describe("ExpoGoCaptureAdapter", () => {
     expect((await lstat(bridgePath)).isSymbolicLink()).toBe(true);
     await expect(realpath(bridgePath)).resolves.toBe(await realpath(dependencyRoot));
     await expect(readFile(join(target.root, "package.json"), "utf8"))
-      .resolves.toContain("MemiCaptureEntry.js");
+      .resolves.toContain(".memi-capture-entry.js");
 
     await target.adapter.cleanup(target.context, null);
 
