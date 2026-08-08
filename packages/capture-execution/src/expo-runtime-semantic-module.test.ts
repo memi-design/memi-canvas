@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parse } from "@babel/parser";
 
 import { expoRuntimeSemanticModule } from "./expo-runtime-semantic-module.js";
 
@@ -22,6 +23,17 @@ describe("Expo runtime semantic module", () => {
 
     expect(module).toContain('const RUNTIME_TOKEN = "READY-TOKEN";');
     expect(module).toContain("runtimeToken: RUNTIME_TOKEN");
+  });
+
+  it("emits syntactically valid JavaScript for the managed runtime", () => {
+    const module = expoRuntimeSemanticModule("a".repeat(40), "READY-TOKEN");
+
+    expect(() =>
+      parse(module, {
+        plugins: ["jsx"],
+        sourceType: "module",
+      }),
+    ).not.toThrow();
   });
 
   it("freezes continuous React Native loops in the managed capture runtime", () => {
