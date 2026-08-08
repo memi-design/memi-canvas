@@ -149,6 +149,50 @@ describe("workbench pointer actions", () => {
     );
   });
 
+  it("commits the highlighted container as the moved node parent", () => {
+    const target = {
+      ...node("Checkout exploration", "Frame", null, 0, 0),
+      size: { height: 300, width: 300 },
+    };
+    const campaign = node("Campaign card", "DraftFrame", null, 400, 400);
+    const harness = actionHarness();
+
+    harness.create([target, campaign]).startMove(
+      campaign,
+      pointerEvent({ clientX: 400, clientY: 400, pointerId: 47 }),
+    );
+    harness.create([target, campaign]).handleViewportPointerMove(
+      pointerEvent<HTMLDivElement>({
+        clientX: 50,
+        clientY: 50,
+        pointerId: 47,
+      }),
+    );
+
+    const preview = harness.preview() ?? [];
+    harness.create(preview).handleViewportPointerUp(
+      {
+        ...pointerEvent({ clientX: 50, clientY: 50, pointerId: 47 }),
+        currentTarget: harness.viewport,
+      } as unknown as ReactPointerEvent<HTMLDivElement>,
+    );
+
+    expect(harness.commitIntentReceipt).toHaveBeenCalledWith(
+      "Move Campaign card into Checkout exploration",
+      {
+        kind: "reparent",
+        nodes: [
+          expect.objectContaining({
+            id: campaign.id,
+            parentId: target.id,
+            position: { x: 50, y: 50 },
+          }),
+        ],
+      },
+      { targetIds: [campaign.id] },
+    );
+  });
+
   it("defers selecting option-drag copies and persists a parent-relative subtree", () => {
     const campaign = node("Campaign card", "DraftFrame", null, 920, 160);
     const headline = node("Welcome headline", "Text", campaign.id, 952, 192);
