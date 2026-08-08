@@ -460,8 +460,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
 
   useWorkbenchGlobalInput({
     cameraScheduler,
-    commands,
-    gesture,
+    commands, gesture, nodeReservation,
     pasteImage,
     pasteSelection,
     selectNodeIds,

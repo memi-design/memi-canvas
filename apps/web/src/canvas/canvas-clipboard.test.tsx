@@ -796,7 +796,7 @@ describe("CanvasWorkbench clipboard integration", () => {
       documentId: v3Session.document.id,
       projectId: v3Session.document.projectId,
     });
-    expect(journal).toBeNull();
+    expect(journal?.operations).toEqual([]);
   });
 
   it("pastes the validated Memi MIME payload delivered by a browser paste event", async () => {

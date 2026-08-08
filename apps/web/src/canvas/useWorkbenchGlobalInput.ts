@@ -19,11 +19,16 @@ import {
   type EditorCommand,
 } from "./commands.js";
 import type { WorkbenchNode } from "./model.js";
+import type { WorkbenchNodeReservation } from "./useWorkbenchNodeReservation.js";
 
 interface WorkbenchGlobalInputOptions {
   readonly cameraScheduler: RefObject<FrameStateScheduler<CanvasCamera> | null>;
   readonly commands: readonly EditorCommand[];
   readonly gesture: RefObject<PointerGesture | null>;
+  readonly nodeReservation: Pick<
+    WorkbenchNodeReservation,
+    "getScope" | "isScopeCurrent"
+  >;
   readonly pasteImage: (image: CanvasClipboardImage) => unknown;
   readonly pasteSelection: (payload?: CanvasClipboardPayload) => unknown;
   readonly selectNodeIds: (nodeIds: readonly string[]) => void;
@@ -47,6 +52,7 @@ export function useWorkbenchGlobalInput({
   cameraScheduler,
   commands,
   gesture,
+  nodeReservation,
   pasteImage,
   pasteSelection,
   selectNodeIds,
@@ -94,8 +100,14 @@ export function useWorkbenchGlobalInput({
       }
       if (!hasCanvasImageInPasteData(event.clipboardData)) return;
       event.preventDefault();
+      const initiatingScope = nodeReservation.getScope();
       void readCanvasImageFromPasteData(event.clipboardData).then((image) => {
-        if (image !== null) pasteImage(image);
+        if (
+          image !== null &&
+          nodeReservation.isScopeCurrent(initiatingScope)
+        ) {
+          pasteImage(image);
+        }
       });
     };
     document.addEventListener("keydown", handleKeyDown);

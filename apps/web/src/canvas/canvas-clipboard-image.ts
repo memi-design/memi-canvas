@@ -263,11 +263,7 @@ export function hasCanvasImageInPasteData(
 export async function readCanvasImageFromPasteData(
   clipboardData: CanvasClipboardPasteData | null,
 ): Promise<CanvasClipboardImage | null> {
-  const image = await readCanvasImageFromPngBlob(nativePngBlob(clipboardData));
-  if (image !== null) {
-    storeCanvasSessionImage(image);
-  }
-  return image;
+  return readCanvasImageFromPngBlob(nativePngBlob(clipboardData));
 }
 
 export async function readCanvasImageFromSystem(
