@@ -169,6 +169,8 @@ export interface ExpoGoCaptureAdapterOptions {
   ) => Promise<void>;
   /** Defaults to 5s and applies only after opening a development-client URL. */
   readonly developmentClientAttachmentDelayMs?: number;
+  /** Bounded clipboard polls while waiting for managed runtime attachment. */
+  readonly maximumDevelopmentClientReadinessAttempts?: number;
   readonly flowByRoute?: Readonly<Record<string, string>>;
   readonly nativeDependencyPreparation?: ExpoNativeDependencyPreparation;
   /** Applies only to a managed worktree and is restored during cleanup. */
@@ -639,12 +641,45 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         this.#options.metro.routeAuthority ===
         "expo-development-client-url"
       ) {
-        const waitForAttachment =
-          this.#options.waitForDevelopmentClientAttachment ?? wait;
-        await waitForAttachment(
-          this.#options.developmentClientAttachmentDelayMs ?? 5_000,
-          context.signal,
-        );
+        const instrumentation = this.#runtimeInstrumentation;
+        const readEvidence = this.#options.readSimulatorRuntimeEvidence;
+        if (instrumentation !== null && readEvidence !== undefined) {
+          const expected = `MEMI_CAPTURE_READY_V1:${instrumentation.readinessToken}`;
+          const maximumAttempts =
+            this.#options.maximumDevelopmentClientReadinessAttempts ?? 150;
+          let ready = false;
+          for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+            const bytes = await readEvidence(
+              { deviceId: prepared.deviceId },
+              context.signal,
+            );
+            if (new TextDecoder().decode(bytes) === expected) {
+              ready = true;
+              break;
+            }
+            if (attempt + 1 < maximumAttempts) {
+              await wait(
+                this.#options.runtimeEvidencePollDelayMs ?? 200,
+                context.signal,
+              );
+            }
+          }
+          if (!ready) {
+            throw new CaptureExecutionError(
+              "launch",
+              "DEVELOPMENT_CLIENT_NOT_READY",
+              true,
+              "The instrumented development client did not attach before the bounded readiness deadline.",
+            );
+          }
+        } else {
+          const waitForAttachment =
+            this.#options.waitForDevelopmentClientAttachment ?? wait;
+          await waitForAttachment(
+            this.#options.developmentClientAttachmentDelayMs ?? 5_000,
+            context.signal,
+          );
+        }
       }
       const launch = Object.freeze({
         id: id("launch", `${preparation.id}:${prepared.deviceId}:${port}`),

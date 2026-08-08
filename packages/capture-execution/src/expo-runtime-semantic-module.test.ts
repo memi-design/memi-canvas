@@ -4,7 +4,10 @@ import { expoRuntimeSemanticModule } from "./expo-runtime-semantic-module.js";
 
 describe("Expo runtime semantic module", () => {
   it("refreshes capture sessions from every native deep-link event", () => {
-    const module = expoRuntimeSemanticModule("revision-1");
+    const module = expoRuntimeSemanticModule(
+      "revision-1",
+      "0123456789ABCDEF0123456789ABCDEF",
+    );
 
     expect(module).toContain('Linking.addEventListener("url"');
     expect(module).toContain("captureSessionFromUrl(event.url)");

@@ -1,5 +1,6 @@
 export function expoRuntimeSemanticModule(
   sourceRevision: string,
+  readinessToken: string,
 ): string {
   return `import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
@@ -23,6 +24,7 @@ import {
 } from "react-native";
 
 const SOURCE_REVISION = ${JSON.stringify(sourceRevision)};
+const READINESS_MARKER = ${JSON.stringify(`MEMI_CAPTURE_READY_V1:${readinessToken}`)};
 const NONCE = /^[0-9A-HJKMNP-TV-Z]{26}$/u;
 const EVIDENCE_PREFIX = "MEMI_CAPTURE_EVIDENCE_V1:";
 const ParentLayerContext = createContext(null);
@@ -394,6 +396,9 @@ export function MemiCaptureRuntimeAttestation() {
   const state = parameters.__memi_state;
   const [session, setSession] = useState(() => captureSession(nonce, state));
   const [registryRevision, setRegistryRevision] = useState(0);
+  useEffect(() => {
+    void Clipboard.setStringAsync(READINESS_MARKER).catch(() => undefined);
+  }, []);
   useEffect(() => subscribe(() => setRegistryRevision((value) => value + 1)), []);
   useEffect(() => {
     let cancelled = false;
