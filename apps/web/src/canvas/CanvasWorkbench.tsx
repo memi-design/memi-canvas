@@ -377,11 +377,7 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       : gesture.current?.type === "resize"
         ? [gesture.current.nodeId]
         : [];
-  const interactionFeedback = workbenchInteractionFeedback({
-    gesture: gesture.current,
-    nodes: projectedSceneNodes,
-    pointer: viewportPointer.current,
-  });
+  const interactionFeedback = workbenchInteractionFeedback({ gesture: gesture.current, nodes: projectedSceneNodes, pointer: viewportPointer.current });
   const visibleNodes = projectVisibleItems(
     projectedSceneNodes,
     (node) => ({
@@ -463,7 +459,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       canUndo: historyAvailability.canUndo,
     },
   );
-
   useWorkbenchGlobalInput({
     cameraScheduler,
     commands, gesture, nodeReservation,
@@ -541,7 +536,6 @@ function CanvasWorkbenchSession(props: CanvasWorkbenchProps) {
       : "Opening Canvas V3 session…";
     return <div role="alert">{message}</div>;
   }
-
   return (
     <CanvasWorkbenchView
       ariaLabel={`${project.title} canvas workbench`}
