@@ -39,6 +39,11 @@ import {
   type PreparedManagedDependencyBridge,
 } from "./managed-dependency-bridge.js";
 import {
+  prepareManagedMetroBridge,
+  restoreManagedMetroBridge,
+  type PreparedManagedMetroBridge,
+} from "./managed-metro-bridge.js";
+import {
   prepareExpoRuntimeInstrumentation,
   restoreExpoRuntimeInstrumentation,
   type PreparedExpoRuntimeInstrumentation,
@@ -96,6 +101,8 @@ export interface ExpoGoCaptureAdapterOptions {
   readonly metro: ExpoMetroAuthority;
   /** Available only for a declared development client in a managed worktree. */
   readonly localDevelopmentMetroLaunch?: LocalDevelopmentMetroLaunch;
+  /** Original package entry copied into the managed project-local Metro shim. */
+  readonly managedMetroEntryPoint?: string;
   readonly deviceResolver: (
     signal: AbortSignal,
   ) => Promise<Readonly<{ deviceId: string }>>;
@@ -320,6 +327,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
   #captures: Readonly<Record<string, CaptureState>> = Object.freeze({});
   #runtimeInstrumentation: PreparedExpoRuntimeInstrumentation | null = null;
   #managedDependencyBridge: PreparedManagedDependencyBridge | null = null;
+  #managedMetroBridge: PreparedManagedMetroBridge | null = null;
 
   constructor(options: ExpoGoCaptureAdapterOptions) {
     const expoGo = options.metro.routeAuthority === "expo-go-project-url";
@@ -358,6 +366,14 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
     ) {
       throw new Error(
         "Direct simctl requires a separate simulator process policy.",
+      );
+    }
+    if (
+      (options.localDevelopmentMetroLaunch === undefined) !==
+        (options.managedMetroEntryPoint === undefined)
+    ) {
+      throw new Error(
+        "A local development Metro launch requires its managed entry point.",
       );
     }
     if (
@@ -532,6 +548,17 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
             this.#options.localDevelopmentMetroLaunch.dependencyRoot,
         });
       }
+      if (
+        this.#options.localDevelopmentMetroLaunch !== undefined &&
+        this.#managedMetroBridge === null
+      ) {
+        this.#managedMetroBridge = await prepareManagedMetroBridge({
+          projectRoot: this.#options.projectRoot,
+          dependencyRoot:
+            this.#options.localDevelopmentMetroLaunch.dependencyRoot,
+          entryPoint: this.#options.managedMetroEntryPoint!,
+        });
+      }
       const device = await this.#options.deviceResolver(context.signal);
       const restoreSimulatorAnimations =
         await this.#options.freezeSimulatorAnimations?.(
@@ -579,6 +606,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
               "start",
               "--dev-client",
               "--localhost",
+              "--config",
+              this.#managedMetroBridge!.configPath,
               "--port",
               String(port),
             ],
@@ -1015,10 +1044,18 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         await restoreManagedDependencyBridge(prepared);
       }
     };
+    const restoreMetroBridge = async (): Promise<void> => {
+      const prepared = this.#managedMetroBridge;
+      this.#managedMetroBridge = null;
+      if (prepared !== null) {
+        await restoreManagedMetroBridge(prepared);
+      }
+    };
     if (launch === null) {
       await Promise.all([
         this.#restorePreparationAnimations(new AbortController().signal),
         restoreInstrumentation(),
+        restoreMetroBridge(),
         restoreDependencyBridge(),
       ]);
       return;
@@ -1027,6 +1064,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
     if (state === undefined) {
       await Promise.all([
         restoreInstrumentation(),
+        restoreMetroBridge(),
         restoreDependencyBridge(),
       ]);
       return;
@@ -1047,6 +1085,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       ),
       preparation?.restoreSimulatorAnimations?.(cleanupSignal) ?? Promise.resolve(),
       restoreInstrumentation(),
+      restoreMetroBridge(),
       restoreDependencyBridge(),
     ]);
     const releaseResults = await Promise.allSettled([
