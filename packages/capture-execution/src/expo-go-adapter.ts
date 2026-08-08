@@ -69,7 +69,10 @@ export interface ExpoDevelopmentClientMetroAuthority {
   readonly args: readonly ["expo", "start", "--dev-client", "--localhost"];
   readonly appId: string;
   readonly routeAuthority: "expo-development-client-url";
+  /** Generated Expo launcher scheme, for example `exp+buzzr`. */
   readonly scheme: string;
+  /** Product deep-link scheme used to navigate the installed app. */
+  readonly routeScheme: string;
 }
 
 export type ExpoMetroAuthority =
@@ -281,7 +284,7 @@ function scenarioUrl(
     attestation !== undefined
   ) {
     return createExpoStandaloneDeepLink({
-      scheme: metro.scheme,
+      scheme: metro.routeScheme,
       route: scenario.route,
       parameters: scenario.parameters,
       attestation,
@@ -328,7 +331,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       (expoGo && options.metro.appId !== "host.exp.Exponent") ||
       (!expoGo &&
         (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/u.test(options.metro.appId) ||
-          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.scheme)))
+          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.scheme) ||
+          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.routeScheme)))
     ) {
       throw new Error("Expo Metro and project URL authority is invalid.");
     }

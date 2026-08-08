@@ -957,6 +957,7 @@ export function createExpoGoCaptureAdapter(
             appId: configuration.metro.appId,
             routeAuthority: "expo-development-client-url",
             scheme: configuration.metro.scheme,
+            routeScheme: configuration.scheme!,
           },
     deviceResolver: (signal) =>
       selectCaptureSimulator(authority.simulatorPort, signal),
@@ -995,7 +996,7 @@ export function createExpoGoCaptureAdapter(
             safe(),
             {
               kind: "expo-standalone-url" as const,
-              scheme: configuration.metro.scheme,
+              scheme: configuration.scheme!,
             },
           ])]
         : []),

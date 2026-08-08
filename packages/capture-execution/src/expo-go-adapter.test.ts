@@ -119,7 +119,7 @@ function policy(
               { kind: "safe-token" as const },
               {
                 kind: "expo-standalone-url" as const,
-                scheme: metro.scheme,
+                scheme: metro.routeScheme,
               },
             ],
           }]
@@ -314,6 +314,7 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.memi.capture",
         routeAuthority: "expo-development-client-url",
         scheme: "memi",
+        routeScheme: "memi",
       },
       localDevelopmentMetroLaunch: {
         executable: "/opt/memi/node",
@@ -348,6 +349,7 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.memi.capture",
         routeAuthority: "expo-development-client-url",
         scheme: "memi",
+        routeScheme: "memi",
       },
       localDevelopmentMetroLaunch: {
         executable: "/opt/memi/node",
@@ -650,6 +652,7 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.example.capture",
         routeAuthority: "expo-development-client-url",
         scheme: "capture",
+        routeScheme: "capture",
       },
       readSimulatorRuntimeEvidence,
     });
@@ -903,6 +906,7 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
         scheme: "example",
+        routeScheme: "example",
       },
       directSimulator: true,
       simctlExecutable: "/usr/bin/simctl",
