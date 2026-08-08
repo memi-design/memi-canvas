@@ -317,6 +317,29 @@ describe("Gate B clipboard placement", () => {
     )).toEqual(["card-copy-1", "card-copy-2"]);
   });
 
+  it("shares id reservations between rapid duplicate and paste actions", () => {
+    const source = rectangle("card", { x: 40, y: 80 });
+    const commitIntentReceipt = vi.fn();
+    const actions = createWorkbenchDocumentActions({
+      appendTrace: vi.fn(),
+      commitIntentReceipt,
+      commitScene: vi.fn(),
+      documentId: "document",
+      nodes: [source],
+      selectedNode: source,
+      selectedNodeId: source.id,
+      selectedNodeIds: [source.id],
+    });
+    actions.copySelection();
+
+    actions.duplicateSelection();
+    actions.pasteSelection();
+
+    expect(commitIntentReceipt.mock.calls.map((call) =>
+      call[1].nodes[0].id,
+    )).toEqual(["card-copy-1", "card-copy-2"]);
+  });
+
   it("rejects custom MIME images whose declared metadata does not match the PNG", () => {
     const forged: WorkbenchNode = {
       ...rectangle("forged-image", { x: 20, y: 30 }),
