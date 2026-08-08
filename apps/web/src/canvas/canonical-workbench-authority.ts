@@ -310,6 +310,9 @@ function projectedNodes(
       rotation: node.transform.rotation,
       opacity: node.style.opacity,
       cornerRadii: node.style.cornerRadii,
+      ...(node.style.effects === undefined
+        ? {}
+        : { effects: node.style.effects.map((effect) => ({ ...effect })) }),
       ...(node.style.strokeWeight === undefined
         ? {}
         : { strokeWeight: node.style.strokeWeight }),

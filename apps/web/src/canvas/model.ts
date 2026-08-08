@@ -2,6 +2,7 @@ import {
   resolveComponentInstanceBinding,
   type ComponentInstanceBinding,
 } from "./component-model.js";
+import type { CanvasEffectV2 } from "@memi/protocol";
 
 export {
   createSceneState,
@@ -324,6 +325,7 @@ export interface WorkbenchNode {
   readonly letterSpacing?: number;
   readonly lineHeight?: number;
   readonly textAlign?: "left" | "center" | "right" | "justify";
+  readonly effects?: readonly CanvasEffectV2[];
   readonly fill?: string;
   readonly stroke?: string;
   readonly rotation?: number;
@@ -580,6 +582,9 @@ export function designDocumentFromWorkbench(
         ...(node.strokeAlign === undefined
           ? {}
           : { strokeAlign: node.strokeAlign }),
+        ...(node.effects === undefined
+          ? {}
+          : { effects: node.effects.map((effect) => ({ ...effect })) }),
         ...(node.path === undefined
           ? {}
           : { path: structuredClone(node.path) }),

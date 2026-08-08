@@ -70,6 +70,7 @@ function receiptFor(
   const styled = changed(
     (left, right) =>
       !equal(left.cornerRadii, right.cornerRadii) ||
+      !equal(left.effects, right.effects) ||
       left.fill !== right.fill ||
       left.stroke !== right.stroke ||
       left.strokeAlign !== right.strokeAlign ||

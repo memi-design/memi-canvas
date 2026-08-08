@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CanvasEffectV2Schema } from "@memi/protocol";
 
 import type { WorkbenchNode } from "./model.js";
 import {
@@ -223,6 +224,7 @@ const workbenchNodeSchema = z
         z.number().finite().nonnegative(),
     ])
       .optional(),
+    effects: z.array(CanvasEffectV2Schema).max(32).optional(),
     id: idSchema,
     image: embeddedImageSchema.optional(),
     kind: z.enum([

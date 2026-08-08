@@ -211,6 +211,9 @@ export function canonicalNodeFromLegacy(
       kind === "imported-source-frame" ? canonicalSourceBinding : null,
     style: {
       cornerRadii: legacy.cornerRadii ?? [0, 0, 0, 0],
+      ...(legacy.effects === undefined
+        ? {}
+        : { effects: legacy.effects.map((effect) => ({ ...effect })) }),
       fills:
         legacy.fill === undefined
           ? []

@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { canonicalJson } from "@memi/canonical-json";
 import { mapLegacyCanvasIdV2 } from "@memi/canvas-document";
-import { CanvasComponentIdSchema, CanvasLayoutV2Schema } from "@memi/protocol";
+import {
+  CanvasComponentIdSchema,
+  CanvasEffectV2Schema,
+  CanvasLayoutV2Schema,
+} from "@memi/protocol";
 
 import {
   provenanceFromSource,
@@ -175,6 +179,7 @@ const NodeSchema = z.strictObject({
       z.number().finite().nonnegative(),
     ])
     .optional(),
+  effects: z.array(CanvasEffectV2Schema).max(32).optional(),
   id: safeText(512),
   kind: z.enum([
     "CodeFrame",
