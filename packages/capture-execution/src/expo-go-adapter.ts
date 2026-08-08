@@ -1055,7 +1055,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       scenarioId: state.scenario.id,
       screenshotArtifactId: state.screenshot.id,
       hierarchyArtifactId: state.hierarchy.id,
-      geometryArtifactId: null,
+      geometryArtifactId: reconstructionArtifactId,
       reconstructionArtifactId,
       screenshotHash: state.screenshot.hash,
       sourceRevision: state.sourceRevision,
