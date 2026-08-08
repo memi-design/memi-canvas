@@ -90,16 +90,25 @@ function captureMarker(captureId: string): string {
   return `runtime-capture:${captureId}`;
 }
 
-function parseAnchor(value: string): Readonly<{ path: string; symbol: string }> {
+function parseAnchor(
+  value: string,
+  instrumentedSymbol?: string | null,
+): Readonly<{ path: string; symbol: string }> {
   const separator = value.lastIndexOf("#");
-  if (separator <= 0 || separator === value.length - 1) {
+  if (separator > 0 && separator < value.length - 1) {
+    return immutable({
+      path: value.slice(0, separator),
+      symbol: value.slice(separator + 1),
+    });
+  }
+  if (value.length === 0 || !instrumentedSymbol) {
     throw new Error(
-      "Runtime capture source anchors must use relative/path.tsx#Symbol.",
+      "Runtime capture source anchors require a relative path and component identity.",
     );
   }
   return immutable({
-    path: value.slice(0, separator),
-    symbol: value.slice(separator + 1),
+    path: value,
+    symbol: instrumentedSymbol,
   });
 }
 
@@ -223,7 +232,12 @@ function layerNode(
     layer.parentLayerId === undefined
       ? undefined
       : capture.layers.find(({ layerId }) => layerId === layer.parentLayerId);
-  const anchor = parseAnchor(layer.source.sourceAnchor);
+  const anchor = parseAnchor(
+    layer.source.sourceAnchor,
+    layer.source.exportName ??
+      layer.source.componentId ??
+      layer.source.astPath[1],
+  );
   const kind = layerKind(layer.kind);
   const solidColor =
     kind === "text"
