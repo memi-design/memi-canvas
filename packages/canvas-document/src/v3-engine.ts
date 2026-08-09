@@ -17,7 +17,7 @@ import {
   type CanvasSingleActionV3,
 } from "@memi/protocol";
 
-import { hashValue } from "./hash.js";
+import { hashCanvasDocumentValue, hashValue } from "./hash.js";
 import { prepareEntityActionV3 } from "./v3-entity-actions.js";
 import {
   canvasActionTargetsV3,
@@ -630,7 +630,7 @@ function nextSemanticDocument(
   };
   return CanvasDocumentV3Schema.parse({
     ...candidate,
-    stateHash: hashValue(semanticCanvasStateV3(candidate)),
+    stateHash: hashCanvasDocumentValue(semanticCanvasStateV3(candidate)),
   });
 }
 
@@ -701,13 +701,13 @@ export function createCanvasDocumentV3(
   return immutableCanvasV3(
     CanvasDocumentV3Schema.parse({
       ...candidate,
-      stateHash: hashValue(semanticCanvasStateV3(candidate)),
+      stateHash: hashCanvasDocumentValue(semanticCanvasStateV3(candidate)),
     }),
   );
 }
 
 export function hashCanvasDocumentV3(document: CanvasDocumentV3): string {
-  return hashValue(
+  return hashCanvasDocumentValue(
     semanticCanvasStateV3(CanvasDocumentV3Schema.parse(document)),
   );
 }

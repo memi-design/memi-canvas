@@ -5,7 +5,7 @@ import {
   type CanvasDocumentV3,
 } from "@memi/protocol";
 
-import { hashValue } from "./hash.js";
+import { hashCanvasDocumentValue } from "./hash.js";
 import { immutableCanvasV3 } from "./v3-support.js";
 
 export interface CanvasDocumentV2ToV3Migration {
@@ -100,7 +100,7 @@ export function migrateCanvasDocumentV2ToV3(
   const document = immutableCanvasV3(
     CanvasDocumentV3Schema.parse({
       ...parsed,
-      stateHash: hashValue(semanticState(parsed)),
+      stateHash: hashCanvasDocumentValue(semanticState(parsed)),
     }),
   );
   return immutableCanvasV3({
