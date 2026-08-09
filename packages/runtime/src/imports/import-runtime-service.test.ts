@@ -202,6 +202,32 @@ describe("import runtime service adapter", () => {
     });
   });
 
+  it("returns committed inventory from the durable project authority", async () => {
+    const committedJob = ImportJobSnapshotSchemaV2.parse({
+      ...listableJob,
+      id: "imp_01J00000000000000000000001",
+      projectId: "prj_01J00000000000000000000001",
+      state: "committed",
+      stage: "save",
+      revision: 4,
+    });
+    const coordinator = { get: vi.fn(async () => committedJob) };
+    const committedProjectStore = {
+      get: vi.fn(async () => ({ manifest: { inventory: EMPTY_INVENTORY } })),
+    };
+    const service = createImportRuntimeService(coordinator as never, {
+      committedProjectStore: committedProjectStore as never,
+    });
+
+    await expect(service.get({ jobId: committedJob.id })).resolves.toEqual({
+      job: committedJob,
+      inventory: EMPTY_INVENTORY,
+    });
+    expect(committedProjectStore.get).toHaveBeenCalledWith(
+      committedJob.projectId,
+    );
+  });
+
   it("forwards the requested pilot IDs under the single-use plan authority", async () => {
     const pilotScenarioId = CaptureScenarioIdSchema.parse(
       "csc_01J00000000000000000000000",

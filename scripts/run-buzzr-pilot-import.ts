@@ -1,23 +1,23 @@
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+import {
+  loadOrCreatePilotPlanKey,
+  resolveBuzzrPilotAppDataRoot,
+  resolveBuzzrPilotWorktreeRoot,
+  selectBuzzrPilotScenarios,
+} from "./buzzr-pilot-contract.js";
+
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const APP_DATA = join(
+const DEFAULT_APP_DATA = join(
   homedir(),
   "Library",
   "Application Support",
   "design.memi.canvas",
-);
-const MANAGED_WORKTREE_ROOT = join(
-  homedir(),
-  "Library",
-  "Caches",
-  "design.memi.canvas",
-  "capture-worktrees",
 );
 const REPOSITORY = process.env.MEMI_BUZZR_REPOSITORY;
 if (REPOSITORY === undefined || REPOSITORY.trim().length === 0) {
@@ -25,6 +25,23 @@ if (REPOSITORY === undefined || REPOSITORY.trim().length === 0) {
     "Set MEMI_BUZZR_REPOSITORY to the local Buzzr checkout before running the pilot.",
   );
 }
+const MANAGED_WORKTREE_ROOT = resolveBuzzrPilotWorktreeRoot({
+  configuredRoot: process.env.MEMI_BUZZR_PILOT_WORKTREE_ROOT,
+  defaultRoot: join(
+    homedir(),
+    "Library",
+    "Caches",
+    "design.memi.canvas",
+    "capture-worktrees",
+  ),
+  repositoryRoot: REPOSITORY,
+});
+const APP_DATA = resolveBuzzrPilotAppDataRoot({
+  configuredRoot: process.env.MEMI_BUZZR_PILOT_APP_DATA,
+  defaultRoot: DEFAULT_APP_DATA,
+  repositoryRoot: REPOSITORY,
+  worktreeRoot: MANAGED_WORKTREE_ROOT,
+});
 const PACKAGED_SIDECAR = resolve(
   "apps/macos/src-tauri/binaries/memi-canvas-runtime-aarch64-apple-darwin",
 );
@@ -187,10 +204,7 @@ async function stop(child: ReturnType<typeof spawn>): Promise<void> {
   }
 }
 
-const planKey = (await readFile(join(APP_DATA, "runtime", "plan-integrity-v1.key"), "utf8")).trim();
-if (!/^[a-f0-9]{64}$/iu.test(planKey)) {
-  throw new Error("Memi's local import-plan authority is unavailable.");
-}
+const planKey = await loadOrCreatePilotPlanKey(APP_DATA);
 const socketPath = join(APP_DATA, "runtime", `pilot-${randomBytes(4).toString("hex")}.sock`);
 const token = randomBytes(32).toString("hex");
 const sidecar = spawn(SIDECAR, SIDECAR_ARGS, {
@@ -276,8 +290,7 @@ try {
       }),
     ).plan;
     if (planned === undefined) throw new Error("The Buzzr import plan is missing.");
-    const pilot = planned.scenarios.find((scenario) => scenario.route === "/sign-in");
-    if (pilot === undefined) throw new Error("Buzzr has no capturable signed-out sign-in scenario.");
+    const pilot = selectBuzzrPilotScenarios(planned.scenarios);
     const approvedRecipeHashes = [
       ...planned.recipes.map((recipe) => recipe.hash),
       ...(planned.dependencyPreparations ?? []).map((preparation) => preparation.planFingerprint),
@@ -285,11 +298,11 @@ try {
     started = resultOrThrow(
       await exchange(socketPath, token, "imports.start", {
         repositoryPath: REPOSITORY,
-        projectName: "Buzzr pilot",
+        projectName: "Buzzr auth flow",
         selectedHarness: null,
         planToken: planned.token,
         approvedRecipeHashes,
-        pilotScenarioIds: [pilot.id],
+        pilotScenarioIds: pilot.map(({ id }) => id),
       }),
     ).job;
   }

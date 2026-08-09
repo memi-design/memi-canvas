@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,6 +43,24 @@ const application = Object.freeze({
   platform: "expo-ios" as const,
   relativeRoot: ".",
 });
+
+function pngHeader(width = 1_440, height = 900): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+  bytes.set([0, 0, 0, 13, 73, 72, 68, 82], 8);
+  new DataView(bytes.buffer).setUint32(16, width);
+  new DataView(bytes.buffer).setUint32(20, height);
+  return bytes;
+}
+
+const PNG_SCREENSHOT = pngHeader();
+
+function pngFrame(value: number): Uint8Array {
+  const bytes = new Uint8Array(PNG_SCREENSHOT.byteLength + 1);
+  bytes.set(PNG_SCREENSHOT);
+  bytes[PNG_SCREENSHOT.byteLength] = value;
+  return bytes;
+}
 
 function runtimeEvidence(
   scenario: CaptureScenarioV2,
@@ -102,6 +128,20 @@ function policy(
               },
         ],
       },
+      ...(metro.routeAuthority === "expo-development-client-url"
+        ? [{
+            executable: "/usr/bin/xcrun",
+            arguments: [
+              literal("simctl"),
+              literal("openurl"),
+              { kind: "safe-token" as const },
+              {
+                kind: "expo-standalone-url" as const,
+                scheme: metro.routeScheme,
+              },
+            ],
+          }]
+        : []),
       {
         executable: "/usr/bin/xcrun",
         arguments: [
@@ -176,7 +216,7 @@ async function fixture(
       });
       if (recipe.args.includes("screenshot")) {
         return {
-          stdout: new Uint8Array([137, 80, 78, 71]),
+          stdout: PNG_SCREENSHOT,
           stderr: "",
         };
       }
@@ -204,6 +244,7 @@ async function fixture(
     release: vi.fn(async () => undefined),
   };
   const waitForMetro = vi.fn(async () => undefined);
+  const waitForDevelopmentClientAttachment = vi.fn(async () => undefined);
   const waitForCaptureSettling = vi.fn(async () => undefined);
   const releaseDevice = vi.fn(async () => undefined);
   const basePolicy = policy(root, overrides.metro);
@@ -246,6 +287,7 @@ async function fixture(
     portLease,
     releaseDevice,
     waitForMetro,
+    waitForDevelopmentClientAttachment,
     waitForCaptureSettling,
     flowByRoute: {
       "/dashboard": ".maestro/dashboard.yaml",
@@ -276,12 +318,20 @@ async function fixture(
     running,
     scenario,
     waitForMetro,
+    waitForDevelopmentClientAttachment,
     waitForCaptureSettling,
   };
 }
 
 describe("ExpoGoCaptureAdapter", () => {
-  it("launches a declared development client through its verified local Expo CLI", async () => {
+  it("bridges external dependencies only for the managed capture lifecycle", async () => {
+    const dependencyParent = await mkdtemp(join(tmpdir(), "memi-expo-deps-"));
+    const dependencyRoot = join(dependencyParent, "node_modules");
+    await mkdir(join(dependencyRoot, "expo", "bin"), { recursive: true });
+    await writeFile(
+      join(await realpath(dependencyParent), "managed-package-sentinel"),
+      "source remains read-only\n",
+    );
     const target = await fixture({
       metro: {
         executable: "/opt/memi/npx",
@@ -289,14 +339,64 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.memi.capture",
         routeAuthority: "expo-development-client-url",
         scheme: "memi",
+        routeScheme: "memi",
       },
       localDevelopmentMetroLaunch: {
         executable: "/opt/memi/node",
-        cliPath: "/private/managed/node_modules/expo/bin/cli",
-        dependencyRoot: "/private/managed/node_modules",
-        environment: { NODE_PATH: "/private/managed/node_modules" },
+        cliPath: join(dependencyRoot, "expo", "bin", "cli"),
+        dependencyRoot,
+        environment: { NODE_PATH: dependencyRoot },
       },
+      managedMetroEntryPoint: "expo-router/entry",
     });
+    const originalPackage = '{"main":"expo-router/entry"}\n';
+    await writeFile(join(target.root, "package.json"), originalPackage);
+    await writeFile(join(target.root, "metro.config.js"), "module.exports = {};\n");
+
+    await target.adapter.prepare(target.context, application, [target.scenario]);
+
+    const bridgePath = join(target.root, "node_modules");
+    expect((await lstat(bridgePath)).isSymbolicLink()).toBe(true);
+    await expect(realpath(bridgePath)).resolves.toBe(await realpath(dependencyRoot));
+    await expect(readFile(join(target.root, "package.json"), "utf8"))
+      .resolves.toContain(".memi-capture-entry.js");
+
+    await target.adapter.cleanup(target.context, null);
+
+    await expect(lstat(bridgePath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(target.root, "package.json"), "utf8"))
+      .resolves.toBe(originalPackage);
+    await expect(lstat(dependencyRoot)).resolves.toMatchObject({});
+  });
+
+  it("launches a declared development client through its verified local Expo CLI", async () => {
+    const dependencyParent = await mkdtemp(join(tmpdir(), "memi-expo-cli-"));
+    const dependencyRoot = join(dependencyParent, "node_modules");
+    const cliPath = join(dependencyRoot, "expo", "bin", "cli");
+    await mkdir(join(dependencyRoot, "expo", "bin"), { recursive: true });
+    await writeFile(cliPath, "process.exit(0);\n");
+    const target = await fixture({
+      metro: {
+        executable: "/opt/memi/npx",
+        args: ["expo", "start", "--dev-client", "--localhost"],
+        appId: "com.memi.capture",
+        routeAuthority: "expo-development-client-url",
+        scheme: "memi",
+        routeScheme: "memi",
+      },
+      localDevelopmentMetroLaunch: {
+        executable: "/opt/memi/node",
+        cliPath,
+        dependencyRoot,
+        environment: { NODE_PATH: dependencyRoot },
+      },
+      managedMetroEntryPoint: "expo-router/entry",
+    });
+    await writeFile(
+      join(target.root, "package.json"),
+      '{"main":"expo-router/entry"}\n',
+    );
+    await writeFile(join(target.root, "metro.config.js"), "module.exports = {};\n");
     const preparation = await target.adapter.prepare(
       target.context,
       application,
@@ -309,7 +409,7 @@ describe("ExpoGoCaptureAdapter", () => {
       {
         executable: "/opt/memi/node",
         args: [
-          "/private/managed/node_modules/expo/bin/cli",
+          cliPath,
           "start",
           "--dev-client",
           "--localhost",
@@ -317,7 +417,7 @@ describe("ExpoGoCaptureAdapter", () => {
           "19000",
         ],
         cwd: target.root,
-        environment: { NODE_PATH: "/private/managed/node_modules" },
+        environment: { NODE_PATH: dependencyRoot },
       },
       target.options.processPolicy,
       target.context.signal,
@@ -332,8 +432,117 @@ describe("ExpoGoCaptureAdapter", () => {
         args: ["expo", "start", "--dev-client", "--localhost"],
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
-        scheme: "example",
+        scheme: "exp+example",
+        routeScheme: "example",
       },
+    });
+    await mkdir(join(target.root, "app"), { recursive: true });
+    await writeFile(join(target.root, "app/_layout.tsx"), ROOT_LAYOUT);
+    await writeFile(join(target.root, "app/index.tsx"), SCREEN);
+    const scenario = Object.freeze({
+      ...target.scenario,
+      route: "/dashboard/:tab",
+    });
+    const context = {
+      ...target.context,
+      job: {
+        ...target.context.job,
+        scenarios: [scenario],
+      },
+    };
+
+    const preparation = await target.adapter.prepare(
+      context,
+      application,
+      [scenario],
+    );
+    const instrumentation = JSON.parse(
+      await readFile(
+        join(
+          target.root,
+          ".memi/capture/runtime-attestation/metadata.json",
+        ),
+        "utf8",
+      ),
+    ) as { readonly readinessToken: string };
+
+    await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
+      .resolves.toContain("MemiCaptureRuntimeAttestation");
+
+    const launch = await target.adapter.launch(context, preparation);
+    const nonce = createHash("sha256")
+      .update(`${context.job.id}\0${scenario.id}`)
+      .digest("hex")
+      .slice(0, 26)
+      .toUpperCase();
+    vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => {
+      target.calls.push({
+        executable: recipe.executable,
+        args: Object.freeze([...recipe.args]),
+      });
+      return {
+        stdout: recipe.args.includes("hierarchy")
+          ? runtimeEvidence(scenario, {
+              nonce,
+              sourceRevision: context.job.repository.sourceRevision,
+              runtimeToken: instrumentation.readinessToken,
+            })
+          : recipe.args.includes("screenshot")
+            ? PNG_SCREENSHOT
+            : new Uint8Array(),
+        stderr: "",
+      };
+    });
+
+    await target.adapter.capture(context, launch, scenario);
+    expect(target.calls).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        args: expect.arrayContaining([
+          "openurl",
+          "MEMI-SIMULATOR-1",
+          `example:///dashboard/following?__memi_capture=${nonce}` +
+            "&__memi_state=Default",
+        ]),
+      }),
+    ]));
+    await target.adapter.cleanup(context, launch);
+
+    await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
+      .resolves.toBe(ROOT_LAYOUT);
+  });
+
+  it("waits for the exact managed runtime readiness marker before route handoff", async () => {
+    let reads = 0;
+    const readSimulatorRuntimeEvidence = vi.fn(async () => {
+      reads += 1;
+      if (reads === 1) {
+        return new TextEncoder().encode("MEMI_CAPTURE_READY_V1:STALE");
+      }
+      const metadata = JSON.parse(
+        await readFile(
+          join(
+            target.root,
+            ".memi/capture/runtime-attestation/metadata.json",
+          ),
+          "utf8",
+        ),
+      ) as { readonly readinessToken: string };
+      return new TextEncoder().encode(
+        `MEMI_CAPTURE_READY_V1:${metadata.readinessToken}`,
+      );
+    });
+    const target = await fixture({
+      managedRuntimeInstrumentation: true,
+      metro: {
+        executable: "/opt/memi/npx",
+        args: ["expo", "start", "--dev-client", "--localhost"],
+        appId: "com.example.client",
+        routeAuthority: "expo-development-client-url",
+        scheme: "exp+example",
+        routeScheme: "example",
+      },
+      readSimulatorRuntimeEvidence,
+      runtimeEvidencePollDelayMs: 0,
     });
     await mkdir(join(target.root, "app"), { recursive: true });
     await writeFile(join(target.root, "app/_layout.tsx"), ROOT_LAYOUT);
@@ -344,33 +553,10 @@ describe("ExpoGoCaptureAdapter", () => {
       application,
       [target.scenario],
     );
+    await target.adapter.launch(target.context, preparation);
 
-    await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
-      .resolves.toContain("MemiCaptureRuntimeAttestation");
-
-    const launch = await target.adapter.launch(target.context, preparation);
-    const nonce = createHash("sha256")
-      .update(`${target.context.job.id}\0${target.scenario.id}`)
-      .digest("hex")
-      .slice(0, 26)
-      .toUpperCase();
-    vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => ({
-      stdout: recipe.args.includes("hierarchy")
-        ? runtimeEvidence(target.scenario, {
-            nonce,
-            sourceRevision: target.context.job.repository.sourceRevision,
-          })
-        : recipe.args.includes("screenshot")
-          ? new Uint8Array([137, 80, 78, 71])
-          : new Uint8Array(),
-      stderr: "",
-    }));
-
-    await target.adapter.capture(target.context, launch, target.scenario);
-    await target.adapter.cleanup(target.context, launch);
-
-    await expect(readFile(join(target.root, "app/_layout.tsx"), "utf8"))
-      .resolves.toBe(ROOT_LAYOUT);
+    expect(readSimulatorRuntimeEvidence).toHaveBeenCalledTimes(2);
+    expect(target.waitForDevelopmentClientAttachment).not.toHaveBeenCalled();
   });
 
   it("launches a managed development client through its declared scheme", async () => {
@@ -380,7 +566,8 @@ describe("ExpoGoCaptureAdapter", () => {
         args: ["expo", "start", "--dev-client", "--localhost"],
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
-        scheme: "example",
+        scheme: "exp+example",
+        routeScheme: "example",
       },
     });
     expect(target.adapter.metadata.id).toBe("expo-development-client-ios");
@@ -390,6 +577,11 @@ describe("ExpoGoCaptureAdapter", () => {
       [target.scenario],
     );
     const launch = await target.adapter.launch(target.context, preparation);
+
+    expect(target.waitForDevelopmentClientAttachment).toHaveBeenCalledWith(
+      5_000,
+      target.context.signal,
+    );
     await target.adapter.capture(target.context, launch, target.scenario);
 
     expect(target.processStarter.start).toHaveBeenCalledWith(
@@ -412,14 +604,14 @@ describe("ExpoGoCaptureAdapter", () => {
           args: expect.arrayContaining([
             "openurl",
             "MEMI-SIMULATOR-1",
-            "example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000",
+            "exp+example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000",
           ]),
         }),
         expect.objectContaining({
           args: expect.arrayContaining([
             "openurl",
             "MEMI-SIMULATOR-1",
-            "example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000%2F--%2Fdashboard%3Ftab%3Dfollowing",
+            "exp+example://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A19000%2F--%2Fdashboard%3Ftab%3Dfollowing",
           ]),
         }),
       ]),
@@ -514,8 +706,13 @@ describe("ExpoGoCaptureAdapter", () => {
   it("persists signed semantic evidence as an editable reconstruction artifact", async () => {
     const sourceHash = `sha256:${"b".repeat(64)}` as const;
     let navigationUrl = "";
+    let readinessMarker = "";
+    let runtimeToken = "";
     let scenario: CaptureScenarioV2 | undefined;
     const readSimulatorRuntimeEvidence = vi.fn(async () => {
+      if (navigationUrl === "") {
+        return new TextEncoder().encode(readinessMarker);
+      }
       if (scenario === undefined) throw new Error("Scenario was not prepared.");
       const destination = new URL(navigationUrl || "capture://localhost");
       const nested = destination.searchParams.get("url");
@@ -525,6 +722,7 @@ describe("ExpoGoCaptureAdapter", () => {
       return runtimeEvidence(scenario, {
         nonce,
         sourceRevision: "a".repeat(40),
+        runtimeToken,
         semanticCapture: {
           appVersion: "2.1",
           layers: [
@@ -562,6 +760,7 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.example.capture",
         routeAuthority: "expo-development-client-url",
         scheme: "capture",
+        routeScheme: "capture",
       },
       readSimulatorRuntimeEvidence,
     });
@@ -570,6 +769,7 @@ describe("ExpoGoCaptureAdapter", () => {
     await writeFile(`${target.root}/app/index.tsx`, SCREEN);
     scenario = Object.freeze({
       ...target.scenario,
+      route: "/dashboard/:tab",
       sourceAnchor: {
         contentHash: sourceHash,
         relativePath: "app/(auth)/sign-in.tsx",
@@ -588,6 +788,17 @@ describe("ExpoGoCaptureAdapter", () => {
       application,
       [scenario],
     );
+    const instrumentation = JSON.parse(
+      await readFile(
+        join(
+          target.root,
+          ".memi/capture/runtime-attestation/metadata.json",
+        ),
+        "utf8",
+      ),
+    ) as { readonly readinessToken: string };
+    runtimeToken = instrumentation.readinessToken;
+    readinessMarker = `MEMI_CAPTURE_READY_V1:${instrumentation.readinessToken}`;
     const launch = await target.adapter.launch(context, preparation);
     vi.mocked(target.commandPort.execute).mockImplementation(async (recipe) => {
       if (recipe.args.includes("openurl")) {
@@ -597,7 +808,7 @@ describe("ExpoGoCaptureAdapter", () => {
         stdout: recipe.args.includes("hierarchy")
           ? new TextEncoder().encode("role=application")
           : recipe.args.includes("screenshot")
-            ? new Uint8Array([137, 80, 78, 71])
+            ? PNG_SCREENSHOT
             : new Uint8Array(),
         stderr: "",
       };
@@ -606,6 +817,9 @@ describe("ExpoGoCaptureAdapter", () => {
     const artifact = await target.adapter.collect(context, launch, raw);
 
     expect(artifact.reconstructionArtifactId).toMatch(/^art_/u);
+    expect(artifact.geometryArtifactId).toBe(
+      artifact.reconstructionArtifactId,
+    );
     const artifactRoot = `${target.root}/artifacts/sha256`;
     const files = (
       await Promise.all(
@@ -652,7 +866,7 @@ describe("ExpoGoCaptureAdapter", () => {
 
   it("reads simulator screenshots from the supplied evidence port instead of stdout", async () => {
     const captureSimulatorScreenshot = vi.fn(async () =>
-      new Uint8Array([137, 80, 78, 71]),
+      PNG_SCREENSHOT,
     );
     const target = await fixture({
       captureSimulatorScreenshot,
@@ -677,12 +891,28 @@ describe("ExpoGoCaptureAdapter", () => {
     ).toBe(false);
   });
 
+  it("rejects native pixels that contradict the planned viewport", async () => {
+    const target = await fixture({
+      captureSimulatorScreenshot: vi.fn(async () => pngHeader(1_206, 2_622)),
+    });
+    const preparation = await target.adapter.prepare(
+      target.context,
+      application,
+      [target.scenario],
+    );
+    const launch = await target.adapter.launch(target.context, preparation);
+
+    await expect(
+      target.adapter.capture(target.context, launch, target.scenario),
+    ).rejects.toMatchObject({ code: "VIEWPORT_MISMATCH", retryable: false });
+  });
+
   it("retries a transitioning screenshot pair until exact runtime pixels stabilize", async () => {
     const captureSimulatorScreenshot = vi.fn()
-      .mockResolvedValueOnce(new Uint8Array([1]))
-      .mockResolvedValueOnce(new Uint8Array([2]))
-      .mockResolvedValueOnce(new Uint8Array([3]))
-      .mockResolvedValueOnce(new Uint8Array([3]));
+      .mockResolvedValueOnce(pngFrame(1))
+      .mockResolvedValueOnce(pngFrame(2))
+      .mockResolvedValueOnce(pngFrame(3))
+      .mockResolvedValueOnce(pngFrame(3));
     const target = await fixture({
       captureSimulatorScreenshot,
       maximumScreenshotStabilityAttempts: 2,
@@ -698,6 +928,26 @@ describe("ExpoGoCaptureAdapter", () => {
       target.adapter.capture(target.context, launch, target.scenario),
     ).resolves.toEqual(expect.objectContaining({ scenarioId: target.scenario.id }));
     expect(captureSimulatorScreenshot).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps the strict verifier active through a long finite native transition", async () => {
+    let captures = 0;
+    const captureSimulatorScreenshot = vi.fn(async () => {
+      captures += 1;
+      return pngFrame(captures <= 26 ? captures : 99);
+    });
+    const target = await fixture({ captureSimulatorScreenshot });
+    const preparation = await target.adapter.prepare(
+      target.context,
+      application,
+      [target.scenario],
+    );
+    const launch = await target.adapter.launch(target.context, preparation);
+
+    await expect(
+      target.adapter.capture(target.context, launch, target.scenario),
+    ).resolves.toEqual(expect.objectContaining({ scenarioId: target.scenario.id }));
+    expect(captureSimulatorScreenshot).toHaveBeenCalledTimes(28);
   });
 
   it("reads runtime attestation from the supplied simulator evidence channel, not hierarchy text", async () => {
@@ -724,7 +974,7 @@ describe("ExpoGoCaptureAdapter", () => {
         };
       }
       if (recipe.args.includes("screenshot")) {
-        return { stdout: new Uint8Array([137, 80, 78, 71]), stderr: "" };
+        return { stdout: PNG_SCREENSHOT, stderr: "" };
       }
       return { stdout: new Uint8Array(), stderr: "" };
     });
@@ -814,12 +1064,13 @@ describe("ExpoGoCaptureAdapter", () => {
         appId: "com.example.client",
         routeAuthority: "expo-development-client-url",
         scheme: "example",
+        routeScheme: "example",
       },
       directSimulator: true,
       simctlExecutable: "/usr/bin/simctl",
       directSimulatorCommandPort: { execute: directExecute },
       captureSimulatorScreenshot: vi.fn(async () =>
-        new Uint8Array([137, 80, 78, 71]),
+        PNG_SCREENSHOT,
       ),
     });
     const preparation = await target.adapter.prepare(
@@ -916,7 +1167,7 @@ describe("ExpoGoCaptureAdapter", () => {
         stdout: recipe.args.includes("hierarchy")
           ? runtimeEvidence(mismatch.scenario, { route: "/wrong" })
           : recipe.args.includes("screenshot")
-            ? new Uint8Array([137, 80, 78, 71])
+            ? PNG_SCREENSHOT
             : new Uint8Array(),
         stderr: "",
       }),

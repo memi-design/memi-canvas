@@ -374,7 +374,7 @@ export function MemiApp({
         const hydrationKey = `${listedJob.id}:${listedJob.revision}`;
         if (hydratedImportKeysRef.current.has(hydrationKey)) continue;
         try {
-          const { job } = await imports.get({
+          const { job, inventory } = await imports.get({
             jobId: listedJob.id,
           });
           if (
@@ -386,8 +386,11 @@ export function MemiApp({
           ) {
             continue;
           }
-          const project = repositoryProjectFromCommittedImport(job);
-          const repositoryRecord = repositoryRecordFromCommittedImport(job);
+          const project = repositoryProjectFromCommittedImport(job, inventory);
+          const repositoryRecord = repositoryRecordFromCommittedImport(
+            job,
+            inventory,
+          );
           const canvasProject = createCapturedRepositoryCanvasProject({
             artifactReference: (artifact) => {
               const reference =

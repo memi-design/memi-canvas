@@ -429,6 +429,43 @@ describe("runtime capture V3 materialization", () => {
     expect(restarted.document).toEqual(result.persistence.document);
   });
 
+  it("materializes instrumented native layers whose source path and component identity are separate", async () => {
+    const nativeCapture = RuntimeCaptureScreenV1Schema.parse({
+      ...capture(),
+      layers: capture().layers.map((layer) => ({
+        ...layer,
+        source: {
+          ...layer.source,
+          componentId: "Text",
+          exportName: null,
+          sourceAnchor: "app/(auth)/sign-in.tsx",
+        },
+      })),
+    });
+    const memory = memoryJournalPort();
+    const persistence = await CanvasDocumentV3PersistenceAdapter.open(
+      seed(),
+      memory.port,
+    );
+
+    const result = await materializeRuntimeCaptureV3(persistence, {
+      evidenceArtifacts: evidenceArtifacts(),
+      expectedDocumentRevision: 0,
+      manifest: nativeCapture,
+      pageId: ids.page,
+    });
+
+    expect(
+      result.persistence.document.nodesById[
+        result.plan.layerNodeIds["auth.continue.label"]!
+      ]?.sourceAnchor,
+    ).toMatchObject({
+      path: "app/(auth)/sign-in.tsx",
+      sourceRevision,
+      symbol: "Text",
+    });
+  });
+
   it("fails closed before materialization for stale revisions and non-import pages", () => {
     expect(() =>
       prepareRuntimeCaptureMaterializationV3(seed(), {

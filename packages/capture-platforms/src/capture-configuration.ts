@@ -160,8 +160,7 @@ export function validateCaptureApplicationConfiguration(
           ["expo", "start", "--dev-client", "--localhost"].join("\0") ||
         configuration.metro.appId !== configuration.bundleId ||
         configuration.metro.routeAuthority !==
-          "expo-development-client-url" ||
-        configuration.metro.scheme !== configuration.scheme)
+          "expo-development-client-url")
     ) {
       throw new Error(
         "Development-client capture requires declared Metro and client route authority.",

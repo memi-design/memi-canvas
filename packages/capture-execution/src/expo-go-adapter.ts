@@ -30,21 +30,33 @@ import type {
 import { assertNativeDependencyPreparationApproval } from "./native-dependency-preparation.js";
 import { CaptureExecutionError } from "./executor.js";
 import {
+  isExpoManagedRuntimeReady,
   verifyExpoRuntimeEvidence,
   type ExpoRuntimeEvidenceV1,
 } from "./expo-runtime-evidence.js";
+import {
+  prepareManagedDependencyBridge,
+  restoreManagedDependencyBridge,
+  type PreparedManagedDependencyBridge,
+} from "./managed-dependency-bridge.js";
+import {
+  prepareManagedMetroBridge,
+  restoreManagedMetroBridge,
+  type PreparedManagedMetroBridge,
+} from "./managed-metro-bridge.js";
 import {
   prepareExpoRuntimeInstrumentation,
   restoreExpoRuntimeInstrumentation,
   type PreparedExpoRuntimeInstrumentation,
 } from "./expo-runtime-instrumentation.js";
+import { createExpoStandaloneDeepLink } from "./expo-route-navigation.js";
 import {
   type ProcessExecutionPolicy,
   type ProcessRecipe,
   sandboxProcessRecipe,
 } from "./process-policy.js";
 import type { PortLease, ProcessStarter } from "./react-web-adapter.js";
-import { verifyStableFrames } from "./stability.js";
+import { readPngDimensions, verifyStableFrames } from "./stability.js";
 
 export interface ExpoGoMetroAuthority {
   readonly executable: string;
@@ -63,7 +75,10 @@ export interface ExpoDevelopmentClientMetroAuthority {
   readonly args: readonly ["expo", "start", "--dev-client", "--localhost"];
   readonly appId: string;
   readonly routeAuthority: "expo-development-client-url";
+  /** Generated Expo launcher scheme, for example `exp+buzzr`. */
   readonly scheme: string;
+  /** Product deep-link scheme used to navigate the installed app. */
+  readonly routeScheme: string;
 }
 
 export type ExpoMetroAuthority =
@@ -87,6 +102,8 @@ export interface ExpoGoCaptureAdapterOptions {
   readonly metro: ExpoMetroAuthority;
   /** Available only for a declared development client in a managed worktree. */
   readonly localDevelopmentMetroLaunch?: LocalDevelopmentMetroLaunch;
+  /** Original package entry copied into the managed project-local Metro shim. */
+  readonly managedMetroEntryPoint?: string;
   readonly deviceResolver: (
     signal: AbortSignal,
   ) => Promise<Readonly<{ deviceId: string }>>;
@@ -146,6 +163,15 @@ export interface ExpoGoCaptureAdapterOptions {
     statusUrl: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  /** Lets the installed development client attach to the fresh Metro bundle. */
+  readonly waitForDevelopmentClientAttachment?: (
+    milliseconds: number,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  /** Defaults to 5s and applies only after opening a development-client URL. */
+  readonly developmentClientAttachmentDelayMs?: number;
+  /** Bounded clipboard polls while waiting for managed runtime attachment. */
+  readonly maximumDevelopmentClientReadinessAttempts?: number;
   readonly flowByRoute?: Readonly<Record<string, string>>;
   readonly nativeDependencyPreparation?: ExpoNativeDependencyPreparation;
   /** Applies only to a managed worktree and is restored during cleanup. */
@@ -190,6 +216,7 @@ interface CaptureState {
   readonly fixtureFingerprint: `sha256:${string}`;
   readonly sourceRevision: string;
   readonly evidence: ExpoRuntimeEvidenceV1;
+  readonly dimensions: Readonly<{ width: number; height: number }>;
 }
 
 function contained(root: string, candidate: string): boolean {
@@ -270,6 +297,17 @@ function scenarioUrl(
   scenario: CaptureScenarioV2,
   attestation?: Readonly<{ nonce: string; state: string }>,
 ): string {
+  if (
+    metro.routeAuthority === "expo-development-client-url" &&
+    attestation !== undefined
+  ) {
+    return createExpoStandaloneDeepLink({
+      scheme: metro.routeScheme,
+      route: scenario.route,
+      parameters: scenario.parameters,
+      attestation,
+    }).url;
+  }
   return metroProjectUrl(metro, port, scenario, attestation);
 }
 
@@ -299,6 +337,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
   #launches: Readonly<Record<string, LaunchState>> = Object.freeze({});
   #captures: Readonly<Record<string, CaptureState>> = Object.freeze({});
   #runtimeInstrumentation: PreparedExpoRuntimeInstrumentation | null = null;
+  #managedDependencyBridge: PreparedManagedDependencyBridge | null = null;
+  #managedMetroBridge: PreparedManagedMetroBridge | null = null;
 
   constructor(options: ExpoGoCaptureAdapterOptions) {
     const expoGo = options.metro.routeAuthority === "expo-go-project-url";
@@ -310,7 +350,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       (expoGo && options.metro.appId !== "host.exp.Exponent") ||
       (!expoGo &&
         (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/u.test(options.metro.appId) ||
-          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.scheme)))
+          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.scheme) ||
+          !/^[A-Za-z][A-Za-z0-9+.-]*$/u.test(options.metro.routeScheme)))
     ) {
       throw new Error("Expo Metro and project URL authority is invalid.");
     }
@@ -336,6 +377,14 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
     ) {
       throw new Error(
         "Direct simctl requires a separate simulator process policy.",
+      );
+    }
+    if (
+      (options.localDevelopmentMetroLaunch === undefined) !==
+        (options.managedMetroEntryPoint === undefined)
+    ) {
+      throw new Error(
+        "A local development Metro launch requires its managed entry point.",
       );
     }
     if (
@@ -500,6 +549,27 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           sourceRevision: sourceRevision!,
         });
       }
+      if (
+        this.#options.localDevelopmentMetroLaunch !== undefined &&
+        this.#managedDependencyBridge === null
+      ) {
+        this.#managedDependencyBridge = await prepareManagedDependencyBridge({
+          projectRoot: this.#options.projectRoot,
+          dependencyRoot:
+            this.#options.localDevelopmentMetroLaunch.dependencyRoot,
+        });
+      }
+      if (
+        this.#options.localDevelopmentMetroLaunch !== undefined &&
+        this.#managedMetroBridge === null
+      ) {
+        this.#managedMetroBridge = await prepareManagedMetroBridge({
+          projectRoot: this.#options.projectRoot,
+          dependencyRoot:
+            this.#options.localDevelopmentMetroLaunch.dependencyRoot,
+          entryPoint: this.#options.managedMetroEntryPoint!,
+        });
+      }
       const device = await this.#options.deviceResolver(context.signal);
       const restoreSimulatorAnimations =
         await this.#options.freezeSimulatorAnimations?.(
@@ -569,6 +639,54 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           ]),
         context.signal,
       );
+      if (
+        this.#options.metro.routeAuthority ===
+        "expo-development-client-url"
+      ) {
+        const instrumentation = this.#runtimeInstrumentation;
+        const readEvidence = this.#options.readSimulatorRuntimeEvidence;
+        if (instrumentation !== null && readEvidence !== undefined) {
+          const maximumAttempts =
+            this.#options.maximumDevelopmentClientReadinessAttempts ?? 150;
+          let ready = false;
+          for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
+            const bytes = await readEvidence(
+              { deviceId: prepared.deviceId },
+              context.signal,
+            );
+            if (
+              isExpoManagedRuntimeReady(
+                bytes,
+                instrumentation.readinessToken,
+              )
+            ) {
+              ready = true;
+              break;
+            }
+            if (attempt + 1 < maximumAttempts) {
+              await wait(
+                this.#options.runtimeEvidencePollDelayMs ?? 200,
+                context.signal,
+              );
+            }
+          }
+          if (!ready) {
+            throw new CaptureExecutionError(
+              "launch",
+              "DEVELOPMENT_CLIENT_NOT_READY",
+              true,
+              "The instrumented development client did not attach before the bounded readiness deadline.",
+            );
+          }
+        } else {
+          const waitForAttachment =
+            this.#options.waitForDevelopmentClientAttachment ?? wait;
+          await waitForAttachment(
+            this.#options.developmentClientAttachmentDelayMs ?? 5_000,
+            context.signal,
+          );
+        }
+      }
       const launch = Object.freeze({
         id: id("launch", `${preparation.id}:${prepared.deviceId}:${port}`),
         preparationId: preparation.id,
@@ -682,6 +800,12 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         bytes,
         ...(attestation === undefined ? {} : { expectedNonce: attestation.nonce }),
         ...(attestation === undefined ? {} : { expectedSourceRevision: sourceRevision }),
+        ...(this.#runtimeInstrumentation === null
+          ? {}
+          : {
+              expectedRuntimeToken:
+                this.#runtimeInstrumentation.readinessToken,
+            }),
       });
     let runtimeEvidence: ExpoRuntimeEvidenceV1 | undefined;
     if (this.#options.readSimulatorRuntimeEvidence !== undefined) {
@@ -742,11 +866,11 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       );
       return result.stdout;
     };
-    // Native route transitions can include a short launch/gesture animation.
-    // Twelve 500ms-spaced samples bound the wait at twelve seconds while
-    // never accepting a changing frame as evidence.
+    // A cold native launch can include a finite splash/presentation sequence
+    // that outlives Metro attachment. Thirty strict 500ms-spaced pairs bound
+    // that wait while never accepting a changing frame as evidence.
     const maximumScreenshotAttempts =
-      this.#options.maximumScreenshotStabilityAttempts ?? 12;
+      this.#options.maximumScreenshotStabilityAttempts ?? 30;
     let stableScreenshot: Uint8Array | undefined;
     let stableHash: `sha256:${string}` | undefined;
     let lastStabilityFailure: Exclude<
@@ -781,6 +905,28 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         true,
         lastStabilityFailure?.message ??
           "Runtime capture did not produce a stable frame pair.",
+      );
+    }
+    const dimensions = readPngDimensions(stableScreenshot);
+    if (dimensions === null) {
+      throw new CaptureExecutionError(
+        "verify",
+        "INVALID_PNG",
+        true,
+        "Simulator capture did not return a PNG with a valid IHDR chunk.",
+      );
+    }
+    const expectedWidth = scenario.viewport.width * scenario.viewport.scale;
+    const expectedHeight = scenario.viewport.height * scenario.viewport.scale;
+    if (
+      dimensions.width !== expectedWidth ||
+      dimensions.height !== expectedHeight
+    ) {
+      throw new CaptureExecutionError(
+        "verify",
+        "VIEWPORT_MISMATCH",
+        false,
+        `Simulator pixels ${dimensions.width}x${dimensions.height} contradict the planned viewport ${expectedWidth}x${expectedHeight}.`,
       );
     }
     const hierarchyResult = await this.#execute(
@@ -828,6 +974,7 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         })),
         sourceRevision,
         evidence,
+        dimensions,
       }),
     });
     return raw;
@@ -875,11 +1022,11 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
           artifactId: state.screenshot.id,
           hash: state.screenshot.hash,
           height:
-            state.scenario.viewport.height * state.scenario.viewport.scale,
+            state.dimensions.height,
           kind: "image/png",
           src: `memi-artifact://localhost/${state.screenshot.id}`,
           sourceUrl: `memi-source://repository/${sourceAnchor.relativePath}`,
-          width: state.scenario.viewport.width * state.scenario.viewport.scale,
+          width: state.dimensions.width,
         },
         authority: "local_capture",
         binding: {
@@ -943,15 +1090,14 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       scenarioId: state.scenario.id,
       screenshotArtifactId: state.screenshot.id,
       hierarchyArtifactId: state.hierarchy.id,
-      geometryArtifactId: null,
+      geometryArtifactId: reconstructionArtifactId,
       reconstructionArtifactId,
       screenshotHash: state.screenshot.hash,
       sourceRevision: state.sourceRevision,
       fixtureFingerprint: state.fixtureFingerprint,
       dimensions: {
-        width: state.scenario.viewport.width * state.scenario.viewport.scale,
-        height:
-          state.scenario.viewport.height * state.scenario.viewport.scale,
+        width: state.dimensions.width,
+        height: state.dimensions.height,
         scale: state.scenario.viewport.scale,
       },
       verification: {
@@ -976,16 +1122,36 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
         await restoreExpoRuntimeInstrumentation(prepared);
       }
     };
+    const restoreDependencyBridge = async (): Promise<void> => {
+      const prepared = this.#managedDependencyBridge;
+      this.#managedDependencyBridge = null;
+      if (prepared !== null) {
+        await restoreManagedDependencyBridge(prepared);
+      }
+    };
+    const restoreMetroBridge = async (): Promise<void> => {
+      const prepared = this.#managedMetroBridge;
+      this.#managedMetroBridge = null;
+      if (prepared !== null) {
+        await restoreManagedMetroBridge(prepared);
+      }
+    };
     if (launch === null) {
       await Promise.all([
         this.#restorePreparationAnimations(new AbortController().signal),
         restoreInstrumentation(),
+        restoreMetroBridge(),
+        restoreDependencyBridge(),
       ]);
       return;
     }
     const state = this.#launches[launch.id];
     if (state === undefined) {
-      await restoreInstrumentation();
+      await Promise.all([
+        restoreInstrumentation(),
+        restoreMetroBridge(),
+        restoreDependencyBridge(),
+      ]);
       return;
     }
     const cleanupSignal = new AbortController().signal;
@@ -1004,6 +1170,8 @@ export class ExpoGoCaptureAdapter implements CaptureAdapterV1 {
       ),
       preparation?.restoreSimulatorAnimations?.(cleanupSignal) ?? Promise.resolve(),
       restoreInstrumentation(),
+      restoreMetroBridge(),
+      restoreDependencyBridge(),
     ]);
     const releaseResults = await Promise.allSettled([
       this.#options.releaseDevice?.(cleanupSignal) ?? Promise.resolve(),

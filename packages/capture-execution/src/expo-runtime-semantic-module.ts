@@ -1,5 +1,6 @@
 export function expoRuntimeSemanticModule(
   sourceRevision: string,
+  readinessToken: string,
 ): string {
   return `import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
@@ -15,15 +16,22 @@ import React, {
   useState,
 } from "react";
 import {
+  Animated,
   findNodeHandle,
   Image,
+  Linking,
   StyleSheet,
   UIManager,
 } from "react-native";
 
 const SOURCE_REVISION = ${JSON.stringify(sourceRevision)};
+const RUNTIME_TOKEN = ${JSON.stringify(readinessToken)};
+const READINESS_MARKER = ${JSON.stringify(`MEMI_CAPTURE_READY_V1:${readinessToken}`)};
 const NONCE = /^[0-9A-HJKMNP-TV-Z]{26}$/u;
 const EVIDENCE_PREFIX = "MEMI_CAPTURE_EVIDENCE_V1:";
+const memiAnimatedLoop = Animated.loop.bind(Animated);
+Animated.loop = (animation, configuration = {}) =>
+  memiAnimatedLoop(animation, { ...configuration, iterations: 0 });
 const ParentLayerContext = createContext(null);
 let registry = new Map();
 let listeners = new Set();
@@ -66,17 +74,36 @@ function subscribe(listener) {
   };
 }
 
-function captureSession(nonce, state) {
+function captureSession(nonce, state, expectedRoute) {
   if (
     typeof nonce !== "string" ||
     !NONCE.test(nonce) ||
     typeof state !== "string" ||
     state.length === 0 ||
-    state.length > 160
+    state.length > 160 ||
+    typeof expectedRoute !== "string" ||
+    !expectedRoute.startsWith("/") ||
+    expectedRoute.includes("\\\\") ||
+    expectedRoute.includes("\\0")
   ) {
     return null;
   }
-  return { nonce, state };
+  return { nonce, state, expectedRoute };
+}
+
+function captureSessionFromUrl(value) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    const url = new URL(value);
+    const session = captureSession(
+      url.searchParams.get("__memi_capture"),
+      url.searchParams.get("__memi_state"),
+      url.pathname,
+    );
+    return session === null ? null : { ...session, expectedRoute: url.pathname };
+  } catch {
+    return null;
+  }
 }
 
 function storedCaptureSession(value) {
@@ -89,7 +116,7 @@ function storedCaptureSession(value) {
     ) {
       return null;
     }
-    return captureSession(candidate.nonce, candidate.state);
+    return captureSession(candidate.nonce, candidate.state, candidate.route);
   } catch {
     return null;
   }
@@ -378,11 +405,34 @@ export function MemiCaptureRuntimeAttestation() {
   const parameters = useGlobalSearchParams();
   const nonce = parameters.__memi_capture;
   const state = parameters.__memi_state;
-  const [session, setSession] = useState(() => captureSession(nonce, state));
+  const [session, setSession] = useState(() =>
+    captureSession(nonce, state, pathname),
+  );
   const [registryRevision, setRegistryRevision] = useState(0);
+  useEffect(() => {
+    void Clipboard.setStringAsync(READINESS_MARKER).catch(() => undefined);
+  }, []);
   useEffect(() => subscribe(() => setRegistryRevision((value) => value + 1)), []);
   useEffect(() => {
-    const fromParameters = captureSession(nonce, state);
+    let cancelled = false;
+    const acceptUrl = (value) => {
+      const fromUrl = captureSessionFromUrl(value);
+      if (!cancelled && fromUrl !== null) setSession(fromUrl);
+    };
+    void Linking.getInitialURL()
+      .then(acceptUrl)
+      .catch(() => undefined);
+    const subscription = Linking.addEventListener("url", (event) => {
+      const fromUrl = captureSessionFromUrl(event.url);
+      if (!cancelled && fromUrl !== null) setSession(fromUrl);
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, []);
+  useEffect(() => {
+    const fromParameters = captureSession(nonce, state, pathname);
     if (fromParameters !== null) {
       setSession(fromParameters);
       return;
@@ -393,9 +443,9 @@ export function MemiCaptureRuntimeAttestation() {
         if (restored !== null) setSession((current) => current ?? restored);
       })
       .catch(() => undefined);
-  }, [nonce, state]);
+  }, [nonce, pathname, state]);
   useEffect(() => {
-    if (session === null) return undefined;
+    if (session === null || pathname !== session.expectedRoute) return undefined;
     let cancelled = false;
     const timeout = setTimeout(() => {
       void measuredLayers().then((layers) => {
@@ -404,6 +454,7 @@ export function MemiCaptureRuntimeAttestation() {
           version: 1,
           nonce: session.nonce,
           sourceRevision: SOURCE_REVISION,
+          runtimeToken: RUNTIME_TOKEN,
           route: pathname,
           state: session.state,
           readinessSelector: null,
