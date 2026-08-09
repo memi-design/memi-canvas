@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { lstat } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
 import {
@@ -24,6 +24,8 @@ import {
 interface CommittedProjectRow {
   readonly record_json: string;
 }
+
+export const MAX_GATE_C_RECONSTRUCTION_BYTES = 8 * 1_024 * 1_024;
 
 export interface GateCNativeHydrationRoot {
   readonly artifactStorePath: string;
@@ -120,7 +122,7 @@ export function openReadOnlyGateCImportDatabase(path: string): Database {
   return new Database(path, { readonly: true, strict: true });
 }
 
-function committedProject(
+export function readCommittedGateCProject(
   database: Database,
   projectId: ProjectId,
 ): CommittedImportedProjectRecord {
@@ -167,7 +169,19 @@ export function createGateCReconstructionLoader(
         `Reconstruction artifact ${artifactId} is not retained in committed evidence.`,
       );
     }
-    const bytes = await store.read(reference);
+    const path = await store.resolve(reference);
+    const metadata = await lstat(path);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isFile() ||
+      metadata.size <= 0 ||
+      metadata.size > MAX_GATE_C_RECONSTRUCTION_BYTES
+    ) {
+      throw new Error(
+        `Reconstruction artifact ${artifactId} exceeds its JSON byte budget.`,
+      );
+    }
+    const bytes = await readFile(path);
     try {
       return JSON.parse(bytes.toString("utf8")) as unknown;
     } catch {
@@ -211,7 +225,7 @@ export async function runGateCNativeHydrationDiagnostic(
   const projectId = ProjectIdSchema.parse(inputProjectId);
   const database = openReadOnlyGateCImportDatabase(root.databasePath);
   try {
-    const committed = committedProject(database, projectId);
+    const committed = readCommittedGateCProject(database, projectId);
     const job = committed.capture.job;
     const inventory = committed.manifest.inventory;
     const project = repositoryProjectFromCommittedImport(job, inventory);

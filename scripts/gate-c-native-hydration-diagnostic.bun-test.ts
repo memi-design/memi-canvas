@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { ContentAddressedArtifactStore } from "@memi/capture-execution";
 
 import {
+  MAX_GATE_C_RECONSTRUCTION_BYTES,
   createGateCReconstructionLoader,
   openReadOnlyGateCImportDatabase,
   parseGateCNativeHydrationArguments,
@@ -136,5 +137,27 @@ describe("Gate C native hydration diagnostic", () => {
     await expect(
       loader("art_00000000000000000000000000"),
     ).rejects.toThrow(/not retained in committed evidence/u);
+  });
+
+  it("rejects oversized reconstruction JSON before reading it", async () => {
+    const root = await recoveryRoot();
+    const store = new ContentAddressedArtifactStore(
+      join(root, "capture-artifacts"),
+    );
+    const stored = await store.put(
+      new Uint8Array(MAX_GATE_C_RECONSTRUCTION_BYTES + 1).fill(0x78),
+      "json",
+    );
+    const reference = Object.freeze({
+      id: stored.id,
+      hash: stored.hash,
+      extension: "json",
+    });
+    const loader = createGateCReconstructionLoader(
+      join(root, "capture-artifacts"),
+      [reference],
+    );
+
+    await expect(loader(reference.id)).rejects.toThrow(/byte budget/u);
   });
 });

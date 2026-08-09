@@ -25,6 +25,7 @@
     "macos:build": "npm --workspace @memi/macos run build",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm run test:bun && npm run test:coverage && npm run test:v3-replay-property && npm run build",
+    "verify:gate-c-release-evidence": "bun scripts/run-gate-c-release-evidence.ts",
     "smoke:runtime-sidecar": "vite-node scripts/smoke-runtime-sidecar.ts",
     "package:macos-release": "vite-node --script scripts/package-macos-release.ts",
     "verify:macos": "npm --workspace @memi/macos run tauri -- build --debug --bundles app && vite-node scripts/smoke-macos-app.ts",

@@ -38,11 +38,16 @@ describe("Gate C release evidence workflow", () => {
       "MEMI_BUZZR_REPOSITORY: ${{ vars.MEMI_BUZZR_REPOSITORY }}",
     );
     expect(workflow).toContain(
-      "EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}",
+      "EXPECTED_SOURCE_REVISION: ${{ vars.MEMI_BUZZR_EXPECTED_REVISION }}",
+    );
+    expect(workflow).toContain("${{ github.run_id }}-${{ github.run_attempt }}");
+    expect(workflow).toContain(
+      'mkdir -p "${gate_root}/app-data" "${gate_root}/worktrees" "${gate_root}/private" "${gate_root}/release"',
     );
     expect(workflow).toContain("::add-mask::${MEMI_BUZZR_REPOSITORY}");
     expect(workflow).toContain("npm run verify:gate-c-release-evidence");
     expect(workflow).toContain("evidence-manifest.json");
+    expect(workflow).not.toContain("${{ inputs.source_revision }}");
     expect(workflow).not.toMatch(/upload-artifact[\s\S]*(?:imports\.sqlite|capture-artifacts|reconstruction)/u);
   });
 });

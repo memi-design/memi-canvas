@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertGateCReleaseAuthority,
   createGateCReleaseEvidenceManifest,
   parseGateCReleasePilotEvents,
 } from "./gate-c-release-evidence.js";
@@ -93,6 +94,8 @@ describe("Gate C release evidence", () => {
     const serialized = JSON.stringify(manifest);
 
     expect(manifest.schema).toBe("memi.gate-c-release-evidence.v1");
+    expect(manifest.sourceAuthorityHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(manifest.captureAuthorityHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(manifest.artifacts).toHaveLength(1);
     expect(manifest.artifacts[0]?.screenshot.hash).toBe(screenshotHash);
     expect(manifest.hydration).toEqual({
@@ -100,8 +103,42 @@ describe("Gate C release evidence", () => {
       components: 250,
       screens: 142,
     });
-    expect(serialized).not.toMatch(/Users|Volumes|rootPath|repositoryPath/u);
+    expect(serialized).not.toMatch(
+      /Users|Volumes|rootPath|repositoryPath|sourceRevision|dirtyFingerprint|projectId|jobId|captureId|scenarioId/u,
+    );
+    expect(serialized).not.toContain(sourceRevision);
+    expect(serialized).not.toContain(input().projectId);
+    expect(serialized).not.toContain(input().jobId);
     expect(serialized).not.toContain("capture-artifacts");
+  });
+
+  it("binds packaged evidence to the exact committed pilot job", () => {
+    expect(() =>
+      assertGateCReleaseAuthority({
+        actualJobId: "imp_01J00000000000000000000002",
+        actualProjectId: input().projectId,
+        actualSourceRevision: sourceRevision,
+        actualState: "committed",
+        expectedJobId: input().jobId,
+        expectedProjectId: input().projectId,
+        expectedSourceRevision: sourceRevision,
+      }),
+    ).toThrow(/job authority/u);
+    expect(
+      assertGateCReleaseAuthority({
+        actualJobId: input().jobId,
+        actualProjectId: input().projectId,
+        actualSourceRevision: sourceRevision,
+        actualState: "committed",
+        expectedJobId: input().jobId,
+        expectedProjectId: input().projectId,
+        expectedSourceRevision: sourceRevision,
+      }),
+    ).toEqual({
+      jobId: input().jobId,
+      projectId: input().projectId,
+      sourceRevision,
+    });
   });
 
   it.each(["hierarchy", "geometry", "reconstruction"] as const)(
