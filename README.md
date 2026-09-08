@@ -126,15 +126,11 @@ npm run build
 
 Native and browser E2E gates are available through `npm run verify:full`, but they require the corresponding macOS, simulator, and browser toolchains.
 
-## Download the macOS preview
+## macOS preview availability
 
-When a tagged macOS release is available, download the arm64 DMG from the stable release asset URL:
+No packaged macOS release is currently published. Use the [source quickstart](#quickstart) to run the development preview. Canvas remains a work in progress; a local build does not establish production readiness.
 
-[Download Memi Canvas for macOS](https://github.com/memi-design/memi-canvas/releases/latest/download/Memi.Canvas-latest-arm64.dmg)
-
-The release also includes an `.app.zip`, `release-manifest.json`, and `SHA256SUMS.txt`. Check the manifest before distributing a build: it records the immutable source commit, GitHub Actions run provenance, signing state, and per-artifact digests. Unsigned previews are expected until Apple Developer ID signing and notarization secrets are configured for the repository. The package requires macOS 13 or newer and currently targets Apple silicon.
-
-Maintainers create a release by pushing a protected tag such as `v0.1.0`; the `macOS release` workflow builds the DMG from that exact tag, verifies the disk image, creates the stable aliases used by the landing page, and publishes checksums with the GitHub Release.
+The repository includes a release workflow for future tagged builds. Before distributing any build, verify its source commit, build provenance, signing state, and artifact checksums against the actual published release. See the [release plan](docs/RELEASE_PLAN.md) for the remaining gates.
 
 ## Status and roadmap
 
