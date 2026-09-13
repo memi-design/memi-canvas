@@ -4,7 +4,9 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
+  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -16,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { jobFixture } from "../../../../packages/capture-execution/src/test-fixtures.js";
 import {
+  createSimulatorScreenshotStagingRoot,
   createExpoGoCaptureAdapter,
   localDevelopmentMetroLaunch,
   readSettledEvidenceFile,
@@ -78,6 +81,19 @@ function spawnFixture(
 }
 
 describe("native Expo Go capture integration", () => {
+  it("stages simulator screenshots in private internal temporary storage", async () => {
+    const stagingRoot = await createSimulatorScreenshotStagingRoot();
+
+    try {
+      expect(stagingRoot).toMatch(
+        /^\/private\/tmp\/design\.memi\.canvas-capture-[^/]+$/u,
+      );
+      expect(await realpath(stagingRoot)).toBe(stagingRoot);
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true });
+    }
+  });
+
   it("waits for a completed simulator screenshot file without sampling a new frame", async () => {
     const read = vi.fn()
       .mockResolvedValueOnce(new Uint8Array([1]))
@@ -700,14 +716,36 @@ describe("native Expo Go capture integration", () => {
         "",
       ].join("\n"),
     );
-    const directExecute = vi.fn(async (recipe: { readonly args: readonly string[] }) => ({
-      stdout: recipe.args.join("\0").includes(
-        "defaults\0read\0com.apple.Accessibility\0ReduceMotionEnabled",
-      )
-        ? new TextEncoder().encode("0")
-        : new Uint8Array(),
-      stderr: "",
-    }));
+    const directExecute = vi.fn(async (recipe: {
+      readonly args: readonly string[];
+    }) => {
+      const argumentsKey = recipe.args.join("\0");
+      if (recipe.args[0] === "pbpaste") {
+        const metadata = JSON.parse(
+          await readFile(
+            join(
+              managedRoot,
+              ".memi/capture/runtime-attestation/metadata.json",
+            ),
+            "utf8",
+          ),
+        ) as Readonly<{ readonly readinessToken: string }>;
+        return {
+          stdout: new TextEncoder().encode(
+            `MEMI_CAPTURE_READY_V1:${metadata.readinessToken}`,
+          ),
+          stderr: "",
+        };
+      }
+      return {
+        stdout: argumentsKey.includes(
+          "defaults\0read\0com.apple.Accessibility\0ReduceMotionEnabled",
+        )
+          ? new TextEncoder().encode("0")
+          : new Uint8Array(),
+        stderr: "",
+      };
+    });
     const sandboxedExecute = vi.fn(async () => {
       throw new Error("development-client simctl must not use sandbox-exec");
     });

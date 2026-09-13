@@ -1,6 +1,7 @@
 import type {
   CaptureArtifactV2,
   ImportApplicationV2,
+  ImportInventoryV1,
   ImportJobSnapshotV2,
 } from "@memi/protocol";
 
@@ -48,6 +49,7 @@ function assertCommitted(job: ImportJobSnapshotV2): asserts job is ImportJobSnap
 
 export function repositoryManifestFromCommittedImport(
   job: ImportJobSnapshotV2,
+  inventory?: ImportInventoryV1,
 ): RepositoryImportManifest {
   assertCommitted(job);
   return RepositoryImportManifestSchema.parse({
@@ -57,8 +59,9 @@ export function repositoryManifestFromCommittedImport(
     revision: job.repository.sourceRevision,
     platform: projectPlatform(job.applications),
     dirty: job.repository.dirtyFingerprint !== null,
+    ...(inventory === undefined ? {} : { inventory }),
     files: [],
-    screens: job.scenarios.map((scenario) => ({
+    screens: inventory?.screens ?? job.scenarios.map((scenario) => ({
       id: scenario.id,
       name:
         scenario.state === "default"
@@ -69,8 +72,8 @@ export function repositoryManifestFromCommittedImport(
         scenario.sourceAnchor?.relativePath ??
         `capture-scenarios/${scenario.id}`,
     })),
-    components: [],
-    tokens: [],
+    components: inventory?.components ?? [],
+    tokens: inventory?.tokens ?? [],
   });
 }
 
@@ -95,9 +98,10 @@ export function captureReferenceFromCommittedImport(
 
 export function repositoryProjectFromCommittedImport(
   job: ImportJobSnapshotV2,
+  inventory?: ImportInventoryV1,
 ): ProjectRecord {
   assertCommitted(job);
-  const manifest = repositoryManifestFromCommittedImport(job);
+  const manifest = repositoryManifestFromCommittedImport(job, inventory);
   return {
     id: job.projectId,
     name: job.projectName,
@@ -110,9 +114,9 @@ export function repositoryProjectFromCommittedImport(
       rootPath: job.repository.rootPath,
       platform: manifest.platform,
       harnessId: "deterministic-import",
-      fileCount: 0,
-      screenCount: job.scenarios.length,
-      componentCount: 0,
+      fileCount: inventory?.fileCount ?? 0,
+      screenCount: inventory?.screenCount ?? job.scenarios.length,
+      componentCount: inventory?.componentCount ?? 0,
     },
     lifecycle: job.failures.length === 0 ? "ready" : "attention",
     updatedAt: job.updatedAt,
@@ -122,11 +126,12 @@ export function repositoryProjectFromCommittedImport(
 
 export function repositoryRecordFromCommittedImport(
   job: ImportJobSnapshotV2,
+  inventory?: ImportInventoryV1,
 ): RepositoryProjectRecord {
   assertCommitted(job);
   return {
     harnessId: "deterministic-import",
-    manifest: repositoryManifestFromCommittedImport(job),
+    manifest: repositoryManifestFromCommittedImport(job, inventory),
     capture: {
       artifactReferences: Object.fromEntries(
         job.artifacts.map((artifact) => [

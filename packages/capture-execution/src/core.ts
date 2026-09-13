@@ -4,6 +4,7 @@ export * from "./executor.js";
 export * from "./expo-go-adapter.js";
 export * from "./expo-maestro-adapter.js";
 export * from "./native-dependency-preparation.js";
+export * from "./managed-metro-bridge.js";
 export * from "./process-policy.js";
 export * from "./redacted-log.js";
 export * from "./stability.js";

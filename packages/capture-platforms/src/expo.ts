@@ -805,10 +805,7 @@ export function discoverExpoApplication(input: {
             ? null
             : relativeToRoot(input.root, appConfigEntry.path),
         entryPoint: input.manifest.main ?? "expo-router/entry",
-        scheme:
-          runtime === "development-client"
-            ? developmentClientScheme
-            : appConfig.config?.expo?.scheme ?? null,
+        scheme: appConfig.config?.expo?.scheme ?? null,
         nativeBuild: nativeBuild.configuration,
         metro:
           runtime === "expo-go"

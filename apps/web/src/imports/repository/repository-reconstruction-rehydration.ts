@@ -54,13 +54,17 @@ function assertReconstructionAuthority(
           `${scenarioSource.relativePath}#`,
         )));
   const captureScale = capture.binding.viewport.scale ?? 1;
+  const expectedCaptureViewportName =
+    scenario.viewport.name === "ios-mobile"
+      ? "mobile"
+      : scenario.viewport.name;
   if (
     artifact.dimensions.width !== scenario.viewport.width * scenario.viewport.scale ||
     artifact.dimensions.height !== scenario.viewport.height * scenario.viewport.scale ||
     artifact.dimensions.scale !== scenario.viewport.scale ||
     capture.binding.viewport.width !== scenario.viewport.width ||
     capture.binding.viewport.height !== scenario.viewport.height ||
-    capture.binding.viewport.name !== scenario.viewport.name ||
+    capture.binding.viewport.name !== expectedCaptureViewportName ||
     captureScale !== scenario.viewport.scale ||
     !sourceAnchorMatches
   ) {

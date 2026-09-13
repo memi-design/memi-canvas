@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_CANONICAL_BYTES,
+  MAX_CANONICAL_HASH_BYTES,
   MAX_JSON_DEPTH,
   MAX_JSON_NODES,
   canonicalJson,
   hashCanonicalValue,
+  hashCanonicalValueWithByteLimit,
 } from "./index.js";
 
 describe("bounded canonical JSON", () => {
@@ -81,6 +83,26 @@ describe("bounded canonical JSON", () => {
     expect(() =>
       canonicalJson(Array.from({ length: MAX_JSON_NODES }, () => null)),
     ).toThrow(`exceeds ${MAX_JSON_NODES} JSON nodes`);
+  });
+
+  it("requires an explicit bounded opt-in for larger canonical hashes", () => {
+    const large = { payload: "x".repeat(MAX_CANONICAL_BYTES) };
+
+    expect(() => hashCanonicalValue(large)).toThrow(
+      `exceeds ${MAX_CANONICAL_BYTES} bytes`,
+    );
+    expect(
+      hashCanonicalValueWithByteLimit(
+        large,
+        MAX_CANONICAL_BYTES + 128,
+      ),
+    ).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(() =>
+      hashCanonicalValueWithByteLimit(
+        large,
+        MAX_CANONICAL_HASH_BYTES + 1,
+      ),
+    ).toThrow(`between 1 and ${MAX_CANONICAL_HASH_BYTES}`);
   });
 
   it("uses one portable key order rather than locale collation", () => {

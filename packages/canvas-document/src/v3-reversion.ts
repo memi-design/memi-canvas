@@ -8,7 +8,7 @@ import {
   type CanvasOperationV3,
 } from "@memi/protocol";
 
-import { hashValue } from "./hash.js";
+import { hashCanvasDocumentValue, hashValue } from "./hash.js";
 import {
   applyCanvasV3ActionForInternalProof,
   hashCanvasDocumentV3,
@@ -89,7 +89,7 @@ export function revertCanvasOperationV3(
   };
   const reverted = CanvasDocumentV3Schema.parse({
     ...candidate,
-    stateHash: hashValue(semanticCanvasStateV3(candidate)),
+    stateHash: hashCanvasDocumentValue(semanticCanvasStateV3(candidate)),
   });
   if (reverted.stateHash !== operation.expectedBeforeHash) {
     throw new Error("Canvas V3 reversion prior hash proof is invalid.");

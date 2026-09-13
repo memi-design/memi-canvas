@@ -24,6 +24,9 @@ import {
   ImportCoordinator,
 } from "./import-coordinator.js";
 import type {
+  CommittedImportedProjectStore,
+} from "./committed-import-project-store.js";
+import type {
   ImportMutationInput,
   PlannedRecipeApproval,
   PlannedNativeDependencyPreparation,
@@ -34,6 +37,7 @@ export type ImportPlanServiceResult = ImportPlanResultV1;
 
 export interface ImportJobServiceResult {
   readonly job: ImportJobSnapshotV2;
+  readonly inventory?: ImportPlanResultV1["plan"]["inventory"];
 }
 export interface ImportJobsListServiceResult {
   readonly jobs: readonly ImportJobListItemV1[];
@@ -69,6 +73,7 @@ function toImportJobListItem(
 export interface ImportRuntimeServiceOptions {
   readonly now?: () => Date;
   readonly createPlanToken?: () => ImportPlanToken;
+  readonly committedProjectStore?: CommittedImportedProjectStore;
 }
 
 function defaultPlanToken(): ImportPlanToken {
@@ -82,6 +87,7 @@ function defaultPlanToken(): ImportPlanToken {
 
 export class ImportRuntimeService {
   readonly #coordinator: ImportCoordinator;
+  readonly #committedProjectStore: CommittedImportedProjectStore | undefined;
   readonly #now: () => Date;
   readonly #createPlanToken: () => ImportPlanToken;
   readonly #pending = new Map<ImportPlanToken, PendingPlan>();
@@ -92,6 +98,7 @@ export class ImportRuntimeService {
     options: ImportRuntimeServiceOptions = {},
   ) {
     this.#coordinator = coordinator;
+    this.#committedProjectStore = options.committedProjectStore;
     this.#now = options.now ?? (() => new Date());
     this.#createPlanToken =
       options.createPlanToken ?? defaultPlanToken;
@@ -275,8 +282,16 @@ export class ImportRuntimeService {
     readonly jobId: ImportJobId;
   }): Promise<ImportJobServiceResult> {
     this.#assertNotPurging();
+    const job = await this.#coordinator.get(input.jobId);
+    const committed =
+      job.projectId === null || this.#committedProjectStore === undefined
+        ? null
+        : await this.#committedProjectStore.get(job.projectId);
     return Object.freeze({
-      job: await this.#coordinator.get(input.jobId),
+      job,
+      ...(committed === null
+        ? {}
+        : { inventory: committed.manifest.inventory }),
     });
   }
 

@@ -118,7 +118,7 @@ export function makeRoute(input: {
         input.viewport ??
         (input.platform === "react-web"
           ? { name: "desktop", width: 1440, height: 900, scale: 1 }
-          : { name: "ios-mobile", width: 390, height: 844, scale: 3 }),
+          : { name: "ios-mobile", width: 402, height: 874, scale: 3 }),
       readiness: {
         strategy: "two-stable-frames",
         stableFrames: 2,

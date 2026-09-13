@@ -1,6 +1,7 @@
 import { sha256Hex } from "./sha256.js";
 
 export const MAX_CANONICAL_BYTES = 1_048_576;
+export const MAX_CANONICAL_HASH_BYTES = 64_000_000;
 export const MAX_JSON_DEPTH = 64;
 export const MAX_JSON_NODES = 100_000;
 
@@ -31,10 +32,13 @@ interface CanonicalValue {
   readonly nodes: number;
 }
 
-function checked(result: CanonicalValue): CanonicalValue {
-  if (result.bytes > MAX_CANONICAL_BYTES) {
+function checked(
+  result: CanonicalValue,
+  maximumBytes: number,
+): CanonicalValue {
+  if (result.bytes > maximumBytes) {
     throw new RangeError(
-      `Canonical JSON exceeds ${MAX_CANONICAL_BYTES} bytes.`,
+      `Canonical JSON exceeds ${maximumBytes} bytes.`,
     );
   }
   if (result.nodes > MAX_JSON_NODES) {
@@ -45,12 +49,12 @@ function checked(result: CanonicalValue): CanonicalValue {
   return result;
 }
 
-function scalar(text: string): CanonicalValue {
+function scalar(text: string, maximumBytes: number): CanonicalValue {
   return checked({
     text,
     bytes: utf8ByteLength(text),
     nodes: 1,
-  });
+  }, maximumBytes);
 }
 
 function dataProperty(
@@ -74,6 +78,7 @@ function canonicalize(
   value: unknown,
   ancestors: ReadonlySet<object>,
   depth: number,
+  maximumBytes: number,
 ): CanonicalValue {
   if (depth > MAX_JSON_DEPTH) {
     throw new RangeError(
@@ -81,16 +86,16 @@ function canonicalize(
     );
   }
   if (value === null) {
-    return scalar("null");
+    return scalar("null", maximumBytes);
   }
   if (typeof value === "boolean" || typeof value === "string") {
-    return scalar(JSON.stringify(value));
+    return scalar(JSON.stringify(value), maximumBytes);
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       throw new TypeError("Canonical JSON numbers must be finite.");
     }
-    return scalar(JSON.stringify(value));
+    return scalar(JSON.stringify(value), maximumBytes);
   }
   if (typeof value !== "object") {
     throw new TypeError("Canonical JSON accepts only JSON values.");
@@ -121,13 +126,17 @@ function canonicalize(
         dataProperty(value, String(index)).value,
         nextAncestors,
         depth + 1,
+        maximumBytes,
       );
       bytes += child.bytes + (index === 0 ? 0 : 1);
       nodes += child.nodes;
-      checked({ text: "", bytes, nodes });
+      checked({ text: "", bytes, nodes }, maximumBytes);
       parts.push(child.text);
     }
-    return checked({ text: `[${parts.join(",")}]`, bytes, nodes });
+    return checked(
+      { text: `[${parts.join(",")}]`, bytes, nodes },
+      maximumBytes,
+    );
   }
 
   const prototype = Object.getPrototypeOf(value);
@@ -151,6 +160,7 @@ function canonicalize(
       dataProperty(value, key).value,
       nextAncestors,
       depth + 1,
+      maximumBytes,
     );
     const part = `${keyText}:${child.text}`;
     bytes +=
@@ -159,19 +169,43 @@ function canonicalize(
       child.bytes +
       (index === 0 ? 0 : 1);
     nodes += child.nodes;
-    checked({ text: "", bytes, nodes });
+    checked({ text: "", bytes, nodes }, maximumBytes);
     parts.push(part);
   }
-  return checked({ text: `{${parts.join(",")}}`, bytes, nodes });
+  return checked(
+    { text: `{${parts.join(",")}}`, bytes, nodes },
+    maximumBytes,
+  );
 }
 
 export function canonicalJson(value: unknown): string {
-  return canonicalize(value, new Set(), 0).text;
+  return canonicalize(value, new Set(), 0, MAX_CANONICAL_BYTES).text;
 }
 
 export function hashCanonicalValue(value: unknown): string {
   const digest = sha256Hex(
     utf8Encoder.encode(canonicalJson(value)),
+  );
+  return `sha256:${digest}`;
+}
+
+export function hashCanonicalValueWithByteLimit(
+  value: unknown,
+  maximumBytes: number,
+): string {
+  if (
+    !Number.isSafeInteger(maximumBytes) ||
+    maximumBytes < 1 ||
+    maximumBytes > MAX_CANONICAL_HASH_BYTES
+  ) {
+    throw new RangeError(
+      `Canonical JSON hash byte limit must be between 1 and ${MAX_CANONICAL_HASH_BYTES}.`,
+    );
+  }
+  const digest = sha256Hex(
+    utf8Encoder.encode(
+      canonicalize(value, new Set(), 0, maximumBytes).text,
+    ),
   );
   return `sha256:${digest}`;
 }

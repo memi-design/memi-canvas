@@ -253,6 +253,7 @@ describe("capture-platform discovery", () => {
       expect.objectContaining({
         routePath: "/",
         authContext: "public",
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
       expect.objectContaining({
         routePath: "/games/:gameId",
@@ -261,10 +262,12 @@ describe("capture-platform discovery", () => {
           status: "required",
           parameterNames: ["gameId"],
         },
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
       expect.objectContaining({
         routePath: "/sign-in",
         authContext: "signed-out",
+        viewport: { name: "ios-mobile", width: 402, height: 874, scale: 3 },
       }),
     ]);
   });
@@ -435,7 +438,7 @@ describe("capture-platform discovery", () => {
         kind: "expo-ios",
         runtime: "development-client",
         bundleId: "com.example.client",
-        scheme: "exp+development-client-app",
+        scheme: "example",
         nativeBuild: null,
         metro: {
           executable: "npx",
@@ -498,7 +501,7 @@ describe("capture-platform discovery", () => {
         kind: "expo-ios",
         runtime: "development-client",
         bundleId: "com.example.selectedclient",
-        scheme: "exp+selected-client",
+        scheme: "selected-client",
         nativeBuild: null,
         metro: {
           executable: "npx",

@@ -1,0 +1,89 @@
+name: Gate C release evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-c-private-evidence
+  cancel-in-progress: false
+
+jobs:
+  native-buzzr-evidence:
+    name: Protected real Buzzr native evidence
+    if: github.ref == 'refs/heads/main'
+    environment: gate-c-private-evidence
+    runs-on: [self-hosted, macOS, ARM64, memi-gate-c]
+    timeout-minutes: 35
+    env:
+      MEMI_BUZZR_REPOSITORY: ${{ vars.MEMI_BUZZR_REPOSITORY }}
+      EXPECTED_SOURCE_REVISION: ${{ vars.MEMI_BUZZR_EXPECTED_REVISION }}
+      MEMI_BUZZR_PILOT_APP_DATA: ${{ runner.temp }}/memi-gate-c-${{ github.run_id }}-${{ github.run_attempt }}/app-data
+      MEMI_BUZZR_PILOT_WORKTREE_ROOT: ${{ runner.temp }}/memi-gate-c-${{ github.run_id }}-${{ github.run_attempt }}/worktrees
+      MEMI_GATE_C_PILOT_EVENTS: ${{ runner.temp }}/memi-gate-c-${{ github.run_id }}-${{ github.run_attempt }}/private/pilot-events.jsonl
+      MEMI_GATE_C_EVIDENCE_OUTPUT: ${{ runner.temp }}/memi-gate-c-${{ github.run_id }}-${{ github.run_attempt }}/release/evidence-manifest.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.3
+          cache: npm
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Validate protected clean Buzzr authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MEMI_BUZZR_REPOSITORY}" ]]; then
+            echo "The protected Gate C environment has no Buzzr checkout configured." >&2
+            exit 1
+          fi
+          echo "::add-mask::${MEMI_BUZZR_REPOSITORY}"
+          if [[ ! "${EXPECTED_SOURCE_REVISION}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The requested Buzzr source revision is invalid." >&2
+            exit 1
+          fi
+          if [[ ! -d "${MEMI_BUZZR_REPOSITORY}" ]] || [[ -L "${MEMI_BUZZR_REPOSITORY}" ]] || [[ ! -e "${MEMI_BUZZR_REPOSITORY}/.git" ]] || [[ -L "${MEMI_BUZZR_REPOSITORY}/.git" ]]; then
+            echo "The protected Buzzr checkout is unavailable or unsafe." >&2
+            exit 1
+          fi
+          actual_revision="$(git -C "${MEMI_BUZZR_REPOSITORY}" rev-parse HEAD)"
+          if [[ "${actual_revision}" != "${EXPECTED_SOURCE_REVISION}" ]]; then
+            echo "The protected Buzzr checkout does not match the requested revision." >&2
+            exit 1
+          fi
+          if [[ -n "$(git -C "${MEMI_BUZZR_REPOSITORY}" status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "Gate C release evidence requires a clean private checkout." >&2
+            exit 1
+          fi
+          gate_root="${RUNNER_TEMP}/memi-gate-c-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ -e "${gate_root}" ]] || [[ -L "${gate_root}" ]]; then
+            echo "The run-unique Gate C root already exists." >&2
+            exit 1
+          fi
+          umask 077
+          mkdir -p "${gate_root}/app-data" "${gate_root}/worktrees" "${gate_root}/private" "${gate_root}/release"
+
+      - run: npm ci
+
+      - name: Build the bounded runtime sidecar
+        run: npm run build:runtime-sidecar
+
+      - name: Capture and package sanitized Gate C evidence
+        run: npm run verify:gate-c-release-evidence
+
+      - name: Upload sanitized release evidence manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-c-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/memi-gate-c-${{ github.run_id }}-${{ github.run_attempt }}/release/evidence-manifest.json
+          if-no-files-found: error
+          retention-days: 30

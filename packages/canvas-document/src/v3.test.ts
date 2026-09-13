@@ -70,6 +70,16 @@ function node(pageId: string = ids.page): CanvasNodeV3 {
   });
 }
 
+function largeTextNode(id: string, characters: string): CanvasNodeV3 {
+  return CanvasNodeV3Schema.parse({
+    ...node(),
+    id,
+    kind: "text",
+    name: "Large imported text layer",
+    text: { autoResize: "none", characters },
+  });
+}
+
 describe("CanvasDocumentV3 engine", () => {
   it("creates a deeply immutable normalized document", () => {
     const document = createCanvasDocumentV3({
@@ -82,6 +92,37 @@ describe("CanvasDocumentV3 engine", () => {
     expect(hashCanvasDocumentV3(document)).toBe(document.stateHash);
     expect(Object.isFrozen(document)).toBe(true);
     expect(Object.isFrozen(document.pagesById[ids.page])).toBe(true);
+  });
+
+  it("hashes valid canvas documents larger than the control-message budget", () => {
+    const empty = createCanvasDocumentV3({
+      id: ids.document,
+      projectId: ids.project,
+      initialPage: { id: ids.page, kind: "imported", name: "Imported" },
+    });
+    const firstId = "nod_01J00000000000000000000001";
+    const secondId = "nod_01J00000000000000000000002";
+    const document = CanvasDocumentV3Schema.parse({
+      ...empty,
+      nodesById: {
+        [firstId]: largeTextNode(firstId, "a".repeat(600_000)),
+        [secondId]: largeTextNode(secondId, "b".repeat(600_000)),
+      },
+      pagesById: {
+        [ids.page]: {
+          ...empty.pagesById[ids.page],
+          rootIds: [firstId, secondId],
+        },
+      },
+    });
+
+    expect(JSON.stringify(document).length).toBeGreaterThan(1_048_576);
+    expect(hashCanvasDocumentV3(document)).toMatch(
+      /^sha256:[a-f0-9]{64}$/u,
+    );
+    expect(hashCanvasDocumentV3(document)).toBe(
+      hashCanvasDocumentV3(CanvasDocumentV3Schema.parse(document)),
+    );
   });
 
   it("prepares, applies, and inverts one semantic operation without mutating input", () => {

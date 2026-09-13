@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   lstat,
   mkdir,
@@ -24,7 +24,7 @@ export interface PrepareExpoRuntimeInstrumentationInput {
 }
 
 export interface PreparedExpoRuntimeInstrumentation {
-  readonly instrumentationVersion: 2;
+  readonly instrumentationVersion: 3;
   readonly instrumentedSourceCount: number;
   readonly instrumentedSources: readonly InstrumentedExpoSourceV1[];
   readonly managedWorktreeRoot: string;
@@ -33,6 +33,7 @@ export interface PreparedExpoRuntimeInstrumentation {
   readonly modulePath: string;
   readonly metadataPath: string;
   readonly sourceRevision: string;
+  readonly readinessToken: string;
   readonly originalLayoutHash: `sha256:${string}`;
   readonly instrumentationHash: `sha256:${string}`;
 }
@@ -146,8 +147,11 @@ function instrumentRootLayout(source: string, fileName: string): string {
   );
 }
 
-function instrumentationModule(sourceRevision: string): string {
-  return expoRuntimeSemanticModule(sourceRevision);
+function instrumentationModule(
+  sourceRevision: string,
+  readinessToken: string,
+): string {
+  return expoRuntimeSemanticModule(sourceRevision, readinessToken);
 }
 
 export async function prepareExpoRuntimeInstrumentation(
@@ -167,7 +171,7 @@ export async function prepareExpoRuntimeInstrumentation(
       await readFile(metadataPath, "utf8"),
     ) as PreparedExpoRuntimeInstrumentation;
     if (
-      existing.instrumentationVersion === 2 &&
+      existing.instrumentationVersion === 3 &&
       existing.managedWorktreeRoot === input.managedWorktreeRoot &&
       existing.sourceRevision === input.sourceRevision &&
       Array.isArray(existing.instrumentedSources) &&
@@ -201,7 +205,8 @@ export async function prepareExpoRuntimeInstrumentation(
   ) {
     throw new Error("Expo runtime instrumentation escaped the managed root.");
   }
-  const module = instrumentationModule(input.sourceRevision);
+  const readinessToken = randomBytes(16).toString("hex").toUpperCase();
+  const module = instrumentationModule(input.sourceRevision, readinessToken);
   let instrumentedSources: readonly InstrumentedExpoSourceV1[] = Object.freeze([]);
   let original: string | undefined;
   let layoutWasPatched = false;
@@ -218,7 +223,7 @@ export async function prepareExpoRuntimeInstrumentation(
     await atomicWrite(layoutPath, patched);
     layoutWasPatched = true;
     const prepared: PreparedExpoRuntimeInstrumentation = Object.freeze({
-      instrumentationVersion: 2,
+      instrumentationVersion: 3,
       instrumentedSourceCount: instrumentedSources.length,
       instrumentedSources,
       managedWorktreeRoot: input.managedWorktreeRoot,
@@ -227,6 +232,7 @@ export async function prepareExpoRuntimeInstrumentation(
       modulePath,
       metadataPath,
       sourceRevision: input.sourceRevision,
+      readinessToken,
       originalLayoutHash: hash(original),
       instrumentationHash: hash(
         `${patched}\0${module}\0${instrumentedSources

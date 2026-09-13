@@ -49,6 +49,7 @@ describe("managed Expo runtime instrumentation", () => {
 
     expect(prepared.originalLayoutHash).toMatch(/^sha256:/u);
     expect(prepared.instrumentationHash).toMatch(/^sha256:/u);
+    expect(prepared.readinessToken).toMatch(/^[0-9A-F]{32}$/u);
     expect(patched).toContain("MemiCaptureRuntimeAttestation");
     expect(patched).toContain("const MemiCaptureOriginalRoot");
     expect(patched.indexOf("import 'react-native-gesture-handler';")).toBeLessThan(
@@ -60,6 +61,8 @@ describe("managed Expo runtime instrumentation", () => {
     expect(module).toContain(SOURCE_REVISION);
     expect(module).toContain("Clipboard.setStringAsync");
     expect(module).toContain("Clipboard.getStringAsync");
+    expect(module).toContain("MEMI_CAPTURE_READY_V1:");
+    expect(module).toContain(prepared.readinessToken);
     expect(module).toContain("useState");
     expect(module).toContain("sourceRevision !== SOURCE_REVISION");
     expect(module).toContain("usePathname");

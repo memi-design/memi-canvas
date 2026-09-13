@@ -235,6 +235,34 @@ describe("repository reconstruction rehydration", () => {
     );
   });
 
+  it("accepts the canonical mobile reconstruction for an iOS mobile scenario", async () => {
+    const iosJob = ImportJobSnapshotSchemaV2.parse({
+      ...job,
+      scenarios: job.scenarios.map((scenario) => ({
+        ...scenario,
+        viewport: { ...scenario.viewport, name: "ios-mobile" },
+      })),
+    });
+    const iosRecord = {
+      ...record,
+      capture: { ...record.capture, job: iosJob },
+    };
+
+    await expect(
+      rehydrateRepositoryProjectRecord(iosRecord, async () => ({
+        capture,
+        review,
+        schemaVersion: 1,
+      })),
+    ).resolves.toMatchObject({
+      capture: {
+        artifactReferences: {
+          [artifactId]: { reconstruction: capture },
+        },
+      },
+    });
+  });
+
   it("fails closed when restored semantics do not match runtime authority", async () => {
     const mismatchedCapture = {
       ...capture,

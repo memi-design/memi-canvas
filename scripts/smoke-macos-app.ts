@@ -11,6 +11,7 @@ import {
   macOsVisibleWindowProbe,
   macOsWindowDiagnosticProbe,
   macOsProcessListArguments,
+  resolveMacOsAppPath,
   type ProcessRow,
 } from "./smoke-macos-app-process.js";
 
@@ -23,7 +24,10 @@ function optionalOption(name: string): string | undefined {
 const APP_PATH = await canonicalizeMacOsAppPath(
   resolve(
     optionalOption("--app") ??
-      "apps/macos/src-tauri/target/debug/bundle/macos/Memi Canvas.app",
+      resolveMacOsAppPath({
+        cargoTargetDirectory: process.env.CARGO_TARGET_DIR,
+        workingDirectory: process.cwd(),
+      }),
   ),
 );
 const EXECUTABLE_PATH = resolve(

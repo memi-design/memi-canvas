@@ -1,4 +1,23 @@
 import { realpath } from "node:fs/promises";
+import { resolve } from "node:path";
+
+export interface MacOsAppPathOptions {
+  readonly cargoTargetDirectory?: string;
+  readonly workingDirectory: string;
+}
+
+export function resolveMacOsAppPath(
+  options: MacOsAppPathOptions,
+): string {
+  const targetDirectory = options.cargoTargetDirectory?.trim();
+  return resolve(
+    options.workingDirectory,
+    targetDirectory && targetDirectory.length > 0
+      ? targetDirectory
+      : "apps/macos/src-tauri/target",
+    "debug/bundle/macos/Memi Canvas.app",
+  );
+}
 
 export interface ProcessRow {
   readonly pid: number;

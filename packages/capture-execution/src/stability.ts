@@ -17,6 +17,27 @@ function frameHash(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
+const PNG_SIGNATURE = Object.freeze([137, 80, 78, 71, 13, 10, 26, 10]);
+
+export function readPngDimensions(
+  bytes: Uint8Array,
+): Readonly<{ width: number; height: number }> | null {
+  if (
+    bytes.byteLength < 24 ||
+    !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte) ||
+    bytes[12] !== 73 ||
+    bytes[13] !== 72 ||
+    bytes[14] !== 68 ||
+    bytes[15] !== 82
+  ) {
+    return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  return width === 0 || height === 0 ? null : Object.freeze({ width, height });
+}
+
 export function verifyStableFrames(
   first: Uint8Array,
   second: Uint8Array,
